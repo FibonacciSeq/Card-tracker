@@ -1,7 +1,35 @@
+# --- Scryfall podaci i keš (generisano, ne ide u git) ---
 scryfall_default_cards.jsonl
 temp_scryfall_data.jsonl.gz
+scryfall.db
+image_cache/
+
+# --- Korisnicka kolekcija (licni podaci) ---
+my_collection.json
+my_collection.xlsx
+*.tmp
+
+# --- Python ---
 __pycache__/
-*.pyc
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+env/
+
+# --- Alati ---
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# --- Editori / OS ---
 .vscode/
 .idea/
-scryfall.db
+*.swp
+.DS_Store
+Thumbs.db

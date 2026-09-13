@@ -1,13 +1,16 @@
+import logging
 import threading
 import tkinter as tk
-from tkinter import messagebox, scrolledtext, filedialog, Toplevel, Label, ttk
+from tkinter import Label, Toplevel, filedialog, messagebox, scrolledtext, ttk
 
-from services.card_database import CardDatabase
+from models.card import Card
 from services.card_collection import CardCollection
+from services.card_lookup import CardLookup
 from services.excel_exporter import CollectionExporter
 from services.excel_importer import ExcelImporter
-from models.card import Card
 from ui.card_list import FastCardList
+
+logger = logging.getLogger(__name__)
 
 
 def load_database_background(database, on_complete_callback):
@@ -16,7 +19,7 @@ def load_database_background(database, on_complete_callback):
             database.load_cards()
             on_complete_callback(success=True)
         except Exception as e:
-            print(f"Greška u pozadinskoj niti: {e}")
+            logger.error(f"Greška u pozadinskoj niti: {e}")
             on_complete_callback(success=False, error=str(e))
 
     thread = threading.Thread(target=worker, daemon=True)
@@ -25,7 +28,7 @@ def load_database_background(database, on_complete_callback):
 
 class ScryfallApp:
 
-    def __init__(self, root: tk.Tk, database: CardDatabase, collection: CardCollection):
+    def __init__(self, root: tk.Tk, database: CardLookup, collection: CardCollection):
         self.root = root
         self.db = database
         self.collection = collection
@@ -158,7 +161,7 @@ class ScryfallApp:
         self.start_loading_process()
 
     def refresh_card_display(self):
-        self.list_all.populate(self.db.cards)
+        self.list_all.populate(self.db.all_cards())
         self._load_collection_from_input()
 
     def start_loading_process(self):
@@ -230,8 +233,10 @@ class ScryfallApp:
             try:
                 success = self.db.update_from_scryfall()
                 self.root.after(0, lambda: on_update_finished(success))
-            except Exception as e:
-                self.root.after(0, lambda: on_update_finished(False, str(e)))
+            except Exception as exc:
+                # `exc` nestaje na kraju except bloka, pa poruku vezujemo odmah.
+                message = str(exc)
+                self.root.after(0, lambda: on_update_finished(False, message))
 
         def on_update_finished(success, error=None):
             self.loading_win.destroy()

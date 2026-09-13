@@ -1,8 +1,8 @@
-from typing import List, Tuple
 
 import openpyxl
 
-from models.card import Card
+from services.card_lookup import as_lookup
+
 
 class ExcelImporter:
     """Uvozi kolekciju iz Excel fajla."""
@@ -11,7 +11,7 @@ class ExcelImporter:
     QUANTITY_KEYWORDS = ["količina", "kolicina", "qty", "count", "kom"]
 
     @classmethod
-    def import_file(cls, file_path: str, database, collection) -> Tuple[int, List[str]]:
+    def import_file(cls, file_path: str, database, collection) -> tuple[int, list[str]]:
         wb = openpyxl.load_workbook(file_path, data_only=True)
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))
@@ -27,12 +27,17 @@ class ExcelImporter:
             if not row:
                 continue
 
-            row_vals = [str(v).strip().lower() for v in row if v is not None]
+            # Indeks mora da prati stvarnu kolonu: preskakanje praznih celija
+            # bi pomerilo numeraciju i citali bismo pogresnu kolonu.
+            for j, value in enumerate(row):
+                if value is None:
+                    continue
 
-            for j, val in enumerate(row_vals):
-                if any(keyword in val for keyword in cls.NAME_KEYWORDS):
+                val = str(value).strip().lower()
+
+                if name_idx == -1 and any(k in val for k in cls.NAME_KEYWORDS):
                     name_idx = j
-                elif any(keyword in val for keyword in cls.QUANTITY_KEYWORDS):
+                elif qty_idx == -1 and any(k in val for k in cls.QUANTITY_KEYWORDS):
                     qty_idx = j
 
             if name_idx != -1:
@@ -44,13 +49,7 @@ class ExcelImporter:
             qty_idx = 1 if len(rows[0]) > 1 else -1
             start_row = 0
 
-        db_lookup = {}
-
-        for card in database.cards:
-            clean_name = card.name.strip().lower()
-
-            if clean_name not in db_lookup:
-                db_lookup[clean_name] = card
+        lookup = as_lookup(database)
 
         added_count = 0
         unmatched = []
@@ -78,18 +77,7 @@ class ExcelImporter:
             if qty <= 0:
                 continue
 
-            clean_name = raw_name.lower()
-            matched_card = db_lookup.get(clean_name)
-
-            if not matched_card:
-                clean_alpha = "".join(filter(str.isalnum, clean_name))
-
-                for db_name, db_card in db_lookup.items():
-                    db_alpha = "".join(filter(str.isalnum, db_name))
-
-                    if db_alpha == clean_alpha:
-                        matched_card = db_card
-                        break
+            matched_card = lookup.find_cheapest_by_name(raw_name) or lookup.find_by_loose_name(raw_name)
 
             if matched_card:
                 new_card = matched_card.clone(is_foil=False, quantity=qty)

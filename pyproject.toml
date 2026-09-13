@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "card-tracker"
+version = "0.1.0"
+description = "Desktop aplikacija za pretragu Scryfall baze i vođenje MTG kolekcije"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "requests>=2.31.0",
+    "openpyxl>=3.1.0",
+    "Pillow>=10.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-cov>=5.0",
+    "ruff>=0.6",
+]
+
+[project.scripts]
+card-tracker = "main:display_app"
+
+[tool.setuptools]
+py-modules = ["main", "collection", "downloader", "importer"]
+
+[tool.setuptools.packages.find]
+include = ["models*", "services*", "ui*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = ["error::DeprecationWarning"]
+
+[tool.coverage.run]
+omit = ["ui/*", "tests/*"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes (undefined names, unused imports)
+    "I",    # import sorting
+    "UP",   # pyupgrade
+    "B",    # bugbear (mutable defaults, shadowed loop vars)
+    "C4",   # comprehensions
+    "T20",  # flag leftover print() calls
+]
+ignore = [
+    "E501",    # line length handled by the formatter
+    "B008",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests may use assert-heavy style and long parametrised tables.
+"tests/*" = ["E501"]

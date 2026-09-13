@@ -1,15 +1,14 @@
 import bisect
-from typing import List, Optional, Tuple
 
 from collection import CollectionStorage
-from importer import match_cards_with_database, parse_card_list_text
+from importer import match_cards_with_database, parse_lines
 from models.card import Card
 
 
 class CardCollection:
     def __init__(self, filename: str = ""):
         self.filename = filename
-        self.items: List[Card] = []
+        self.items: list[Card] = []
 
     def add_card(self, card: Card):
 
@@ -40,19 +39,18 @@ class CardCollection:
 
                 return
 
-    def load(self, database, filename: Optional[str] = None) -> List[Card]:
+    def load(self, database, filename: str | None = None) -> list[Card]:
 
         target_filename = filename or self.filename
-        raw_dict_cards = [card.to_dict() for card in database.cards]
-        loaded_dicts = CollectionStorage.load_from_file(target_filename, raw_dict_cards)
+        loaded = CollectionStorage.load_from_file(target_filename, database)
 
-        self.items = [Card(data, data.get("is_foil", False)) for data in loaded_dicts]
+        self.items = [item if isinstance(item, Card) else Card(item, item.get("is_foil", False)) for item in loaded]
         self.items.sort()
         self.filename = target_filename
 
         return self.items
 
-    def save(self, filename: Optional[str] = None) -> Tuple[bool, str]:
+    def save(self, filename: str | None = None) -> tuple[bool, str]:
 
         target_filename = filename or self.filename
         dict_items = [card.to_dict() for card in self.items]
@@ -63,41 +61,21 @@ class CardCollection:
 
         return result
 
-    def import_from_text(self, raw_text: str, database) -> Tuple[int, List[str]]:
-
-        db_raw_dicts = [card.to_dict() for card in database.cards]
-        parsed_items = parse_card_list_text(raw_text, db_raw_dicts)
+    def import_from_text(self, raw_text: str, database) -> tuple[int, list[str]]:
+        """Uvozi tekstualnu listu; vraca (broj dodatih, neprepoznate stavke)."""
+        parsed_items = parse_lines(raw_text)
 
         if not parsed_items:
             return 0, []
 
-        formatted_items = []
+        matched, unmatched = match_cards_with_database(parsed_items, database)
 
-        for item in parsed_items:
-            if isinstance(item, dict):
-                qty = item.get("quantity", item.get("qty", 1))
-                name = item.get("name", "")
-                set_code = item.get("set_code", item.get("set", ""))
-                collector_number = item.get("collector_number", item.get("collector_num", ""))
-                formatted_items.append((qty, name, set_code, collector_number))
+        for item in matched:
+            self.add_card(item if isinstance(item, Card) else Card(item))
 
-            elif isinstance(item, (list, tuple)):
-                formatted_items.append(tuple(item[:4]))
+        return len(matched), unmatched
 
-        result = match_cards_with_database(formatted_items, db_raw_dicts)
-
-        if isinstance(result, tuple) and len(result) == 2:
-            matched_dicts, unmatched = result
-        else:
-            matched_dicts = result
-            unmatched = []
-
-        for card_dict in matched_dicts:
-            self.add_card(Card(card_dict))
-
-        return len(matched_dicts), unmatched
-
-
+    def get_total_value(self) -> float:
         return sum(card.price_numeric * card.quantity for card in self.items)
 
     def get_total_value_eur(self) -> float:
@@ -130,4 +108,4 @@ class CardCollection:
 
     def get_unique_count(self) -> int:
 
-        return len(set(card.name.lower() for card in self.items))
+        return len({card.name.lower() for card in self.items})

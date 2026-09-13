@@ -1,11 +1,11 @@
+import logging
 import tkinter as tk
 from tkinter import ttk
-from typing import List
-from PIL import Image, ImageTk
-
-from services.image_loader import ImageLoader
 
 from models.card import Card
+from services.image_loader import ImageLoader
+
+logger = logging.getLogger(__name__)
 
 
 class FastCardList(ttk.Frame):
@@ -17,7 +17,7 @@ class FastCardList(ttk.Frame):
         self.cards_per_page = cards_per_page
         self.is_collection_view = is_collection_view
         self.current_page = 0
-        self.current_cards: List[Card] = []
+        self.current_cards: list[Card] = []
         
         self.preview_window = None
         self.preview_image_cache = {}
@@ -108,7 +108,7 @@ class FastCardList(ttk.Frame):
     def _show_card_preview(self, event, card: Card):
         image_url = getattr(card, "image_url", None)
         if not image_url:
-            print(f"Kartica {getattr(card, 'name', 'Nepoznato')} nema definisan image_url.")
+            logger.warning(f"Kartica {getattr(card, 'name', 'Nepoznato')} nema definisan image_url.")
             return
 
         self._hide_card_preview()
@@ -126,17 +126,20 @@ class FastCardList(ttk.Frame):
 
         def set_image(photo_image, path):
             if self.preview_window and self.preview_window.winfo_exists():
-                self.after(0, lambda: self._update_preview_image(photo_image))
+                self._update_preview_image(photo_image)
 
-        def set_error():
+        def set_error(exc=None):
             if self.preview_window and self.preview_window.winfo_exists():
-                self.after(0, lambda: self._update_preview_error())
+                self._update_preview_error()
 
-        try:
-            ImageLoader.load_card_image(image_url, set_image, size=(400, 560))
-        except Exception as e:
-            print(f"Greška pri pokretanju ImageLoader-a: {e}")
-            set_error()
+        # ImageLoader vraca rezultat preko self.after, pa smo vec na glavnoj niti.
+        ImageLoader.load_card_image(
+            image_url,
+            set_image,
+            size=(400, 560),
+            on_error=set_error,
+            schedule=self.after,
+        )
 
 
     def _update_preview_image(self, photo):
@@ -166,7 +169,7 @@ class FastCardList(ttk.Frame):
             self.preview_window.destroy()
             self.preview_window = None
 
-    def populate(self, cards_list: List[Card]):
+    def populate(self, cards_list: list[Card]):
         self.current_cards = cards_list
         self.current_page = 0
         self._render_page()

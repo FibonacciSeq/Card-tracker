@@ -1,9 +1,12 @@
-import os
 import gzip
+import logging
+import os
 import shutil
 import sys
+
 import requests
-from typing import Optional
+
+logger = logging.getLogger(__name__)
 
 
 class ScryfallDownloader:
@@ -26,8 +29,8 @@ class ScryfallDownloader:
     def target_url(self) -> str:
         return f"{self.BASE_API_URL}/{self.data_type}"
 
-    def _get_download_link(self) -> Optional[str]:
-        print("Preuzimanje metapodataka sa Scryfall-a...")
+    def _get_download_link(self) -> str | None:
+        logger.info("Preuzimanje metapodataka sa Scryfall-a...")
         response = requests.get(self.target_url, headers=self.headers)
         response.raise_for_status()
 
@@ -35,14 +38,14 @@ class ScryfallDownloader:
         download_uri = bulk_data.get("download_uri") or bulk_data.get("jsonl_download_uri")
 
         if not download_uri:
-            print("Greška: Nije pronađen validan link za preuzimanje u API odgovoru.")
+            logger.error("Greška: Nije pronađen validan link za preuzimanje u API odgovoru.")
             return None
 
         return download_uri
 
     def _stream_download(self, download_uri: str) -> None:
-        print(f"Pronađen direktan link: {download_uri}")
-        print("Preuzimanje kompresovanih podataka u toku...")
+        logger.info(f"Pronađen direktan link: {download_uri}")
+        logger.info("Preuzimanje kompresovanih podataka u toku...")
 
         with requests.get(download_uri, headers=self.headers, stream=True) as response:
             response.raise_for_status()
@@ -52,7 +55,7 @@ class ScryfallDownloader:
                         f_out.write(chunk)
 
     def _decompress(self, output_filename: str) -> None:
-        print(f"Dekompresija i prepisivanje sadržaja u '{output_filename}'...")
+        logger.info(f"Dekompresija i prepisivanje sadržaja u '{output_filename}'...")
         with gzip.open(self.temp_file, "rb") as f_in:
             with open(output_filename, "wb") as f_out:
                 shutil.copyfileobj(f_in, f_out)
@@ -60,7 +63,7 @@ class ScryfallDownloader:
     def _cleanup_temp_file(self) -> None:
         if os.path.exists(self.temp_file):
             os.remove(self.temp_file)
-            print("Privremena arhiva je uspešno izbrisana sa diska.")
+            logger.info("Privremena arhiva je uspešno izbrisana sa diska.")
 
     def download_and_extract(self, output_filename: str = "scryfall_default_cards.jsonl") -> bool:
         try:
@@ -71,11 +74,11 @@ class ScryfallDownloader:
             self._stream_download(download_uri)
             self._decompress(output_filename)
 
-            print("Uspešno ažurirano i prepisano!")
+            logger.info("Uspešno ažurirano i prepisano!")
             return True
 
         except Exception as e:
-            print(f"Greška tokom ažuriranja: {e}")
+            logger.error(f"Greška tokom ažuriranja: {e}")
             return False
 
         finally:
@@ -88,6 +91,7 @@ def download_and_extract_scryfall(output_filename: str = "scryfall_default_cards
 
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     target_file = sys.argv[1] if len(sys.argv) > 1 else "scryfall_default_cards.jsonl"
     
     downloader = ScryfallDownloader()

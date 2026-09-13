@@ -1,7 +1,6 @@
-from typing import Any, List, Tuple
-from services.pricing import PricingService
+from typing import Any
 
-from services.pricing import calculate_card_price_rsd
+from services.pricing import PricingService, calculate_card_price_rsd
 
 
 class Card:
@@ -45,7 +44,7 @@ class Card:
         eur_normal = prices.get("eur")
         eur_foil = prices.get("eur_foil")
 
-        eur_rate = PricingService._rates_cache.get("EUR", 0.92)
+        eur_rate = PricingService.get_rate("EUR")
 
         if usd_normal is not None:
             try:
@@ -104,7 +103,7 @@ class Card:
         self.search_str = f"{self.name} {self.set_name} {self.collector_number} {self.type_line}".lower()
 
     @property
-    def color_sort_key(self) -> Tuple[int, Any]:
+    def color_sort_key(self) -> tuple[int, Any]:
         if len(self.colors) == 1 and self.colors in self.COLOR_ORDER:
             return 0, self.COLOR_ORDER[self.colors]
 
@@ -116,7 +115,7 @@ class Card:
     def sort_key(self):
         return self.name.lower(), self.set_name.lower(), self.cmc_val, self.color_sort_key
 
-    def matches_query(self, query_terms: List[str]) -> bool:
+    def matches_query(self, query_terms: list[str]) -> bool:
         return all(term in self.search_str for term in query_terms)
 
     @staticmethod
@@ -150,19 +149,32 @@ class Card:
         }
 
     def clone(self, is_foil=None, quantity=1):
-        return Card(
-            self.raw_data.copy(),
-            is_foil=self.is_foil if is_foil is None else is_foil,
-            quantity=quantity,
-        )
+        target_foil = self.is_foil if is_foil is None else is_foil
+
+        # raw_data ima prednost nad argumentom u __init__, pa ga ovde
+        # eksplicitno prepisujemo da bi clone(is_foil=...) uvek vazio.
+        raw_copy = self.raw_data.copy()
+        raw_copy["is_foil"] = target_foil
+        raw_copy["quantity"] = quantity
+
+        return Card(raw_copy, is_foil=target_foil, quantity=quantity)
 
     def __lt__(self, other: "Card") -> bool:
         return self.sort_key() < other.sort_key()
 
+    def identity(self) -> tuple[str, str, str, bool]:
+        """Sto identifikuje jedan unos u kolekciji: printing + foil varijanta."""
+        return (
+            self.name.lower(),
+            self.set_name.lower(),
+            str(getattr(self, "collector_number", "")),
+            bool(getattr(self, "is_foil", False)),
+        )
+
     def __eq__(self, other):
         if not isinstance(other, Card):
-            return False
-        return self.name == other.name and self.set_name == other.set_name and getattr(self, 'collector_number', '') == getattr(other, 'collector_number', '')
+            return NotImplemented
+        return self.identity() == other.identity()
 
     def __hash__(self):
-        return hash((self.name.lower(), self.set_name.lower(), str(getattr(self, 'collector_number', ''))))
+        return hash(self.identity())

@@ -1,102 +1,19 @@
 import json
+import logging
 import os
-from typing import List, Tuple, Optional, Dict, Any
+from typing import Any
+
 import openpyxl
-from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
-from openpyxl.utils import get_column_letter
 
+from services.card_lookup import as_lookup
 
-class CollectionExporter:
-
-    @staticmethod
-    def export_to_excel(cards: List[Any], filename: str = "moja_kolekcija.xlsx") -> Tuple[bool, str]:
-        
-        if not filename.endswith(".xlsx"):
-            filename += ".xlsx"
-
-        try:
-            wb = openpyxl.Workbook()
-            ws = wb.active
-            ws.title = "Kolekcija"
-
-            # Zaglavlja kolona
-            headers = [
-                "Naziv kartice",
-                "Set iz kog je kartica",
-                "Kolekcijski broj kartice",
-                "Cena kartice"
-            ]
-            ws.append(headers)
-
-            # Stil za zaglavlje
-            header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
-            header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
-            header_alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-
-            for col_num in range(1, len(headers) + 1):
-                cell = ws.cell(row=1, column=col_num)
-                cell.font = header_font
-                cell.fill = header_fill
-                cell.alignment = header_alignment
-
-            # Upis podataka
-            for card in cards:
-                if hasattr(card, "name"):
-                    name = card.name
-                    set_name = card.set_name
-                    collector_num = str(card.collector_number)
-                    price = card.price_normal if card.price_normal != "N/A" else card.price_foil
-                else:
-                    name = card.get("name", "")
-                    set_name = card.get("set", card.get("set_name", ""))
-                    collector_num = str(card.get("collector_number", ""))
-                    price = card.get("price_normal", "N/A")
-                    if price == "N/A":
-                        price = card.get("price_foil", "N/A")
-
-                ws.append([name, set_name, collector_num, price])
-
-            # Poravnanje i ivice ćelija sa podacima
-            thin_border = Border(
-                left=Side(style='thin', color='D9D9D9'),
-                right=Side(style='thin', color='D9D9D9'),
-                top=Side(style='thin', color='D9D9D9'),
-                bottom=Side(style='thin', color='D9D9D9')
-            )
-
-            for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=4):
-                row[0].alignment = Alignment(horizontal="left", vertical="center")      # Naziv
-                row[1].alignment = Alignment(horizontal="left", vertical="center")      # Set
-                row[2].alignment = Alignment(horizontal="center", vertical="center")    # Kolekcijski broj
-                row[3].alignment = Alignment(horizontal="right", vertical="center")     # Cena
-
-                for cell in row:
-                    cell.border = thin_border
-
-            # Pristajanje širine kolona (100% vidljivost teksta)
-            for col in ws.columns:
-                max_len = 0
-                col_letter = get_column_letter(col[0].column)
-                
-                for cell in col:
-                    val_str = str(cell.value or "")
-                    if len(val_str) > max_len:
-                        max_len = len(val_str)
-
-                ws.column_dimensions[col_letter].width = max(max_len + 4, 12)
-
-            wb.save(filename)
-            return True, filename
-
-        except Exception as e:
-            print(f"Greška pri izvozu u Excel: {e}")
-            return False, filename
+logger = logging.getLogger(__name__)
 
 
 class CollectionStorage:
 
     @classmethod
-    def save_to_file(cls, filename: str, collection_list: List[Any]):
+    def save_to_file(cls, collection_list: list[Any], filename: str) -> tuple[bool, str]:
         temp_filename = filename + ".tmp"
         try:
             saved_data = []
@@ -122,18 +39,19 @@ class CollectionStorage:
                 json.dump(saved_data, f, ensure_ascii=False, indent=4)
 
             os.replace(temp_filename, filename)
-            
+            return True, filename
+
         except Exception as e:
-            print(f"Greška pri čuvanju kolekcije: {e}")
+            logger.error(f"Greška pri čuvanju kolekcije: {e}")
             if os.path.exists(temp_filename):
                 try:
                     os.remove(temp_filename)
                 except OSError:
                     pass
-            raise e
+            return False, filename
 
     @classmethod
-    def load_from_file(cls, filename: str, all_cards_database: List[Any]) -> List[Any]:
+    def load_from_file(cls, filename: str, card_source: Any) -> list[Any]:
       
         if not os.path.exists(filename):
             # Provera ako je prošireno bez ekstenzije
@@ -145,17 +63,17 @@ class CollectionStorage:
                 return []
 
         if filename.endswith(".xlsx"):
-            return cls._load_from_excel(filename, all_cards_database)
+            return cls._load_from_excel(filename, card_source)
         
-        return cls._load_from_json(filename, all_cards_database)
+        return cls._load_from_json(filename, card_source)
 
     @classmethod
-    def _load_from_json(cls, filename: str, all_cards_database: List[Any]) -> List[Any]:
-        db_map, db_cheapest_map = cls._build_database_maps(all_cards_database)
+    def _load_from_json(cls, filename: str, card_source: Any) -> list[Any]:
+        lookup = as_lookup(card_source)
         loaded_collection = []
 
         try:
-            with open(filename, "r", encoding="utf-8") as f:
+            with open(filename, encoding="utf-8") as f:
                 saved_data = json.load(f)
 
             for item in saved_data:
@@ -168,11 +86,7 @@ class CollectionStorage:
                 qty = item.get("quantity", 1)
                 is_foil = item.get("is_foil", False)
 
-                found_card = None
-                if exact_key in db_map:
-                    found_card = db_map[exact_key]
-                elif name_key in db_cheapest_map:
-                    found_card = db_cheapest_map[name_key]
+                found_card = lookup.find_exact(*exact_key) or lookup.find_cheapest_by_name(name_key)
 
                 if found_card:
                     if hasattr(found_card, "clone"):
@@ -186,18 +100,18 @@ class CollectionStorage:
                         loaded_collection.append(card_copy)
 
         except Exception as e:
-            print(f"Greška pri učitavanju JSON kolekcije: {e}")
+            logger.error(f"Greška pri učitavanju JSON kolekcije: {e}")
 
         return loaded_collection
 
     
     @classmethod
-    def _load_from_excel(cls, filename: str, all_cards_database: List[Any]) -> List[Any]:
+    def _load_from_excel(cls, filename: str, card_source: Any) -> list[Any]:
         try:
             wb = openpyxl.load_workbook(filename=filename, data_only=True)
             sheet = wb.active
         except Exception as e:
-            print(f"Greška pri čitanju Excel fajla '{filename}': {e}")
+            logger.error(f"Greška pri čitanju Excel fajla '{filename}': {e}")
             return []
 
         rows = list(sheet.iter_rows(values_only=True))
@@ -213,10 +127,10 @@ class CollectionStorage:
         col_qty = cls._find_column_index(header, ["kolicina", "quantity", "qty", "count"])
 
         if col_name is None:
-            print("Excel fajl ne sadrži prepoznatljivu kolonu sa nazivom kartice.")
+            logger.error("Excel fajl ne sadrži prepoznatljivu kolonu sa nazivom kartice.")
             return []
 
-        db_map, db_cheapest_map = cls._build_database_maps(all_cards_database)
+        lookup = as_lookup(card_source)
         loaded_collection = []
 
         for row in rows[1:]:
@@ -242,67 +156,30 @@ class CollectionStorage:
             name_key = name.lower()
 
             found_card = None
-            if set_code and coll_num and exact_key in db_map:
-                found_card = db_map[exact_key]
-            elif name_key in db_cheapest_map:
-                found_card = db_cheapest_map[name_key]
+            if set_code and coll_num:
+                found_card = lookup.find_exact(*exact_key)
+            if not found_card:
+                found_card = lookup.find_cheapest_by_name(name_key)
 
             if found_card:
-                for _ in range(qty):
-                    loaded_collection.append(found_card)
+                loaded_collection.append(cls._with_quantity(found_card, qty))
 
         return loaded_collection
 
     @staticmethod
-    def _build_database_maps(all_cards_database: List[Any]) -> Tuple[Dict, Dict]:
-        db_map = {}
-        for card in all_cards_database:
-            c_dict = card.to_dict() if hasattr(card, "to_dict") else card
-            key = (
-                c_dict.get("name", "").lower(),
-                c_dict.get("set", c_dict.get("set_name", "")).lower(),
-                str(c_dict.get("collector_number", ""))
-            )
-            if key not in db_map:
-                db_map[key] = card
+    def _with_quantity(card: Any, qty: int, is_foil: bool = False) -> Any:
+        """Jedan unos sa kolicinom, nikad vise referenci na isti objekat."""
+        if hasattr(card, "clone"):
+            return card.clone(is_foil=is_foil, quantity=qty)
 
-        db_cheapest_map = CollectionStorage._find_cheapest_versions_map(all_cards_database)
-        return db_map, db_cheapest_map
+        card_copy = card.copy() if isinstance(card, dict) else dict(card)
+        card_copy["quantity"] = qty
+        card_copy["is_foil"] = is_foil
+        return card_copy
 
     @staticmethod
-    def _find_column_index(header: List[str], possible_names: List[str]) -> Optional[int]:
+    def _find_column_index(header: list[str], possible_names: list[str]) -> int | None:
         for name in possible_names:
             if name in header:
                 return header.index(name)
         return None
-
-    @staticmethod
-    def _find_cheapest_versions_map(all_cards: List[Any]) -> Dict[str, Any]:
-        cheapest_map = {}
-        for card in all_cards:
-            c_dict = card.to_dict() if hasattr(card, "to_dict") else card
-            name_key = c_dict.get("name", "").lower()
-            price = c_dict.get("price_numeric", 0.0)
-
-            if name_key not in cheapest_map:
-                cheapest_map[name_key] = card
-            else:
-                existing_card = cheapest_map[name_key]
-                ex_dict = existing_card.to_dict() if hasattr(existing_card, "to_dict") else existing_card
-                current_cheapest_price = ex_dict.get("price_numeric", 0.0)
-
-                if price > 0 and (current_cheapest_price == 0 or price < current_cheapest_price):
-                    cheapest_map[name_key] = card
-
-        return cheapest_map
-
-def save_collection_to_file(collection_list: List[Any], filename: str) -> Tuple[bool, str]:
-    return CollectionStorage.save_to_file(collection_list, filename)
-
-
-def load_collection_from_file(filename: str, all_cards_database: List[Any]) -> List[Any]:
-    return CollectionStorage.load_from_file(filename, all_cards_database)
-
-
-def export_collection_to_excel(collection_list: List[Any], filename: str = "kolekcija.xlsx") -> Tuple[bool, str]:
-    return CollectionExporter.export_to_excel(collection_list, filename)
