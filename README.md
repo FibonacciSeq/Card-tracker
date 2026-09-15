@@ -15,6 +15,16 @@ Built with Python + Tkinter.
 - **Export** your collection to a formatted `.xlsx` with totals
 - **Card previews** on hover, cached to disk
 
+## SQL Server backend
+
+Alongside the local SQLite index there is a SQL Server database for running
+this as a shop: stock levels, customer orders, and an automatic restock list
+that replaces checking spreadsheets by hand. It ships as numbered T-SQL
+scripts plus a scheduled job that refreshes the Scryfall catalog and imports
+spreadsheets from a drop folder.
+
+See [`database/README.md`](database/README.md).
+
 ## Requirements
 
 - Python **3.10+**
@@ -119,6 +129,8 @@ services/
   card_lookup.py      Lookup contract shared by both database backends
   card_query.py       Lazy, pageable result set over SQLite
   card_collection.py  Collection operations and totals
+  mssql.py            SQL Server connection (pyodbc or pymssql)
+  spreadsheet.py      Header detection shared by the spreadsheet importers
   pricing.py          Exchange rates and RSD retail pricing
   excel_importer.py   Excel -> collection
   excel_exporter.py   Collection -> Excel
@@ -126,6 +138,10 @@ services/
 ui/
   app.py              Main window and tabs
   card_list.py        Paginated card list with hover previews
+tools/
+  etl_scryfall.py     Scryfall bulk file -> SQL Server staging -> catalog
+  etl_stock.py        Excel/CSV drop folder -> SQL Server staging -> stock
+database/             SQL Server schema, procedures, views and Agent job
 tests/                Test suite
 ```
 

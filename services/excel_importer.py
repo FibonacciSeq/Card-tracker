@@ -2,6 +2,7 @@
 import openpyxl
 
 from services.card_lookup import as_lookup
+from services.spreadsheet import cell, detect_columns
 
 
 class ExcelImporter:
@@ -19,35 +20,11 @@ class ExcelImporter:
         if not rows:
             return 0, []
 
-        name_idx = -1
-        qty_idx = -1
-        start_row = 0
-
-        for i, row in enumerate(rows[:10]):
-            if not row:
-                continue
-
-            # Indeks mora da prati stvarnu kolonu: preskakanje praznih celija
-            # bi pomerilo numeraciju i citali bismo pogresnu kolonu.
-            for j, value in enumerate(row):
-                if value is None:
-                    continue
-
-                val = str(value).strip().lower()
-
-                if name_idx == -1 and any(k in val for k in cls.NAME_KEYWORDS):
-                    name_idx = j
-                elif qty_idx == -1 and any(k in val for k in cls.QUANTITY_KEYWORDS):
-                    qty_idx = j
-
-            if name_idx != -1:
-                start_row = i + 1
-                break
-
-        if name_idx == -1:
-            name_idx = 0
-            qty_idx = 1 if len(rows[0]) > 1 else -1
-            start_row = 0
+        header_keywords = {
+            "name": cls.NAME_KEYWORDS,
+            "quantity": cls.QUANTITY_KEYWORDS,
+        }
+        start_row, columns = detect_columns(rows, header_keywords)
 
         lookup = as_lookup(database)
 
@@ -55,10 +32,7 @@ class ExcelImporter:
         unmatched = []
 
         for row in rows[start_row:]:
-            if not row or name_idx >= len(row) or row[name_idx] is None:
-                continue
-
-            raw_name = str(row[name_idx]).strip()
+            raw_name = cell(row, columns, "name")
 
             if not raw_name:
                 continue
@@ -67,10 +41,11 @@ class ExcelImporter:
                 continue
 
             qty = 1
+            raw_qty = cell(row, columns, "quantity")
 
-            if qty_idx != -1 and qty_idx < len(row) and row[qty_idx] is not None:
+            if raw_qty is not None:
                 try:
-                    qty = int(float(str(row[qty_idx]).strip()))
+                    qty = int(float(raw_qty))
                 except (ValueError, TypeError):
                     qty = 1
 
