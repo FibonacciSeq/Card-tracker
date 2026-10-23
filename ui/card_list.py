@@ -1,28 +1,43 @@
 import logging
 import tkinter as tk
+from collections.abc import Callable, Sequence
 from tkinter import ttk
 
 from models.card import Card
 from services.image_loader import ImageLoader
+from ui.dispatch import TkDispatcher
 
 logger = logging.getLogger(__name__)
 
 
 class FastCardList(ttk.Frame):
-
-    def __init__(self, parent, action_btn_text: str, action_callback, cards_per_page: int = 10, is_collection_view: bool = False):
+    def __init__(
+        self,
+        parent: tk.Misc,
+        action_btn_text: str,
+        action_callback: Callable[[Card], None],
+        cards_per_page: int = 10,
+        is_collection_view: bool = False,
+    ):
         super().__init__(parent)
         self.action_btn_text = action_btn_text
         self.action_callback = action_callback
         self.cards_per_page = cards_per_page
         self.is_collection_view = is_collection_view
         self.current_page = 0
-        self.current_cards: list[Card] = []
-        
-        self.preview_window = None
-        self.preview_image_cache = {}
+        self.current_cards: Sequence[Card] = []
+        self._dispatcher = TkDispatcher(self)
 
+        self.preview_window: tk.Toplevel | None = None
+        self.preview_image_cache: dict[str, tk.PhotoImage] = {}
+        self._preview_request = 0
+
+        self.bind("<Destroy>", self._on_destroy, add="+")
         self._build_ui()
+
+    def _on_destroy(self, event: tk.Event) -> None:
+        if event.widget is self:
+            self._dispatcher.close()
 
     def _build_ui(self):
         self.nav_frame = ttk.Frame(self)
@@ -108,10 +123,12 @@ class FastCardList(ttk.Frame):
     def _show_card_preview(self, event, card: Card):
         image_url = getattr(card, "image_url", None)
         if not image_url:
-            logger.warning(f"Kartica {getattr(card, 'name', 'Nepoznato')} nema definisan image_url.")
+            logger.warning("Kartica %s nema definisan image_url.", getattr(card, "name", "Nepoznato"))
             return
 
         self._hide_card_preview()
+        self._preview_request += 1
+        token = self._preview_request
 
         self.preview_window = tk.Toplevel(self)
         self.preview_window.overrideredirect(True)
@@ -124,34 +141,33 @@ class FastCardList(ttk.Frame):
         lbl_status = ttk.Label(self.preview_window, text="Učitavam sliku...", padding=10)
         lbl_status.pack()
 
-        def set_image(photo_image, path):
-            if self.preview_window and self.preview_window.winfo_exists():
+        def set_image(photo_image, _path):
+            if token == self._preview_request and self.preview_window and self.preview_window.winfo_exists():
                 self._update_preview_image(photo_image)
 
-        def set_error(exc=None):
-            if self.preview_window and self.preview_window.winfo_exists():
+        def set_error(_exc=None):
+            if token == self._preview_request and self.preview_window and self.preview_window.winfo_exists():
                 self._update_preview_error()
 
-        # ImageLoader vraca rezultat preko self.after, pa smo vec na glavnoj niti.
+        # The dispatcher delivers the callback on Tk's main thread.
         ImageLoader.load_card_image(
             image_url,
             set_image,
             size=(400, 560),
             on_error=set_error,
-            schedule=self.after,
+            schedule=self._dispatcher.post,
         )
-
 
     def _update_preview_image(self, photo):
         if not self.preview_window or not self.preview_window.winfo_exists():
             return
-        
+
         for widget in self.preview_window.winfo_children():
             widget.destroy()
 
         if photo:
             lbl_img = ttk.Label(self.preview_window, image=photo)
-            lbl_img.image = photo
+            lbl_img.image = photo  # type: ignore[attr-defined]
             lbl_img.pack()
         else:
             self._update_preview_error()
@@ -169,7 +185,7 @@ class FastCardList(ttk.Frame):
             self.preview_window.destroy()
             self.preview_window = None
 
-    def populate(self, cards_list: list[Card]):
+    def populate(self, cards_list: Sequence[Card]) -> None:
         self.current_cards = cards_list
         self.current_page = 0
         self._render_page()
@@ -193,12 +209,16 @@ class FastCardList(ttk.Frame):
 
                 if self.is_collection_view:
                     foil_label = " [FOIL]" if card.is_foil else " [NON-FOIL]"
-                    widget["title"].config(text=f"{card.name}{qty_text}{foil_label} (CMC: {card.cmc} | Color: {card.colors})")
+                    widget["title"].config(
+                        text=f"{card.name}{qty_text}{foil_label} (CMC: {card.cmc} | Color: {card.colors})"
+                    )
                 else:
                     widget["title"].config(text=f"{card.name} (CMC: {card.cmc} | Color: {card.colors})")
 
                 widget["type"].config(text=f"Type: {card.type_line}")
-                widget["meta"].config(text=f"Set: {card.set_name} | Rarity: {card.rarity} | Collector #: {card.collector_number}")
+                widget["meta"].config(
+                    text=f"Set: {card.set_name} | Rarity: {card.rarity} | Collector #: {card.collector_number}"
+                )
 
                 widget["box_normal"].pack_forget()
                 widget["box_foil"].pack_forget()
@@ -207,25 +227,37 @@ class FastCardList(ttk.Frame):
                     if card.is_foil:
                         widget["box_foil"].config(text=f" Foil Verzija (x{qty}) ")
                         widget["lbl_price_foil"].config(text=f"Cena: {card.price_foil}  ➔  {card.price_foil_rsd} RSD")
-                        widget["btn_foil"].config(text=self.action_btn_text, command=lambda c=card: self.action_callback(c))
+                        widget["btn_foil"].config(
+                            text=self.action_btn_text, command=lambda c=card: self.action_callback(c)
+                        )
                         widget["box_foil"].pack(fill="x", expand=True, pady=2)
                     else:
                         widget["box_normal"].config(text=f" Non-Foil Verzija (x{qty}) ")
-                        widget["lbl_price_normal"].config(text=f"Cena: {card.price_normal}  ➔  {card.price_normal_rsd} RSD")
-                        widget["btn_normal"].config(text=self.action_btn_text, command=lambda c=card: self.action_callback(c))
+                        widget["lbl_price_normal"].config(
+                            text=f"Cena: {card.price_normal}  ➔  {card.price_normal_rsd} RSD"
+                        )
+                        widget["btn_normal"].config(
+                            text=self.action_btn_text, command=lambda c=card: self.action_callback(c)
+                        )
                         widget["box_normal"].pack(fill="x", expand=True, pady=2)
                 else:
                     widget["box_normal"].config(text=" Non-Foil Verzija ")
                     widget["box_foil"].config(text=" Foil Verzija ")
 
                     if card.price_normal_val > 0:
-                        widget["lbl_price_normal"].config(text=f"Cena: {card.price_normal}  ➔  {card.price_normal_rsd} RSD")
-                        widget["btn_normal"].config(text="Dodaj Non-Foil", command=lambda c=card: self.action_callback(c.clone(is_foil=False)))
+                        widget["lbl_price_normal"].config(
+                            text=f"Cena: {card.price_normal}  ➔  {card.price_normal_rsd} RSD"
+                        )
+                        widget["btn_normal"].config(
+                            text="Dodaj Non-Foil", command=lambda c=card: self.action_callback(c.clone(is_foil=False))
+                        )
                         widget["box_normal"].pack(fill="x", expand=True, pady=2)
 
                     if card.price_foil_val > 0:
                         widget["lbl_price_foil"].config(text=f"Cena: {card.price_foil}  ➔  {card.price_foil_rsd} RSD")
-                        widget["btn_foil"].config(text="Dodaj Foil", command=lambda c=card: self.action_callback(c.clone(is_foil=True)))
+                        widget["btn_foil"].config(
+                            text="Dodaj Foil", command=lambda c=card: self.action_callback(c.clone(is_foil=True))
+                        )
                         widget["box_foil"].pack(fill="x", expand=True, pady=2)
 
                 self._bind_hover_events(widget, card)

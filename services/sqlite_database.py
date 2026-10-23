@@ -67,8 +67,7 @@ class SQLiteCardDatabase:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_cards_name ON cards(name_lower, price_sort)")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_cards_alnum ON cards(name_alnum, price_sort)")
             cursor.execute(
-                "CREATE INDEX IF NOT EXISTS idx_cards_exact "
-                "ON cards(name_lower, set_code, collector_number)"
+                "CREATE INDEX IF NOT EXISTS idx_cards_exact ON cards(name_lower, set_code, collector_number)"
             )
 
             # Prefiks pretraga (brza, rangirana preko bm25).
@@ -163,6 +162,7 @@ class SQLiteCardDatabase:
             conn.commit()
 
         for table in ("cards_fts", "cards_trigram"):
+            # `table` comes from the fixed tuple immediately above.
             cursor.execute(f"INSERT INTO {table}({table}) VALUES('rebuild')")
         conn.commit()
 
@@ -213,6 +213,7 @@ class SQLiteCardDatabase:
         """Samo da li ima pogodaka - bez brojanja svih redova."""
         conn = self._connect()
         try:
+            # `table` is only ever called with the static names below.
             sql = f"SELECT 1 FROM {table} WHERE {table} MATCH ? LIMIT 1"
             return conn.execute(sql, (expression,)).fetchone() is not None
         except sqlite3.OperationalError:
@@ -233,10 +234,7 @@ class SQLiteCardDatabase:
         if prefix_expr and self._has_match("cards_fts", prefix_expr):
             return CardQueryResult(
                 self.db_path,
-                where_sql=(
-                    "JOIN cards_fts ON cards_fts.rowid = cards.id "
-                    "AND cards_fts MATCH ?"
-                ),
+                where_sql=("JOIN cards_fts ON cards_fts.rowid = cards.id AND cards_fts MATCH ?"),
                 params=(prefix_expr,),
                 order_sql="bm25(cards_fts), cards.name_lower",
             )
@@ -245,10 +243,7 @@ class SQLiteCardDatabase:
         if trigram_expr:
             return CardQueryResult(
                 self.db_path,
-                where_sql=(
-                    "JOIN cards_trigram ON cards_trigram.rowid = cards.id "
-                    "AND cards_trigram MATCH ?"
-                ),
+                where_sql=("JOIN cards_trigram ON cards_trigram.rowid = cards.id AND cards_trigram MATCH ?"),
                 params=(trigram_expr,),
                 order_sql="cards.name_lower, cards.id",
             )

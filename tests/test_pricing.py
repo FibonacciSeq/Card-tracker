@@ -45,9 +45,9 @@ def test_cheap_cards_have_a_price_floor():
 @pytest.mark.parametrize(
     "price_eur,expected",
     [
-        (1.00, 150),    # +15 marza
-        (3.00, 420),    # +30 marza
-        (7.00, 970),    # +60 marza
+        (1.00, 150),  # +15 marza
+        (3.00, 420),  # +30 marza
+        (7.00, 970),  # +60 marza
         # 20*130*1.10 je matematicki 2860, ali float daje 2860.0000000000005
         # pa ceil() podigne na 2870. Namerno hvatamo stvarno ponasanje.
         (20.00, 2870),  # x1.10

@@ -24,7 +24,7 @@ class ConnectionSettings:
     database: str = "CardTracker"
     user: str | None = None
     password: str | None = None
-    trusted: bool = False          # Windows autentikacija
+    trusted: bool = False  # Windows autentikacija
     encrypt: bool = True
     trust_server_certificate: bool = True
     odbc_driver: str = DEFAULT_ODBC_DRIVER
@@ -73,17 +73,18 @@ def _available_driver() -> str:
 
     try:
         import pyodbc  # noqa: F401
+
         return "pyodbc"
     except ImportError:
         pass
 
     try:
         import pymssql  # noqa: F401
+
         return "pymssql"
     except ImportError as exc:
         raise RuntimeError(
-            "Nije pronađen drajver za SQL Server. Instaliraj 'pyodbc' "
-            "(uz ODBC Driver 18) ili 'pymssql'."
+            "Nije pronađen drajver za SQL Server. Instaliraj 'pyodbc' (uz ODBC Driver 18) ili 'pymssql'."
         ) from exc
 
 

@@ -1,3 +1,4 @@
+from typing import ClassVar
 
 import openpyxl
 
@@ -8,8 +9,8 @@ from services.spreadsheet import cell, detect_columns
 class ExcelImporter:
     """Uvozi kolekciju iz Excel fajla."""
 
-    NAME_KEYWORDS = ["naziv", "name", "kartica", "card", "title"]
-    QUANTITY_KEYWORDS = ["količina", "kolicina", "qty", "count", "kom"]
+    NAME_KEYWORDS: ClassVar[list[str]] = ["naziv", "name", "kartica", "card", "title"]
+    QUANTITY_KEYWORDS: ClassVar[list[str]] = ["količina", "kolicina", "qty", "count", "kom"]
 
     @classmethod
     def import_file(cls, file_path: str, database, collection) -> tuple[int, list[str]]:

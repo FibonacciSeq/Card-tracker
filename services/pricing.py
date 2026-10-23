@@ -1,12 +1,13 @@
 import logging
 import math
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
+from typing import ClassVar
 
 import requests
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_RATES = {"EUR": 0.92, "RSD": 117.0}
+DEFAULT_RATES: dict[str, float] = {"EUR": 0.92, "RSD": 117.0}
 
 # Koliko dugo cekamo pre ponovnog pokusaja ako preuzimanje kurseva padne.
 # Bez ovoga bi svaka konstrukcija Card objekta pokusala novi HTTP poziv.
@@ -14,12 +15,12 @@ RETRY_AFTER = timedelta(minutes=10)
 
 
 class PricingService:
-    _rates_cache = {}
-    _last_fetch_date = None
-    _last_attempt = None
+    _rates_cache: ClassVar[dict[str, float]] = {}
+    _last_fetch_date: ClassVar[date | None] = None
+    _last_attempt: ClassVar[datetime | None] = None
 
     @classmethod
-    def update_exchange_rates(cls):
+    def update_exchange_rates(cls) -> None:
         today = datetime.now().date()
 
         if cls._rates_cache and cls._last_fetch_date == today:
@@ -46,11 +47,11 @@ class PricingService:
                     "RSD": rates.get("RSD", DEFAULT_RATES["RSD"]),
                 }
                 cls._last_fetch_date = today
-                logger.info(f"Uspešno učitani kursevi valuta: {cls._rates_cache}")
+                logger.info("Uspešno učitani kursevi valuta: %s", cls._rates_cache)
             else:
-                logger.error(f"Greška pri preuzimanju kurseva, status: {response.status_code}")
-        except Exception as e:
-            logger.warning(f"Izuzetak pri povezivanju sa API-jem za kurseve: {e}")
+                logger.error("Greška pri preuzimanju kurseva, status: %s", response.status_code)
+        except Exception as exc:
+            logger.warning("Izuzetak pri povezivanju sa API-jem za kurseve: %s", exc)
 
         if not cls._rates_cache:
             cls._rates_cache = dict(DEFAULT_RATES)

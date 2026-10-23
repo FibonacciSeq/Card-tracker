@@ -1,11 +1,10 @@
-from typing import Any
+from typing import Any, ClassVar
 
 from services.pricing import PricingService, calculate_card_price_rsd
 
 
 class Card:
-
-    COLOR_ORDER = {"B": 1, "U": 2, "G": 3, "R": 4, "W": 5}
+    COLOR_ORDER: ClassVar[dict[str, int]] = {"B": 1, "U": 2, "G": 3, "R": 4, "W": 5}
 
     def __init__(self, raw_data: dict, is_foil: bool = False, quantity: int = 1):
         self.raw_data = raw_data
@@ -17,14 +16,14 @@ class Card:
         self.collector_number = str(raw_data.get("collector_number", "N/A"))
         self.rarity = raw_data.get("rarity", "Unknown Rarity").capitalize()
         self.image_url = raw_data.get("image_url")
-        
+
         if not self.image_url:
             image_uris = raw_data.get("image_uris")
             if not image_uris and "card_faces" in raw_data:
                 faces = raw_data.get("card_faces", [])
                 if faces and isinstance(faces[0], dict):
                     image_uris = faces[0].get("image_uris")
-            
+
             self.image_url = image_uris.get("normal") if isinstance(image_uris, dict) else None
 
         try:

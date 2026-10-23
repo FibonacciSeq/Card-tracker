@@ -30,9 +30,9 @@ class CardDatabase:
                         self.cards.append(Card(card_data))
 
             self._lookup = InMemoryCardLookup(self.cards)
-            logger.info(f"Uspešno učitano {len(self.cards)} karata u bazu.")
-        except Exception as e:
-            logger.error(f"Greška pri učitavanju baze: {e}")
+            logger.info("Uspešno učitano %s karata u bazu.", len(self.cards))
+        except Exception:
+            logger.exception("Greška pri učitavanju baze")
 
     def update_from_scryfall(self) -> bool:
         downloader = ScryfallDownloader()
@@ -51,6 +51,9 @@ class CardDatabase:
 
     def find_cheapest_by_name(self, name: str) -> Card | None:
         return self._lookup.find_cheapest_by_name(name)
+
+    def find_by_loose_name(self, name: str) -> Card | None:
+        return self._lookup.find_by_loose_name(name)
 
     def count(self) -> int:
         return len(self.cards)

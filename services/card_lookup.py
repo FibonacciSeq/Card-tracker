@@ -5,6 +5,7 @@ memoriji. Ovaj protokol dozvoljava da SQLite verzija radi isti posao preko
 indeksa, a da testovi i JSONL backend koriste in-memory implementaciju.
 """
 
+from collections.abc import Sequence
 from typing import Any, Protocol, runtime_checkable
 
 
@@ -18,6 +19,26 @@ class CardLookup(Protocol):
 
     def find_by_loose_name(self, name: str) -> Any | None:
         """Kao gore, ali ignorise interpunkciju i razmake."""
+
+
+@runtime_checkable
+class CardCatalog(CardLookup, Protocol):
+    """Puni katalog koji UI moze da ucita, pretrazi i osvezi."""
+
+    def load_cards(self) -> None:
+        """Pripremi katalog za rad (indeks, konekcija, ...)."""
+
+    def update_from_scryfall(self) -> bool:
+        """Osvezi katalog iz Scryfall-a; True kada uspe."""
+
+    def all_cards(self) -> Sequence[Any]:
+        """Sve aktivne kartice."""
+
+    def search(self, query: str) -> Sequence[Any]:
+        """Pretraga kataloga."""
+
+    def count(self) -> int:
+        """Broj kartica u katalogu."""
 
 
 def normalize_name(name: str) -> str:
@@ -56,15 +77,18 @@ class InMemoryCardLookup:
             )
             self._exact.setdefault(key, card)
 
-            for bucket, key in ((self._cheapest, name_key), (self._loose, normalize_name(name_key))):
-                current = bucket.get(key)
+            for bucket, bucket_key in (
+                (self._cheapest, name_key),
+                (self._loose, normalize_name(name_key)),
+            ):
+                current = bucket.get(bucket_key)
                 if current is None:
-                    bucket[key] = card
+                    bucket[bucket_key] = card
                     continue
 
                 price, current_price = _price_of(card), _price_of(current)
                 if price > 0 and (current_price == 0 or price < current_price):
-                    bucket[key] = card
+                    bucket[bucket_key] = card
 
     def find_exact(self, name: str, set_code: str, collector_number: str) -> Any | None:
         key = (name.lower(), str(set_code or "").lower(), str(collector_number or ""))

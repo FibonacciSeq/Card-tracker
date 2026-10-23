@@ -38,8 +38,7 @@ def test_recognises_the_richer_stock_columns():
         ("Forest", "blb", "280", 4, "Da", "NM", "BOX1", "20"),
     ]
     _, cols = detect_columns(rows)
-    for field in ("name", "set_code", "collector_number", "quantity",
-                  "is_foil", "condition", "location", "unit_cost"):
+    for field in ("name", "set_code", "collector_number", "quantity", "is_foil", "condition", "location", "unit_cost"):
         assert field in cols, field
 
 

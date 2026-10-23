@@ -23,13 +23,28 @@ from services.spreadsheet import cell, detect_columns
 logger = logging.getLogger("etl.stock")
 
 STAGING_COLUMNS = (
-    "SourceRowNo", "CardName", "SetCode", "CollectorNumber", "Quantity",
-    "IsFoil", "ConditionCode", "LanguageCode", "Location", "UnitCostRsd",
+    "SourceRowNo",
+    "CardName",
+    "SetCode",
+    "CollectorNumber",
+    "Quantity",
+    "IsFoil",
+    "ConditionCode",
+    "LanguageCode",
+    "Location",
+    "UnitCostRsd",
 )
 
 FIELD_ORDER = (
-    "name", "set_code", "collector_number", "quantity",
-    "is_foil", "condition", "language", "location", "unit_cost",
+    "name",
+    "set_code",
+    "collector_number",
+    "quantity",
+    "is_foil",
+    "condition",
+    "language",
+    "location",
+    "unit_cost",
 )
 
 
@@ -65,18 +80,20 @@ def rows_to_staging(rows: list[tuple]) -> list[tuple]:
         if not name:
             continue
 
-        staged.append((
-            offset,
-            name,
-            cell(row, columns, "set_code"),
-            cell(row, columns, "collector_number"),
-            cell(row, columns, "quantity"),
-            cell(row, columns, "is_foil"),
-            cell(row, columns, "condition"),
-            cell(row, columns, "language"),
-            cell(row, columns, "location"),
-            cell(row, columns, "unit_cost"),
-        ))
+        staged.append(
+            (
+                offset,
+                name,
+                cell(row, columns, "set_code"),
+                cell(row, columns, "collector_number"),
+                cell(row, columns, "quantity"),
+                cell(row, columns, "is_foil"),
+                cell(row, columns, "condition"),
+                cell(row, columns, "language"),
+                cell(row, columns, "location"),
+                cell(row, columns, "unit_cost"),
+            )
+        )
 
     return staged
 
@@ -95,10 +112,12 @@ def process_file(conn, path: str, mode: str) -> tuple[int, int]:
 
     cursor = conn.cursor()
     cursor.execute(
-        sql(conn,
+        sql(
+            conn,
             "DECLARE @id BIGINT; "
             "EXEC etl.usp_StartLoadRun @JobName='STOCK_IMPORT', "
-            "@SourceName=%s, @LoadRunId=@id OUTPUT; SELECT @id"),
+            "@SourceName=%s, @LoadRunId=@id OUTPUT; SELECT @id",
+        ),
         (os.path.basename(path),),
     )
     load_run_id = int(cursor.fetchone()[0])
@@ -107,10 +126,10 @@ def process_file(conn, path: str, mode: str) -> tuple[int, int]:
 
     if staged:
         placeholders = ", ".join(["%s"] * (len(STAGING_COLUMNS) + 1))
-        insert_sql = sql(conn, (
-            f"INSERT INTO staging.StockImport (LoadRunId, {', '.join(STAGING_COLUMNS)}) "
-            f"VALUES ({placeholders})"
-        ))
+        insert_sql = sql(
+            conn,
+            (f"INSERT INTO staging.StockImport (LoadRunId, {', '.join(STAGING_COLUMNS)}) VALUES ({placeholders})"),
+        )
         cursor.executemany(insert_sql, [(load_run_id, *row) for row in staged])
 
     conn.commit()
@@ -123,8 +142,7 @@ def process_file(conn, path: str, mode: str) -> tuple[int, int]:
     conn.commit()
 
     read, applied, rejected = int(summary[0]), int(summary[1]), int(summary[2])
-    logger.info("%s: pročitano=%s primenjeno=%s odbijeno=%s",
-                os.path.basename(path), read, applied, rejected)
+    logger.info("%s: pročitano=%s primenjeno=%s odbijeno=%s", os.path.basename(path), read, applied, rejected)
     return applied, rejected
 
 
@@ -166,8 +184,12 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Uvezi zalihe iz drop foldera u SQL Server.")
     parser.add_argument("--database", default=None)
     parser.add_argument("--drop-folder", default=os.environ.get("CARDTRACKER_DROP_FOLDER", "drop"))
-    parser.add_argument("--mode", choices=["DELTA", "ABSOLUTE"], default="DELTA",
-                        help="DELTA dodaje na postojeće stanje, ABSOLUTE ga postavlja (popis)")
+    parser.add_argument(
+        "--mode",
+        choices=["DELTA", "ABSOLUTE"],
+        default="DELTA",
+        help="DELTA dodaje na postojeće stanje, ABSOLUTE ga postavlja (popis)",
+    )
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
 

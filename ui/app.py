@@ -1,42 +1,63 @@
 import logging
 import threading
 import tkinter as tk
+from collections.abc import Callable
 from tkinter import Label, Toplevel, filedialog, messagebox, scrolledtext, ttk
 
 from models.card import Card
 from services.card_collection import CardCollection
-from services.card_lookup import CardLookup
+from services.card_lookup import CardCatalog
 from services.excel_exporter import CollectionExporter
 from services.excel_importer import ExcelImporter
 from ui.card_list import FastCardList
+from ui.dispatch import TkDispatcher
 
 logger = logging.getLogger(__name__)
 
+ScheduleCallback = Callable[[int, Callable[[], None]], None]
 
-def load_database_background(database, on_complete_callback):
+
+def load_database_background(
+    database: CardCatalog,
+    on_complete_callback: Callable[..., None],
+    schedule: ScheduleCallback | None = None,
+) -> None:
+    """Load the catalog in the background and report on the Tk thread."""
+
+    def finish(success: bool, error: str | None = None) -> None:
+        if schedule is None:
+            on_complete_callback(success=success, error=error)
+        else:
+            schedule(0, lambda: on_complete_callback(success=success, error=error))
+
     def worker():
         try:
             database.load_cards()
-            on_complete_callback(success=True)
-        except Exception as e:
-            logger.error(f"Greška u pozadinskoj niti: {e}")
-            on_complete_callback(success=False, error=str(e))
+            finish(True)
+        except Exception as exc:
+            logger.exception("Greška u pozadinskoj niti")
+            finish(False, str(exc))
 
     thread = threading.Thread(target=worker, daemon=True)
     thread.start()
 
 
 class ScryfallApp:
-
-    def __init__(self, root: tk.Tk, database: CardLookup, collection: CardCollection):
+    def __init__(self, root: tk.Tk, database: CardCatalog, collection: CardCollection):
         self.root = root
         self.db = database
         self.collection = collection
-        self.search_timer = None
+        self.search_timer: str | None = None
+        self._dispatcher = TkDispatcher(root)
+        self.root.bind("<Destroy>", self._on_root_destroy, add="+")
 
         self._configure_root_window()
         self._build_notebook()
         self._load_initial_data()
+
+    def _on_root_destroy(self, event: tk.Event) -> None:
+        if event.widget is self.root:
+            self._dispatcher.close()
 
     def _configure_root_window(self):
         self.root.title("Card Manager & Collection")
@@ -147,7 +168,9 @@ class ScryfallApp:
         btn_import_text = ttk.Button(btn_frame, text="Uvezi iz teksta", command=self._import_universal_list)
         btn_import_text.pack(side="left", padx=5)
 
-        btn_import_excel = ttk.Button(btn_frame, text="Uvezi iz Excel fajla (.xlsx)", command=self._import_from_excel_file)
+        btn_import_excel = ttk.Button(
+            btn_frame, text="Uvezi iz Excel fajla (.xlsx)", command=self._import_from_excel_file
+        )
         btn_import_excel.pack(side="left", padx=5)
 
         btn_clear = ttk.Button(
@@ -169,23 +192,24 @@ class ScryfallApp:
         self.loading_win.title("Učitavanje baze")
         self.loading_win.geometry("600x400")
         self.loading_win.resizable(False, False)
-        
+
         Label(self.loading_win, text="Učitavam Scryfall bazu karata,\nmolimo sačekajte...", pady=10).pack()
-        
+
         progress = ttk.Progressbar(self.loading_win, mode="indeterminate", length=250)
         progress.pack(pady=5)
         progress.start(10)
 
         # 2. Definišemo šta se dešava kada se nit završi
         def on_loading_finished(success, error=None):
-            self.loading_win.destroy()
+            if self.loading_win.winfo_exists():
+                self.loading_win.destroy()
             if success:
                 self.refresh_card_display()
             else:
                 messagebox.showerror("Greška", f"Došlo je do greške pri učitavanju baze:\n{error}")
 
-        # 3. Pokrećemo pozadinsku nit
-        load_database_background(self.db, on_loading_finished)
+        # 3. Pokrećemo pozadinsku nit; rezultat se vraća na Tk nit.
+        load_database_background(self.db, on_loading_finished, self._dispatcher.post)
 
     def _add_to_collection(self, card: Card):
         self.collection.add_card(card)
@@ -223,7 +247,7 @@ class ScryfallApp:
         self.loading_win.title("Ažuriranje baze")
         self.loading_win.geometry("600x400")
         self.loading_win.resizable(False, False)
-        
+
         Label(self.loading_win, text="Preuzimam sveže podatke sa Scryfall-a...", pady=10).pack()
         progress = ttk.Progressbar(self.loading_win, mode="indeterminate", length=250)
         progress.pack(pady=5)
@@ -232,19 +256,22 @@ class ScryfallApp:
         def update_worker():
             try:
                 success = self.db.update_from_scryfall()
-                self.root.after(0, lambda: on_update_finished(success))
+                self._dispatcher.post(0, lambda: on_update_finished(success))
             except Exception as exc:
                 # `exc` nestaje na kraju except bloka, pa poruku vezujemo odmah.
                 message = str(exc)
-                self.root.after(0, lambda: on_update_finished(False, message))
+                self._dispatcher.post(0, lambda: on_update_finished(False, message))
 
         def on_update_finished(success, error=None):
-            self.loading_win.destroy()
+            if self.loading_win.winfo_exists():
+                self.loading_win.destroy()
             if success:
                 messagebox.showinfo("Uspeh", "Baza je uspešno osvežena! Ponovo učitavam podatke...")
                 self.refresh_card_display()
             else:
-                messagebox.showerror("Greška", f"Ažuriranje baze nije uspelo: {error or 'Proverite internet konekciju.'}")
+                messagebox.showerror(
+                    "Greška", f"Ažuriranje baze nije uspelo: {error or 'Proverite internet konekciju.'}"
+                )
 
         threading.Thread(target=update_worker, daemon=True).start()
 
@@ -275,7 +302,9 @@ class ScryfallApp:
             msg = f"Uspešno uvezeno {added_count} kartica iz Excel fajla!"
 
             if unmatched:
-                msg += f"\n\nNismo uspeli da pronađemo sledeće kartice ({len(unmatched)}):\n" + "\n".join(unmatched[:10])
+                msg += f"\n\nNismo uspeli da pronađemo sledeće kartice ({len(unmatched)}):\n" + "\n".join(
+                    unmatched[:10]
+                )
 
                 if len(unmatched) > 10:
                     msg += f"\n... i još {len(unmatched) - 10} drugih."

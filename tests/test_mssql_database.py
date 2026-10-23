@@ -11,9 +11,19 @@ from services.mssql_database import MssqlCardDatabase, _row_to_card_dict
 
 ROW = (
     "11111111-1111-1111-1111-111111111111",
-    "Lightning Bolt", "leb", "Limited Edition Beta", "161",
-    "Instant", "common", 1, "R", "https://img/bolt.jpg",
-    "5.00", "50.00", "4.50", "45.00",
+    "Lightning Bolt",
+    "leb",
+    "Limited Edition Beta",
+    "161",
+    "Instant",
+    "common",
+    1,
+    "R",
+    "https://img/bolt.jpg",
+    "5.00",
+    "50.00",
+    "4.50",
+    "45.00",
 )
 
 
@@ -32,18 +42,18 @@ def test_row_maps_prices_as_strings():
 
 
 def test_null_prices_stay_none():
-    row = ROW[:10] + (None, None, None, None)
+    row = (*ROW[:10], None, None, None, None)
     assert all(v is None for v in _row_to_card_dict(row)["prices"].values())
 
 
 def test_colorless_maps_to_empty_list():
     """'C' u bazi znači bezbojna karta; Card očekuje praznu listu."""
-    row = ROW[:8] + ("C",) + ROW[9:]
+    row = (*ROW[:8], "C", *ROW[9:])
     assert _row_to_card_dict(row)["colors"] == []
 
 
 def test_multicolour_splits_into_letters():
-    row = ROW[:8] + ("WU",) + ROW[9:]
+    row = (*ROW[:8], "WU", *ROW[9:])
     assert _row_to_card_dict(row)["colors"] == ["W", "U"]
 
 
@@ -86,7 +96,7 @@ class FakeConn:
 @pytest.fixture
 def db(monkeypatch):
     database = MssqlCardDatabase(ConnectionSettings(host="x", user="u", password="p"))
-    database._fulltext = False          # bez full-text-a -> LIKE grana
+    database._fulltext = False  # bez full-text-a -> LIKE grana
     return database
 
 
@@ -152,13 +162,13 @@ def test_find_cheapest_orders_priced_cards_first(monkeypatch, db):
 
 
 def test_loose_name_matches_ignoring_punctuation(monkeypatch, db):
-    row = ROW[:1] + ("Jace, the Mind Sculptor",) + ROW[2:] + ("Jace, the Mind Sculptor",)
+    row = (*ROW[:1], "Jace, the Mind Sculptor", *ROW[2:], "Jace, the Mind Sculptor")
     _capture(monkeypatch, db, rows=[row])
     assert db.find_by_loose_name("Jace the Mind Sculptor") is not None
 
 
 def test_loose_name_returns_none_when_nothing_matches(monkeypatch, db):
-    _capture(monkeypatch, db, rows=[ROW + ("Lightning Bolt",)])
+    _capture(monkeypatch, db, rows=[(*ROW, "Lightning Bolt")])
     assert db.find_by_loose_name("Black Lotus") is None
 
 

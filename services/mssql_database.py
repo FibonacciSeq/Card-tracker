@@ -36,7 +36,11 @@ class MssqlCardQuery(PagedCardResult):
         conn = connect(self._settings)
         try:
             cursor = conn.cursor()
-            cursor.execute(sql(conn, f"SELECT COUNT(*) FROM catalog.Card {self._where}"), self._params)
+            # `_where` is a static fragment; values are bound below.
+            cursor.execute(
+                sql(conn, f"SELECT COUNT(*) FROM catalog.Card {self._where}"),
+                self._params,
+            )
             return int(cursor.fetchone()[0])
         finally:
             conn.close()
@@ -45,12 +49,16 @@ class MssqlCardQuery(PagedCardResult):
         conn = connect(self._settings)
         try:
             cursor = conn.cursor()
-            statement = sql(conn, (
-                f"SELECT ScryfallId, Name, SetCode, SetName, CollectorNumber, TypeLine, "
-                f"Rarity, Cmc, Colors, ImageUrl, PriceUsd, PriceUsdFoil, PriceEur, PriceEurFoil "
-                f"FROM catalog.Card {self._where} "
-                f"ORDER BY {self._order} OFFSET %s ROWS FETCH NEXT %s ROWS ONLY"
-            ))
+            # `_where`/`_order` are static fragments; values are bound below.
+            statement = sql(
+                conn,
+                (
+                    f"SELECT ScryfallId, Name, SetCode, SetName, CollectorNumber, TypeLine, "
+                    f"Rarity, Cmc, Colors, ImageUrl, PriceUsd, PriceUsdFoil, PriceEur, PriceEurFoil "
+                    f"FROM catalog.Card {self._where} "
+                    f"ORDER BY {self._order} OFFSET %s ROWS FETCH NEXT %s ROWS ONLY"
+                ),
+            )
             cursor.execute(statement, (*self._params, offset, limit))
             return [json.dumps(_row_to_card_dict(row)) for row in cursor.fetchall()]
         finally:
@@ -119,8 +127,7 @@ class MssqlCardDatabase:
 
             if not self._fulltext:
                 logger.info(
-                    "Full-Text Search nije dostupan - pretraga koristi LIKE, "
-                    "što je sporije na velikom katalogu."
+                    "Full-Text Search nije dostupan - pretraga koristi LIKE, što je sporije na velikom katalogu."
                 )
         return self._fulltext
 
@@ -141,10 +148,7 @@ class MssqlCardDatabase:
 
         if self.fulltext_available:
             expression = " AND ".join(f'"{t}*"' for t in terms)
-            where = (
-                "WHERE IsActive = 1 AND CONTAINS("
-                f"({', '.join(SEARCH_COLUMNS)}), %s)"
-            )
+            where = f"WHERE IsActive = 1 AND CONTAINS(({', '.join(SEARCH_COLUMNS)}), %s)"
             return MssqlCardQuery(self.settings, where, (expression,), "Name, CardId")
 
         # Bez full-text-a: svaki termin mora da se nadje u spojenom tekstu.
@@ -152,9 +156,7 @@ class MssqlCardDatabase:
         clauses = " AND ".join([f"{haystack} LIKE %s"] * len(terms))
         params = tuple(f"%{t}%" for t in terms)
 
-        return MssqlCardQuery(
-            self.settings, f"WHERE IsActive = 1 AND {clauses}", params, "Name, CardId"
-        )
+        return MssqlCardQuery(self.settings, f"WHERE IsActive = 1 AND {clauses}", params, "Name, CardId")
 
     def count(self) -> int:
         return int(self._query("SELECT COUNT(*) FROM catalog.Card WHERE IsActive = 1")[0][0])
@@ -186,8 +188,7 @@ class MssqlCardDatabase:
         pa se koristi samo kao rezerva posle tacnog imena."""
         normalized = "".join(ch for ch in name.lower() if ch.isalnum())
         rows = self._query(
-            f"SELECT {self._CARD_COLUMNS}, Name FROM catalog.Card "
-            "WHERE LEN(Name) BETWEEN %s AND %s",
+            f"SELECT {self._CARD_COLUMNS}, Name FROM catalog.Card WHERE LEN(Name) BETWEEN %s AND %s",
             (max(1, len(normalized) - 10), len(normalized) + 10),
         )
         for row in rows:

@@ -16,9 +16,14 @@ from services.sqlite_database import SQLiteCardDatabase
 
 def _card(name, set_name, set_code, number, usd):
     return {
-        "name": name, "set_name": set_name, "set": set_code,
-        "collector_number": number, "type_line": "Instant",
-        "rarity": "rare", "cmc": 1, "colors": ["R"],
+        "name": name,
+        "set_name": set_name,
+        "set": set_code,
+        "collector_number": number,
+        "type_line": "Instant",
+        "rarity": "rare",
+        "cmc": 1,
+        "colors": ["R"],
         "prices": {"usd": usd, "usd_foil": str(float(usd) * 10)},
     }
 

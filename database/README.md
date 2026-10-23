@@ -125,10 +125,18 @@ Agent job history.
 | Variable | Meaning |
 | --- | --- |
 | `CARDTRACKER_MSSQL_HOST` | Server name (default `localhost`) |
+| `CARDTRACKER_MSSQL_PORT` | Server port (default `1433`) |
 | `CARDTRACKER_MSSQL_DATABASE` | Database (default `CardTracker`) |
 | `CARDTRACKER_MSSQL_USER` / `_PASSWORD` | SQL login |
 | `CARDTRACKER_MSSQL_TRUSTED` | `1` for Windows authentication |
+| `CARDTRACKER_MSSQL_ENCRYPT` | `1` to encrypt the connection (default) |
+| `CARDTRACKER_MSSQL_TRUST_CERT` | `1` to trust a self-signed certificate; use `0` in production |
+| `CARDTRACKER_MSSQL_ODBC_DRIVER` | ODBC driver name (default `ODBC Driver 18 for SQL Server`) |
+| `CARDTRACKER_MSSQL_DRIVER` | Force `pyodbc` or `pymssql` |
 | `CARDTRACKER_DROP_FOLDER` | Where spreadsheets are picked up from |
+
+The repository includes `.env.example` as a safe template. Never commit `.env`
+with real credentials.
 
 For the Agent job, set these as machine-level environment variables, or use
 Windows authentication and run the job under a proxy account.

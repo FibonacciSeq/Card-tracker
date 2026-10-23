@@ -7,9 +7,14 @@ from services.sqlite_database import SQLiteCardDatabase
 
 def _card(name, set_name="Bloomburrow", set_code="blb", number="1", usd="1.00", type_line="Instant"):
     return {
-        "name": name, "set_name": set_name, "set": set_code,
-        "collector_number": number, "type_line": type_line,
-        "rarity": "common", "cmc": 1, "colors": ["R"],
+        "name": name,
+        "set_name": set_name,
+        "set": set_code,
+        "collector_number": number,
+        "type_line": type_line,
+        "rarity": "common",
+        "cmc": 1,
+        "colors": ["R"],
         "prices": {"usd": usd},
     }
 
@@ -40,6 +45,7 @@ def db(tmp_path, jsonl_file):
 
 
 # ----------------------------------------------------------------- indexing
+
 
 def test_init_creates_the_database_file(tmp_path, jsonl_file):
     db_path = tmp_path / "cards.db"
@@ -75,6 +81,7 @@ def test_missing_jsonl_yields_an_empty_database(tmp_path):
 
 
 # ------------------------------------------------------------------- search
+
 
 def test_prefix_search_matches_word_starts(db):
     assert {c.name for c in db.search("light")} == {"Lightning Bolt", "Lightning Helix"}
@@ -124,6 +131,7 @@ def test_results_are_ordered_by_relevance(db):
 
 # ------------------------------------------------------------------- lookup
 
+
 def test_find_exact_printing(db):
     card = db.find_exact("Lightning Bolt", "leb", "161")
     assert card is not None
@@ -149,6 +157,7 @@ def test_find_cheapest_returns_none_for_unknown_names(db):
 
 # --------------------------------------------------------------- lazy result
 
+
 def test_results_behave_like_a_list(db):
     results = db.all_cards()
     assert len(results) == 4
@@ -173,9 +182,14 @@ def test_negative_and_out_of_range_indexing(db):
 
 def test_update_downloads_before_rebuilding(db, monkeypatch):
     calls = []
+
+    def fake_download(_self, output_filename=""):
+        calls.append(output_filename)
+        return True
+
     monkeypatch.setattr(
         "services.sqlite_database.ScryfallDownloader.download_and_extract",
-        lambda self, output_filename="": (calls.append(output_filename), True)[1],
+        fake_download,
     )
     assert db.update_from_scryfall() is True
     assert calls == [db.jsonl_path]

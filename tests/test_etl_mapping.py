@@ -10,6 +10,7 @@ from tools.etl_stock import read_rows, rows_to_staging
 
 # ----------------------------------------------------------------- scryfall
 
+
 def test_staging_row_extracts_the_expected_fields(bolt_data):
     data = dict(bolt_data, id="11111111-1111-1111-1111-111111111111")
     row = _staging_row(data)
@@ -46,6 +47,7 @@ def test_image_url_absent():
 
 
 # -------------------------------------------------------------------- stock
+
 
 def _xlsx(tmp_path, rows, name="in.xlsx"):
     wb = openpyxl.Workbook()
@@ -84,7 +86,7 @@ def test_rows_to_staging_maps_all_columns():
     staged = rows_to_staging(rows)
 
     assert len(staged) == 1
-    row_no, name, set_code, collector, qty, foil, cond, lang, loc, cost = staged[0]
+    row_no, name, set_code, collector, qty, foil, cond, _lang, loc, cost = staged[0]
     assert (name, set_code, collector, qty) == ("Forest", "blb", "280", "4")
     assert (foil, cond, loc, cost) == ("Da", "NM", "BOX1", "20")
     assert row_no == 2

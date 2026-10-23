@@ -9,11 +9,14 @@ PagedCardResult, a svaki backend implementira samo dva metoda.
 """
 
 import json
+import logging
 import sqlite3
 from abc import abstractmethod
 from collections.abc import Sequence
 
 from models.card import Card
+
+logger = logging.getLogger(__name__)
 
 
 class PagedCardResult(Sequence):
@@ -49,8 +52,8 @@ class PagedCardResult(Sequence):
         for raw_json in self._fetch_json(offset, limit):
             try:
                 cards.append(Card(json.loads(raw_json)))
-            except Exception:
-                continue
+            except (json.JSONDecodeError, TypeError, ValueError, AttributeError, KeyError) as exc:
+                logger.warning("Preskačem neispravan red iz kataloga: %s", exc)
 
         self._page_cache = (offset, limit, cards)
         return cards
@@ -87,17 +90,17 @@ class CardQueryResult(PagedCardResult):
     def _count_rows(self) -> int:
         conn = self._connect()
         try:
-            return conn.execute(f"SELECT COUNT(*) FROM cards {self._where}", self._params).fetchone()[0]
+            # `_where` is a static fragment built by the backend; values are bound.
+            query = f"SELECT COUNT(*) FROM cards {self._where}"
+            return conn.execute(query, self._params).fetchone()[0]
         finally:
             conn.close()
 
     def _fetch_json(self, offset: int, limit: int) -> list[str]:
         conn = self._connect()
         try:
-            sql = (
-                f"SELECT cards.raw_json FROM cards {self._where} "
-                f"ORDER BY {self._order} LIMIT ? OFFSET ?"
-            )
+            # `_where` and `_order` are static fragments; values are bound.
+            sql = f"SELECT cards.raw_json FROM cards {self._where} ORDER BY {self._order} LIMIT ? OFFSET ?"
             return [row[0] for row in conn.execute(sql, (*self._params, limit, offset))]
         finally:
             conn.close()

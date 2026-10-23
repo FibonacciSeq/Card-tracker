@@ -22,9 +22,21 @@ logger = logging.getLogger("etl.scryfall")
 BATCH_SIZE = 2000
 
 STAGING_COLUMNS = (
-    "ScryfallId", "Name", "SetCode", "SetName", "CollectorNumber", "TypeLine",
-    "Rarity", "Cmc", "Colors", "Layout", "ImageUrl",
-    "PriceUsd", "PriceUsdFoil", "PriceEur", "PriceEurFoil",
+    "ScryfallId",
+    "Name",
+    "SetCode",
+    "SetName",
+    "CollectorNumber",
+    "TypeLine",
+    "Rarity",
+    "Cmc",
+    "Colors",
+    "Layout",
+    "ImageUrl",
+    "PriceUsd",
+    "PriceUsdFoil",
+    "PriceEur",
+    "PriceEurFoil",
 )
 
 
@@ -65,10 +77,7 @@ def load_jsonl_into_staging(conn, jsonl_path: str, load_run_id: int) -> int:
     cursor.execute("TRUNCATE TABLE staging.ScryfallCard")
 
     placeholders = ", ".join(["%s"] * (len(STAGING_COLUMNS) + 1))
-    insert_sql = (
-        f"INSERT INTO staging.ScryfallCard (LoadRunId, {', '.join(STAGING_COLUMNS)}) "
-        f"VALUES ({placeholders})"
-    )
+    insert_sql = f"INSERT INTO staging.ScryfallCard (LoadRunId, {', '.join(STAGING_COLUMNS)}) VALUES ({placeholders})"
     insert_sql = sql(conn, insert_sql)
 
     batch, total = [], 0
@@ -118,11 +127,13 @@ def run(jsonl_path: str, settings: ConnectionSettings, download: bool = True) ->
         cursor = conn.cursor()
 
         cursor.execute(
-            sql(conn,
+            sql(
+                conn,
                 "DECLARE @id BIGINT; "
                 "EXEC etl.usp_StartLoadRun @JobName='SCRYFALL_CATALOG', "
                 "@SourceName=%s, @LoadRunId=@id OUTPUT; "
-                "SELECT @id"),
+                "SELECT @id",
+            ),
             (jsonl_path,),
         )
         load_run_id = int(cursor.fetchone()[0])
@@ -140,7 +151,10 @@ def run(jsonl_path: str, settings: ConnectionSettings, download: bool = True) ->
 
     logger.info(
         "Gotovo. Pročitano=%s ubačeno=%s ažurirano=%s odbijeno=%s",
-        summary[0], summary[1], summary[2], summary[3],
+        summary[0],
+        summary[1],
+        summary[2],
+        summary[3],
     )
     return 0
 

@@ -12,7 +12,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from services.pricing import PricingService  # noqa: E402
+from services.pricing import PricingService
 
 # 1 USD = 0.90 EUR, 1 USD = 117 RSD  ->  1 EUR = 130 RSD
 PINNED_RATES = {"EUR": 0.90, "RSD": 117.0}

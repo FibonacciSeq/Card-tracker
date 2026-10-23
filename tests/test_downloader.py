@@ -67,6 +67,31 @@ def test_get_download_link_returns_none_when_absent(downloader, monkeypatch):
     assert downloader._get_download_link() is None
 
 
+def test_get_download_link_rejects_a_non_https_uri(downloader, monkeypatch):
+    monkeypatch.setattr(
+        "downloader.requests.get",
+        lambda *a, **k: FakeResponse({"download_uri": "http://data.example/cards.gz"}),
+    )
+    assert downloader._get_download_link() is None
+
+
+def test_stream_download_rejects_a_non_https_uri(downloader):
+    with pytest.raises(ValueError):
+        downloader._stream_download("http://data.example/cards.gz")
+
+
+def test_failed_decompression_preserves_the_existing_file(downloader, tmp_path):
+    output = tmp_path / "cards.jsonl"
+    output.write_text("previous contents", encoding="utf-8")
+    (tmp_path / "temp.jsonl.gz").write_bytes(b"not a gzip file")
+
+    with pytest.raises(OSError):
+        downloader._decompress(str(output))
+
+    assert output.read_text(encoding="utf-8") == "previous contents"
+    assert not (tmp_path / "cards.jsonl.part").exists()
+
+
 def test_download_and_extract_writes_decompressed_jsonl(downloader, tmp_path, monkeypatch):
     rows = [{"name": "Forest"}, {"name": "Island"}]
     payload = gzip.compress("\n".join(json.dumps(r) for r in rows).encode("utf-8"))

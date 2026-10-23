@@ -10,7 +10,6 @@ logger = logging.getLogger(__name__)
 
 
 class CollectionExporter:
-
     @staticmethod
     def export_to_excel(cards: list[Card], filename: str = "") -> tuple[bool, str]:
         try:
@@ -19,15 +18,24 @@ class CollectionExporter:
             ws.title = "Kolekcija Kartica"
 
             headers = [
-                "Naziv Kartice", "Set", "Tip", "CMC", "Boje",
-                "Raritet", "Kolekcijski Broj", "Foil", "Količina", "Cena (€)", "Cena (RSD)",
+                "Naziv Kartice",
+                "Set",
+                "Tip",
+                "CMC",
+                "Boje",
+                "Raritet",
+                "Kolekcijski Broj",
+                "Foil",
+                "Količina",
+                "Cena (€)",
+                "Cena (RSD)",
             ]
             ws.append(headers)
 
             header_font = Font(name="Calibri", size=11, bold=True, color="FFFFFF")
             header_fill = PatternFill(start_color="1F4E78", end_color="1F4E78", fill_type="solid")
             align_center = Alignment(horizontal="center", vertical="center")
-            
+
             for col_num in range(1, len(headers) + 1):
                 cell = ws.cell(row=1, column=col_num)
                 cell.font = header_font
@@ -42,19 +50,21 @@ class CollectionExporter:
                 total_card_eur = card.price_numeric * quantity
                 total_card_rsd = card.price_rsd * quantity
 
-                ws.append([
-                    card.name,
-                    card.set_name,
-                    card.type_line,
-                    card.cmc,
-                    card.colors,
-                    card.rarity,
-                    card.collector_number,
-                    foil_text,
-                    quantity,
-                    total_card_eur,
-                    total_card_rsd,  
-                ])
+                ws.append(
+                    [
+                        card.name,
+                        card.set_name,
+                        card.type_line,
+                        card.cmc,
+                        card.colors,
+                        card.rarity,
+                        card.collector_number,
+                        foil_text,
+                        quantity,
+                        total_card_eur,
+                        total_card_rsd,
+                    ]
+                )
 
             end_row = len(cards) + 1
             total_row_idx = end_row + 2
@@ -69,7 +79,7 @@ class CollectionExporter:
 
             total_eur_cell = ws.cell(row=total_row_idx, column=10, value=f"=SUM(J{start_row}:J{end_row})")
             total_eur_cell.font = Font(name="Calibri", size=11, bold=True, color="1B5E20")
-            total_eur_cell.number_format = '€#,##0.00'
+            total_eur_cell.number_format = "€#,##0.00"
 
             total_rsd_cell = ws.cell(row=total_row_idx, column=11, value=f"=SUM(K{start_row}:K{end_row})")
             total_rsd_cell.font = Font(name="Calibri", size=11, bold=True, color="1B5E20")
@@ -77,7 +87,7 @@ class CollectionExporter:
 
             for row in range(start_row, end_row + 1):
                 ws.cell(row=row, column=2).alignment = align_center
-                ws.cell(row=row, column=10).number_format = '€#,##0.00'
+                ws.cell(row=row, column=10).number_format = "€#,##0.00"
                 ws.cell(row=row, column=11).number_format = '#,##0 "RSD"'
 
             for col in ws.columns:
@@ -89,5 +99,5 @@ class CollectionExporter:
             return True, os.path.abspath(filename)
 
         except Exception as exc:
-            logger.error(f"Greška pri eksportu u Excel: {exc}")
+            logger.error("Greška pri eksportu u Excel: %s", exc)
             return False, str(exc)

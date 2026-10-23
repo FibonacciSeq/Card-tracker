@@ -4,10 +4,12 @@ temp_scryfall_data.jsonl.gz
 scryfall.db
 image_cache/
 
-# --- Korisnicka kolekcija (licni podaci) ---
+# --- Korisnicka kolekcija i prodavnica (licni podaci) ---
 my_collection.json
 my_collection.xlsx
+cardtracker_shop.db*
 *.tmp
+*.part
 
 # --- Python ---
 __pycache__/
@@ -18,6 +20,11 @@ dist/
 .venv/
 venv/
 env/
+
+# --- Lokalne tajne / okruzenje ---
+.env
+.env.*
+!.env.example
 
 # --- Alati ---
 .pytest_cache/

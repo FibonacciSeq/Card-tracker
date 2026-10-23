@@ -6,8 +6,7 @@ from services.card_lookup import InMemoryCardLookup, as_lookup, normalize_name
 
 @pytest.fixture
 def cards(bolt_data, forest_data):
-    cheap_bolt = dict(bolt_data, set_name="Modern Masters", set="mma",
-                      collector_number="129", prices={"usd": "1.50"})
+    cheap_bolt = dict(bolt_data, set_name="Modern Masters", set="mma", collector_number="129", prices={"usd": "1.50"})
     return [Card(bolt_data), Card(cheap_bolt), Card(forest_data)]
 
 
@@ -50,7 +49,9 @@ def test_find_cheapest_ignores_priceless_printings(bolt_data):
     priced = Card(dict(bolt_data, set_name="Priced", prices={"usd": "3.00"}))
     free = Card(dict(bolt_data, set_name="No Price", prices={}))
 
-    assert InMemoryCardLookup([free, priced]).find_cheapest_by_name("Lightning Bolt").set_name == "Priced"
+    card = InMemoryCardLookup([free, priced]).find_cheapest_by_name("Lightning Bolt")
+    assert card is not None
+    assert card.set_name == "Priced"
 
 
 def test_find_cheapest_returns_none_for_unknown_names(lookup):
@@ -72,7 +73,7 @@ def test_as_lookup_accepts_a_plain_list(cards):
 
 def test_as_lookup_accepts_an_object_with_cards(cards):
     class Db:
-        pass
+        cards: list[Card]
 
     db = Db()
     db.cards = cards

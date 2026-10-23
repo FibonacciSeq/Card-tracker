@@ -6,40 +6,76 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   lint:
-    name: Lint
+    name: Lint and format
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install ruff
+      - run: pip install -r requirements-dev.txt
       - name: ruff check
         run: ruff check --output-format=github .
       - name: ruff format --check
         run: ruff format --check --diff .
-        continue-on-error: true
+
+  typecheck:
+    name: Type check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: mypy
+        run: mypy .
+
+  security:
+    name: Security
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements-dev.txt
+      - name: bandit
+        run: bandit -q -c pyproject.toml -r .
+      - name: pip-audit
+        run: pip-audit -r requirements.txt --progress-spinner off
 
   test:
     name: Tests (py${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
+      - name: Install Tk
+        run: sudo apt-get update && sudo apt-get install -y python3-tk
       - run: pip install -r requirements-dev.txt
       - name: Run tests
         run: pytest --cov --cov-report=term-missing
@@ -47,6 +83,7 @@ jobs:
   smoke:
     name: Import smoke test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v7
@@ -63,12 +100,19 @@ jobs:
 
           modules = [
               "main", "collection", "downloader", "importer",
+              "customer_app", "owner_app",
               "models.card",
               "services.card_database", "services.sqlite_database",
-              "services.card_collection", "services.pricing",
+              "services.catalog_bootstrap",
+              "services.card_collection", "services.card_lookup",
+              "services.card_query", "services.pricing",
               "services.excel_importer", "services.excel_exporter",
-              "services.image_loader",
-              "ui.app", "ui.card_list",
+              "services.image_loader", "services.shop_database",
+              "services.spreadsheet", "services.mssql",
+              "services.mssql_database",
+              "tools.etl_scryfall", "tools.etl_stock",
+              "ui.app", "ui.card_list", "ui.customer_app",
+              "ui.dispatch", "ui.owner_app", "ui.shop_widgets",
           ]
           for name in modules:
               importlib.import_module(name)
