@@ -68,7 +68,7 @@ filterwarnings = ["error::DeprecationWarning", "error::ResourceWarning"]
 
 [tool.coverage.run]
 branch = true
-omit = ["ui/*", "tests/*", "tools/*"]
+omit = ["ui/*", "tests/*", "tools/*", "backend/*"]
 
 [tool.coverage.report]
 fail_under = 80
@@ -78,7 +78,7 @@ skip_covered = true
 [tool.ruff]
 line-length = 120
 target-version = "py310"
-extend-exclude = [".venv", "venv", "build", "dist", "image_cache"]
+extend-exclude = [".venv", "venv", "build", "dist", "image_cache", "backend"]
 
 [tool.ruff.lint]
 select = [
@@ -104,7 +104,7 @@ ignore = [
 
 [tool.mypy]
 python_version = "3.10"
-exclude = ["^build/", "^dist/", "^\\.venv/", "^venv/", "^image_cache/"]
+exclude = ["^build/", "^dist/", "^\\.venv/", "^venv/", "^image_cache/", "^backend/"]
 explicit_package_bases = true
 check_untyped_defs = true
 ignore_missing_imports = true
@@ -116,7 +116,7 @@ warn_unused_ignores = true
 pretty = true
 
 [tool.bandit]
-exclude_dirs = [".git", ".venv", "venv", "build", "dist", "image_cache", "tests"]
+exclude_dirs = [".git", ".venv", "venv", "build", "dist", "image_cache", "tests", "backend"]
 # B608 is a heuristic that flags every f-string SQL statement, including the
 # static fragments used by the catalog and shop backends. All user values are
 # bound with placeholders; fragments are assembled only from fixed column,

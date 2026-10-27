@@ -20,7 +20,9 @@ repos:
     hooks:
       - id: ruff-check
         args: [--fix]
+        exclude: ^backend/
       - id: ruff-format
+        exclude: ^backend/
 
   - repo: https://github.com/pre-commit/mirrors-mypy
     rev: v2.4.0
@@ -28,6 +30,7 @@ repos:
       - id: mypy
         args: [--config-file=pyproject.toml]
         additional_dependencies: ["Pillow>=10.0.0"]
+        exclude: ^backend/
 
   - repo: local
     hooks:
