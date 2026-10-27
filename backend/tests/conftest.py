@@ -21,6 +21,7 @@ from app.db import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
 from app.security import create_access_token, hash_password  # noqa: E402
+from app.services.ratelimit import limiter  # noqa: E402
 
 engine = create_engine(
     "sqlite+pysqlite://",
@@ -28,6 +29,14 @@ engine = create_engine(
     poolclass=StaticPool,
 )
 TestingSessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    # Rate-limit keys are per client IP, and every test shares "testclient".
+    limiter.reset()
+    yield
+    limiter.reset()
 
 
 @pytest.fixture(autouse=True)

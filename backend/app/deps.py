@@ -32,7 +32,7 @@ def get_current_staff(
 
     set_tenant_context(db, tenant_id)
     user = db.get(models.User, user_id)
-    if user is None or user.role not in ("owner", "staff"):
+    if user is None or not user.is_active or user.role not in ("owner", "staff"):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user")
     if user.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid tenant")

@@ -5,12 +5,16 @@ const NAV = [
   { to: "/", label: "Dashboard", end: true },
   { to: "/stock", label: "Stock", end: false },
   { to: "/reservations", label: "Reservations", end: false },
+  { to: "/team", label: "Team", end: false, ownerOnly: true },
+  { to: "/activity", label: "Activity", end: false, ownerOnly: true },
   { to: "/settings", label: "Settings", end: false },
 ];
 
 export function Layout() {
   const { session, signOut } = useAuth();
   const shopName = session?.me.display_name ?? session?.me.email ?? "";
+  const isOwner = session?.me.role === "owner";
+  const navItems = NAV.filter((item) => !item.ownerOnly || isOwner);
 
   return (
     <div className="shell">
@@ -30,7 +34,7 @@ export function Layout() {
 
         <nav aria-label="Main">
           <ul className="nav">
-            {NAV.map((item) => (
+            {navItems.map((item) => (
               <li key={item.to}>
                 <NavLink to={item.to} end={item.end} className="nav__link">
                   {item.label}

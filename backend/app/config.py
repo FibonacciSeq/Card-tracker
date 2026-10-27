@@ -24,6 +24,13 @@ class Settings(BaseSettings):
     auto_create_tables: bool = False
     cors_origins: str = "*"
     min_app_version: str = "0.1.0"
+    # In-process sliding windows; move to Redis when the API runs multiple
+    # workers. Generous enough to never bother a person, tight enough to stop
+    # scripted password guessing and reservation spam.
+    login_rate_limit: int = 10
+    login_rate_window_seconds: int = 300
+    reservation_rate_limit: int = 30
+    reservation_rate_window_seconds: int = 3600
 
     @model_validator(mode="after")
     def _validate_jwt_secret(self) -> "Settings":

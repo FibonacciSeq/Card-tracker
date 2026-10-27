@@ -88,7 +88,7 @@ jobs:
           PGPASSWORD: postgres
         run: |
           failed=0
-          for table in users stock reservations reservation_lines stock_movements notifications idempotency_keys; do
+          for table in users stock reservations reservation_lines stock_movements notifications idempotency_keys audit_events; do
             state=$(psql -h localhost -U postgres -d cardtracker_test -tAc \
               "select relrowsecurity from pg_class where relname = '$table' and relkind = 'r'")
             if [ "$state" != "t" ]; then

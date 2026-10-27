@@ -81,9 +81,10 @@ npm run api:types    # regenerate src/api/schema.d.ts
 
 ## Known gaps
 
-- Staff management, roles beyond owner/staff, and audit log.
-- Stock CSV/Excel import and export.
+- Excel (`.xlsx`) stock import; CSV only for now.
+- Roles beyond owner/staff.
 - Reservation alert emails and push delivery (outbox rows exist in the API).
 - Restock alerts and special-order requests.
 - Opening-hours editor: the API stores them, the form does not edit them yet.
 - Reports and per-shop subscription billing.
+- The API rate limiter is in-process, so it assumes a single worker for now.

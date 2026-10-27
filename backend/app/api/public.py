@@ -7,14 +7,16 @@ import json
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy import func, or_, select, tuple_
 from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas, serializers
+from app.config import settings
 from app.db import get_db
 from app.deps import get_tenant_by_slug
 from app.security import hash_guest_token
+from app.services import ratelimit
 from app.services import reservations as reservation_service
 
 router = APIRouter(prefix="/v1", tags=["public"])
@@ -204,9 +206,16 @@ def stock_facets(slug: str, db: Session = Depends(get_db)):
 def create_reservation(
     slug: str,
     payload: schemas.ReservationCreate,
+    request: Request,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
     db: Session = Depends(get_db),
 ):
+    ratelimit.enforce(
+        request,
+        scope="reservation-create",
+        limit=settings.reservation_rate_limit,
+        window_seconds=settings.reservation_rate_window_seconds,
+    )
     tenant = get_tenant_by_slug(slug, db)
     reservation, access_token = reservation_service.create_reservation(
         db, tenant, payload, idempotency_key=idempotency_key

@@ -1,11 +1,13 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 import { RequireAuth } from "./auth/RequireAuth";
 import { Layout } from "./components/Layout";
+import { ActivityPage } from "./pages/ActivityPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
 import { ReservationsPage } from "./pages/ReservationsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { StockPage } from "./pages/StockPage";
+import { TeamPage } from "./pages/TeamPage";
 
 export function App() {
   return (
@@ -16,6 +18,8 @@ export function App() {
           <Route index element={<DashboardPage />} />
           <Route path="stock" element={<StockPage />} />
           <Route path="reservations" element={<ReservationsPage />} />
+          <Route path="team" element={<TeamPage />} />
+          <Route path="activity" element={<ActivityPage />} />
           <Route path="settings" element={<SettingsPage />} />
         </Route>
       </Route>

@@ -217,6 +217,41 @@ class CompleteIn(BaseModel):
     lines: list[CompleteLineIn] | None = None
 
 
+class StaffUserOut(BaseModel):
+    id: uuid.UUID
+    email: EmailStr
+    display_name: str | None = None
+    role: str
+    is_active: bool
+    created_at: datetime
+
+
+class StaffUserCreateIn(BaseModel):
+    email: EmailStr
+    display_name: str | None = Field(default=None, max_length=200)
+    password: str = Field(min_length=10, max_length=200)
+    role: Literal["staff", "owner"] = "staff"
+
+
+class StaffUserUpdateIn(BaseModel):
+    display_name: str | None = Field(default=None, max_length=200)
+    password: str | None = Field(default=None, min_length=10, max_length=200)
+    role: Literal["staff", "owner"] | None = None
+    is_active: bool | None = None
+
+
+class AuditEventOut(BaseModel):
+    id: int
+    action: str
+    entity_type: str
+    entity_id: str
+    summary: str
+    actor_id: uuid.UUID | None = None
+    actor_email: EmailStr | None = None
+    data: dict
+    created_at: datetime
+
+
 class StockImportErrorOut(BaseModel):
     row: int
     message: str

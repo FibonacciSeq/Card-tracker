@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { request } from "./client";
 import type {
+  AuditEvent,
   CompleteIn,
   Dashboard,
   StaffReservation,
@@ -9,6 +10,9 @@ import type {
   StaffShop,
   StaffStock,
   StaffStockList,
+  StaffUser,
+  StaffUserCreate,
+  StaffUserUpdate,
   StatusUpdate,
   StockAdjust,
   StockImportReport,
@@ -22,6 +26,8 @@ export const queryKeys = {
   reservations: (status: string) => ["reservations", status] as const,
   reservation: (id: string) => ["reservation", id] as const,
   settings: ["settings"] as const,
+  team: ["team"] as const,
+  audit: (action: string) => ["audit", action] as const,
 };
 
 export function useDashboard() {
@@ -146,6 +152,49 @@ export function useUpdateSettings() {
     onSuccess: (shop) => {
       client.setQueryData(queryKeys.settings, shop);
       client.invalidateQueries({ queryKey: queryKeys.dashboard });
+    },
+  });
+}
+
+export function useTeam(enabled = true) {
+  return useQuery({
+    queryKey: queryKeys.team,
+    enabled,
+    queryFn: () => request<StaffUser[]>("/v1/staff/users"),
+  });
+}
+
+export function useCreateStaff() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body: StaffUserCreate) =>
+      request<StaffUser>("/v1/staff/users", { method: "POST", body }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: queryKeys.team });
+      client.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+}
+
+export function useUpdateStaff() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, patch }: { id: string; patch: StaffUserUpdate }) =>
+      request<StaffUser>(`/v1/staff/users/${id}`, { method: "PATCH", body: patch }),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: queryKeys.team });
+      client.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+}
+
+export function useAudit(action: string) {
+  return useQuery({
+    queryKey: queryKeys.audit(action),
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams({ limit: "100" });
+      if (action) params.set("action", action);
+      return request<AuditEvent[]>(`/v1/staff/audit?${params.toString()}`, { signal });
     },
   });
 }

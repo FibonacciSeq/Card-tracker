@@ -25,6 +25,10 @@ export type StockAdjust = Schemas["StockAdjustIn"];
 export type StockSell = Schemas["StockSellIn"];
 export type LoginInput = Schemas["StaffLoginIn"];
 export type StockImportReport = Schemas["StockImportReportOut"];
+export type StaffUser = Schemas["StaffUserOut"];
+export type StaffUserCreate = Schemas["StaffUserCreateIn"];
+export type StaffUserUpdate = Schemas["StaffUserUpdateIn"];
+export type AuditEvent = Schemas["AuditEventOut"];
 
 /** Statuses that still hold stock. Mirrors the backend ACTIVE_STATUSES tuple. */
 export const ACTIVE_STATUSES = ["REQUESTED", "CONFIRMED", "READY"] as const;

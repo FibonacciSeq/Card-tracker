@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -15,9 +15,9 @@ from app import models, schemas, serializers
 from app.config import settings
 from app.db import get_db, set_tenant_context
 from app.deps import get_current_staff, require_owner
-from app.security import create_access_token, verify_password
+from app.security import create_access_token, hash_password, verify_password
+from app.services import audit, ratelimit, stock_csv
 from app.services import reservations as reservation_service
-from app.services import stock_csv
 
 router = APIRouter(prefix="/v1/staff", tags=["staff"])
 
@@ -49,7 +49,14 @@ def _tenant(db: Session, account: models.User) -> models.Tenant:
 
 
 @router.post("/auth/login", response_model=schemas.TokenOut)
-def login(payload: schemas.StaffLoginIn, db: Session = Depends(get_db)):
+def login(payload: schemas.StaffLoginIn, request: Request, db: Session = Depends(get_db)):
+    ratelimit.enforce(
+        request,
+        scope="staff-login",
+        limit=settings.login_rate_limit,
+        window_seconds=settings.login_rate_window_seconds,
+        extra=payload.tenant_slug,
+    )
     tenant = db.scalar(select(models.Tenant).where(models.Tenant.slug == payload.tenant_slug))
     if tenant is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
@@ -62,7 +69,12 @@ def login(payload: schemas.StaffLoginIn, db: Session = Depends(get_db)):
             models.User.role.in_(("owner", "staff")),
         )
     )
-    if user is None or not user.password_hash or not verify_password(user.password_hash, payload.password):
+    if (
+        user is None
+        or not user.is_active
+        or not user.password_hash
+        or not verify_password(user.password_hash, payload.password)
+    ):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid credentials")
 
     token = create_access_token(user.id, tenant.id, user.role)
@@ -78,6 +90,199 @@ def me(user: models.User = Depends(get_current_staff)):
         role=user.role,
         display_name=user.display_name,
     )
+
+
+def _user_out(row: models.User) -> schemas.StaffUserOut:
+    return schemas.StaffUserOut(
+        id=row.id,
+        email=row.email,
+        display_name=row.display_name,
+        role=row.role,
+        is_active=row.is_active,
+        created_at=row.created_at,
+    )
+
+
+def _get_shop_user(db: Session, tenant_id: uuid.UUID, user_id: uuid.UUID) -> models.User:
+    row = db.scalar(
+        select(models.User).where(
+            models.User.id == user_id,
+            models.User.tenant_id == tenant_id,
+            models.User.role.in_(("owner", "staff")),
+        )
+    )
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team member not found")
+    return row
+
+
+def _active_owner_count(db: Session, tenant_id: uuid.UUID, *, excluding: uuid.UUID | None = None) -> int:
+    stmt = (
+        select(func.count())
+        .select_from(models.User)
+        .where(
+            models.User.tenant_id == tenant_id,
+            models.User.role == "owner",
+            models.User.is_active.is_(True),
+        )
+    )
+    if excluding is not None:
+        stmt = stmt.where(models.User.id != excluding)
+    return int(db.scalar(stmt) or 0)
+
+
+@router.get("/users", response_model=list[schemas.StaffUserOut])
+def list_users(
+    user: models.User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    rows = db.scalars(
+        select(models.User)
+        .where(
+            models.User.tenant_id == _staff_tenant(user),
+            models.User.role.in_(("owner", "staff")),
+        )
+        .order_by(func.lower(models.User.email))
+    ).all()
+    return [_user_out(row) for row in rows]
+
+
+@router.post("/users", response_model=schemas.StaffUserOut, status_code=status.HTTP_201_CREATED)
+def create_user(
+    payload: schemas.StaffUserCreateIn,
+    user: models.User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    tenant_id = _staff_tenant(user)
+    row = models.User(
+        tenant_id=tenant_id,
+        email=str(payload.email).lower(),
+        display_name=payload.display_name,
+        role=payload.role,
+        password_hash=hash_password(payload.password),
+        is_active=True,
+    )
+    db.add(row)
+    try:
+        # Flush first: the UUID default is applied by the database layer, and
+        # the audit row needs the real id.
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Someone with this email already has an account at this shop",
+        ) from exc
+
+    audit.record(
+        db,
+        tenant_id=tenant_id,
+        actor_id=user.id,
+        action="staff.create",
+        entity_type="user",
+        entity_id=row.id,
+        summary=f"Added {row.email} as {row.role}",
+        data={"email": row.email, "role": row.role},
+    )
+    db.commit()
+    db.refresh(row)
+    return _user_out(row)
+
+
+@router.patch("/users/{user_id}", response_model=schemas.StaffUserOut)
+def update_user(
+    user_id: uuid.UUID,
+    payload: schemas.StaffUserUpdateIn,
+    user: models.User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    tenant_id = _staff_tenant(user)
+    row = _get_shop_user(db, tenant_id, user_id)
+    changes = payload.model_dump(exclude_unset=True)
+
+    if row.id == user.id and changes.get("is_active") is False:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot deactivate your own account",
+        )
+
+    loses_owner = row.role == "owner" and (changes.get("role", "owner") != "owner" or changes.get("is_active") is False)
+    if loses_owner and _active_owner_count(db, tenant_id, excluding=row.id) < 1:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A shop needs at least one active owner",
+        )
+
+    if "display_name" in changes:
+        row.display_name = changes["display_name"]
+    if changes.get("password"):
+        row.password_hash = hash_password(changes["password"])
+    if changes.get("role"):
+        row.role = changes["role"]
+    if changes.get("is_active") is not None:
+        row.is_active = changes["is_active"]
+
+    summary = f"Updated {row.email}"
+    if changes.get("password"):
+        summary += " (password reset)"
+    if row.role != "owner" and changes.get("role") == "staff":
+        summary += " (role: staff)"
+    elif changes.get("role") == "owner":
+        summary += " (role: owner)"
+    if changes.get("is_active") is False:
+        summary += " (deactivated)"
+    elif changes.get("is_active") is True:
+        summary += " (reactivated)"
+
+    audit.record(
+        db,
+        tenant_id=tenant_id,
+        actor_id=user.id,
+        action="staff.update",
+        entity_type="user",
+        entity_id=row.id,
+        summary=summary,
+        data={key: ("***" if key == "password" else value) for key, value in changes.items()},
+    )
+    db.commit()
+    db.refresh(row)
+    return _user_out(row)
+
+
+@router.get("/audit", response_model=list[schemas.AuditEventOut])
+def list_audit_events(
+    action: str | None = Query(default=None, max_length=80),
+    entity_type: str | None = Query(default=None, max_length=40),
+    limit: int = Query(default=50, ge=1, le=200),
+    user: models.User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    stmt = (
+        select(models.AuditEvent, models.User.email)
+        .outerjoin(models.User, models.User.id == models.AuditEvent.actor_id)
+        .where(models.AuditEvent.tenant_id == _staff_tenant(user))
+        .order_by(models.AuditEvent.created_at.desc(), models.AuditEvent.id.desc())
+        .limit(limit)
+    )
+    if action:
+        stmt = stmt.where(models.AuditEvent.action.like(f"{action}%"))
+    if entity_type:
+        stmt = stmt.where(models.AuditEvent.entity_type == entity_type)
+
+    return [
+        schemas.AuditEventOut(
+            id=event.id,
+            action=event.action,
+            entity_type=event.entity_type,
+            entity_id=event.entity_id,
+            summary=event.summary,
+            actor_id=event.actor_id,
+            actor_email=email,
+            data=event.data or {},
+            created_at=event.created_at,
+        )
+        for event, email in db.execute(stmt).all()
+    ]
 
 
 @router.get("/cards", response_model=list[schemas.CardOut])
@@ -200,6 +405,17 @@ def import_stock_csv(
     if dry_run:
         db.rollback()
     else:
+        if created or updated:
+            audit.record(
+                db,
+                tenant_id=tenant.id,
+                actor_id=user.id,
+                action="stock.import",
+                entity_type="stock",
+                entity_id="batch",
+                summary=f"Imported stock CSV: {created} new, {updated} updated, {len(parse_errors) + len(apply_errors)} skipped",
+                data={"created": created, "updated": updated, "unchanged": unchanged},
+            )
         db.commit()
 
     errors = parse_errors + apply_errors
@@ -268,6 +484,22 @@ def create_stock(
                     reason="initial stock",
                 )
             )
+        audit.record(
+            db,
+            tenant_id=_staff_tenant(user),
+            actor_id=user.id,
+            action="stock.create",
+            entity_type="stock",
+            entity_id=stock.id,
+            summary=f"Added {card.name} ({stock.finish}/{stock.condition}) x{stock.quantity}",
+            data={
+                "card_name": card.name,
+                "finish": stock.finish,
+                "condition": stock.condition,
+                "quantity": stock.quantity,
+                "price_minor": stock.price_minor,
+            },
+        )
         db.commit()
         db.refresh(stock)
     except IntegrityError as exc:
@@ -318,6 +550,18 @@ def update_stock(
                 reason="stock update",
             )
         )
+    changes = payload.model_dump(exclude_unset=True)
+    if changes:
+        audit.record(
+            db,
+            tenant_id=_staff_tenant(user),
+            actor_id=user.id,
+            action="stock.update",
+            entity_type="stock",
+            entity_id=stock.id,
+            summary=f"Changed stock for {stock.card.name}",
+            data={**changes, "delta": delta},
+        )
     db.commit()
     db.refresh(stock)
     return serializers.staff_stock_out(stock)
@@ -355,6 +599,16 @@ def adjust_stock(
             reason=payload.reason,
         )
     )
+    audit.record(
+        db,
+        tenant_id=_staff_tenant(user),
+        actor_id=user.id,
+        action="stock.adjust",
+        entity_type="stock",
+        entity_id=stock.id,
+        summary=f"Adjusted {stock.card.name} by {payload.delta:+d} ({payload.reason})",
+        data={"delta": payload.delta, "on_hand_after": stock.quantity, "reason": payload.reason},
+    )
     db.commit()
     db.refresh(stock)
     return serializers.staff_stock_out(stock)
@@ -388,6 +642,16 @@ def sell_stock(
             actor_id=user.id,
             reason=payload.reason,
         )
+    )
+    audit.record(
+        db,
+        tenant_id=_staff_tenant(user),
+        actor_id=user.id,
+        action="stock.sell",
+        entity_type="stock",
+        entity_id=stock.id,
+        summary=f"Sold {payload.quantity} x {stock.card.name} ({payload.reason})",
+        data={"quantity": payload.quantity, "on_hand_after": stock.quantity, "reason": payload.reason},
     )
     db.commit()
     db.refresh(stock)
@@ -457,6 +721,16 @@ def update_reservation_status(
     if reservation is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reservation not found")
 
+    audit.record(
+        db,
+        tenant_id=_staff_tenant(user),
+        actor_id=user.id,
+        action="reservation.status",
+        entity_type="reservation",
+        entity_id=reservation.id,
+        summary=f"Reservation {reservation.public_ref}: {reservation.status} -> {payload.status}",
+        data={"from": reservation.status, "to": payload.status, "reason": payload.reason},
+    )
     if payload.status == "CANCELLED":
         reservation = reservation_service.cancel_reservation(
             db, reservation, reason=payload.reason or "cancelled by staff", actor_id=user.id
@@ -504,6 +778,16 @@ def complete_reservation(
     if reservation is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reservation not found")
 
+    audit.record(
+        db,
+        tenant_id=_staff_tenant(user),
+        actor_id=user.id,
+        action="reservation.complete",
+        entity_type="reservation",
+        entity_id=reservation.id,
+        summary=f"Completed reservation {reservation.public_ref}",
+        data={"lines": [line.model_dump(mode="json") for line in payload.lines] if payload.lines else None},
+    )
     reservation = reservation_service.complete_reservation(
         db, reservation, line_quantities=payload.lines, actor_id=user.id
     )
@@ -597,8 +881,20 @@ def update_settings(
         settings_row = models.TenantSettings(tenant_id=tenant.id)
         db.add(settings_row)
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    changes = payload.model_dump(exclude_unset=True)
+    for field, value in changes.items():
         setattr(settings_row, field, value)
+    if changes:
+        audit.record(
+            db,
+            tenant_id=tenant.id,
+            actor_id=user.id,
+            action="settings.update",
+            entity_type="shop",
+            entity_id=tenant.id,
+            summary=f"Updated shop settings ({', '.join(sorted(changes))})",
+            data=changes,
+        )
     db.commit()
     db.refresh(tenant)
     return serializers.staff_shop_out(tenant)

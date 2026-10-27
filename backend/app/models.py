@@ -79,6 +79,7 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(320), index=True)
     password_hash: Mapped[str | None] = mapped_column(Text)
     role: Mapped[str] = mapped_column(String(20), default="customer")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
     display_name: Mapped[str | None] = mapped_column(String(200))
     phone: Mapped[str | None] = mapped_column(String(50))
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -265,6 +266,24 @@ class Notification(Base):
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class AuditEvent(Base):
+    """Append-only trail of staff actions, used for accountability."""
+
+    __tablename__ = "audit_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
+    action: Mapped[str] = mapped_column(String(80), index=True)
+    entity_type: Mapped[str] = mapped_column(String(40))
+    entity_id: Mapped[str] = mapped_column(String(64))
+    summary: Mapped[str] = mapped_column(String(500))
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+    __table_args__ = (Index("ix_audit_events_tenant_created", "tenant_id", "created_at"),)
 
 
 class IdempotencyKey(Base):

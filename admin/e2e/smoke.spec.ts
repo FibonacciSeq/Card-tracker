@@ -161,3 +161,24 @@ test("exports the stock template and imports a checked change", async ({ page })
   await expect(row).toBeVisible();
   await expect(row.locator("dd").first()).toHaveText("7");
 });
+
+test("adds a team member and records it in activity", async ({ page }) => {
+  await signIn(page);
+  await nav(page, "Team").click();
+
+  await page.getByTestId("member-email").fill("new-staff@example.com");
+  await page.getByTestId("member-name").fill("New Staff");
+  await page.getByTestId("member-password").fill("long-enough-password");
+  await page.getByTestId("member-submit").click();
+
+  await expect(page.getByRole("status")).toContainText("new-staff@example.com");
+  await expect(page.getByRole("cell", { name: /New Staff/ })).toBeVisible();
+
+  await nav(page, "Activity").click();
+  await expect(page.getByTestId("activity-table")).toContainText("Team member added");
+  await expect(page.getByTestId("activity-table")).toContainText("new-staff@example.com");
+
+  await page.getByTestId("activity-filter").selectOption("staff");
+  await expect(page.getByTestId("activity-table")).toContainText("Team member added");
+  await expect(page.getByTestId("activity-table")).not.toContainText("Stock adjusted");
+});

@@ -638,6 +638,30 @@ input[aria-invalid="true"] {
   width: 6.5rem;
 }
 
+.inline-form input[type="email"],
+.inline-form input[type="password"] {
+  width: 15rem;
+}
+
+.inline-form--tight {
+  margin-top: 0.65rem;
+  margin-bottom: 0;
+}
+
+.inline-form--tight input {
+  width: 12rem;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.nowrap {
+  white-space: nowrap;
+}
+
 /* --------------------------------------------------------------- alerts -- */
 
 .alert {
@@ -651,6 +675,12 @@ input[aria-invalid="true"] {
   background: var(--danger-bg);
   color: var(--danger);
   border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent);
+}
+
+.alert--success {
+  background: var(--available-bg);
+  color: var(--available);
+  border: 1px solid color-mix(in srgb, var(--available) 30%, transparent);
 }
 
 .note {
