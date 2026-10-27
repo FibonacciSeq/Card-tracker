@@ -1,6 +1,6 @@
 # Card-tracker
 
-[![CI](https://github.com/aleksacvele/card-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/aleksacvele/card-tracker/actions/workflows/ci.yml)
+[![CI](https://github.com/FibonacciSeq/Card-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/FibonacciSeq/Card-tracker/actions/workflows/ci.yml)
 
 A desktop shop for Magic: The Gathering cards, split into a **customer** app
 and an **owner** app on top of the [Scryfall](https://scryfall.com) database —
@@ -8,6 +8,12 @@ with prices converted to EUR and RSD, foil/non-foil tracking, stock and order
 management, plus Excel import/export for the original collection tool.
 
 Built with Python + Tkinter.
+
+> **Platform rewrite in progress.** The `backend/` FastAPI service and the
+> `admin/` vendor web app are the new multi-vendor platform; see
+> [`STATUS.md`](STATUS.md) for what is implemented, verification results,
+> and the roadmap. The Tkinter apps described below remain the legacy
+> single-shop desktop version.
 
 ## Features
 
@@ -86,7 +92,7 @@ See [`database/README.md`](database/README.md).
 ## Getting started
 
 ```bash
-git clone https://github.com/aleksacvele/card-tracker.git
+git clone https://github.com/FibonacciSeq/Card-tracker.git
 cd card-tracker
 
 python -m venv .venv
