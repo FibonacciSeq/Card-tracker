@@ -29,6 +29,11 @@ export type StaffUser = Schemas["StaffUserOut"];
 export type StaffUserCreate = Schemas["StaffUserCreateIn"];
 export type StaffUserUpdate = Schemas["StaffUserUpdateIn"];
 export type AuditEvent = Schemas["AuditEventOut"];
+export type CardRequest = Schemas["CardRequestOut"];
+export type StaffCardRequest = Schemas["StaffCardRequestOut"];
+export type QuoteIn = Schemas["QuoteIn"];
+export type DeclineIn = Schemas["DeclineIn"];
+export type ConvertIn = Schemas["ConvertIn"];
 
 /** Statuses that still hold stock. Mirrors the backend ACTIVE_STATUSES tuple. */
 export const ACTIVE_STATUSES = ["REQUESTED", "CONFIRMED", "READY"] as const;

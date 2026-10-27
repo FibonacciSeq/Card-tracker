@@ -13,6 +13,7 @@ from app import models, schemas
 from app.config import settings
 from app.db import set_tenant_context
 from app.security import hash_guest_token, new_guest_token, new_public_ref
+from app.services import notifications
 
 ACTIVE_STATUSES = ("REQUESTED", "CONFIRMED", "READY")
 TERMINAL_STATUSES = ("COMPLETED", "CANCELLED", "EXPIRED")
@@ -217,17 +218,21 @@ def create_reservation(
 
         reservation.total_minor = total
         reservation.updated_at = now
-        db.add(
-            models.Notification(
-                tenant_id=tenant.id,
-                kind="RESERVATION_CREATED",
-                payload={
-                    "reservation_id": str(reservation.id),
-                    "public_ref": reservation.public_ref,
-                    "customer_name": reservation.customer_name,
-                    "line_count": len(quantities),
-                },
-            )
+        recipient = tenant.settings.notification_email if tenant.settings else None
+        notifications.enqueue(
+            db,
+            tenant.id,
+            "RESERVATION_CREATED",
+            {
+                "reservation_id": str(reservation.id),
+                "public_ref": reservation.public_ref,
+                "customer_name": reservation.customer_name,
+                "line_count": len(quantities),
+                "total_minor": total,
+                "currency": reservation.currency,
+                "expires_at": reservation.expires_at.isoformat(),
+            },
+            recipient=recipient,
         )
 
         if idempotency_key:
@@ -276,6 +281,103 @@ def _unique_public_ref(db: Session, tenant_id: uuid.UUID) -> str:
         if exists is None:
             return ref
     raise ReservationError("ref_generation_failed", "Could not allocate a reservation reference.", status_code=500)
+
+
+def unique_public_ref(db: Session, tenant_id: uuid.UUID) -> str:
+    return _unique_public_ref(db, tenant_id)
+
+
+def create_staff_hold(
+    db: Session,
+    tenant: models.Tenant,
+    *,
+    stock: models.Stock,
+    quantity: int,
+    customer_name: str,
+    email: str,
+    phone: str,
+    note: str = "",
+    source: str = "staff",
+) -> tuple[models.Reservation, str]:
+    """Create a confirmed hold for a walk-in or special-order customer.
+
+    Does not commit: the caller may still need to update a request row, and
+    both changes should land together.
+    """
+    now = _now()
+    locked = db.scalar(
+        select(models.Stock)
+        .where(
+            models.Stock.id == stock.id,
+            models.Stock.tenant_id == tenant.id,
+        )
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
+    if locked is None:
+        raise ReservationError("stock_not_found", "That stock row no longer exists.", 404)
+
+    available = locked.quantity - locked.reserved
+    if quantity > available:
+        raise ReservationError(
+            "stock_changed",
+            f"Only {max(0, available)} available.",
+            409,
+            details={"stock_id": str(locked.id), "requested": quantity, "available": max(0, available)},
+        )
+
+    hold_hours = tenant.settings.hold_hours if tenant.settings else settings.default_hold_hours
+    token = new_guest_token()
+    reservation = models.Reservation(
+        tenant_id=tenant.id,
+        public_ref=_unique_public_ref(db, tenant.id),
+        customer_name=customer_name.strip(),
+        email=email.strip().lower(),
+        phone=phone.strip(),
+        note=note.strip(),
+        status="CONFIRMED",
+        total_minor=locked.price_minor * quantity,
+        currency=tenant.currency,
+        expires_at=now + timedelta(hours=hold_hours),
+        source=source,
+        access_token_hash=hash_guest_token(token),
+    )
+    db.add(reservation)
+    db.flush()
+
+    line = models.ReservationLine(
+        tenant_id=tenant.id,
+        reservation_id=reservation.id,
+        stock_id=locked.id,
+        card_id=locked.card_id,
+        name=locked.card.name,
+        set_code=locked.card.set_code,
+        collector_number=locked.card.collector_number,
+        finish=locked.finish,
+        condition=locked.condition,
+        language=locked.language,
+        quantity=quantity,
+        unit_price_minor=locked.price_minor,
+        currency=locked.currency,
+    )
+    db.add(line)
+    db.flush()
+
+    locked.reserved += quantity
+    locked.updated_at = now
+    db.add(
+        _movement(
+            tenant_id=tenant.id,
+            stock=locked,
+            kind="RESERVE",
+            reserved_delta=quantity,
+            reservation_id=reservation.id,
+            line_id=line.id,
+            reason="staff hold",
+        )
+    )
+    db.flush()
+    return reservation, token
 
 
 def get_reservation(db: Session, tenant_id: uuid.UUID, reservation_id: uuid.UUID) -> models.Reservation:

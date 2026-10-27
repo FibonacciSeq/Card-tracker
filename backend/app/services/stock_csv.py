@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import models
+from app.services import restock
 
 COLUMNS = [
     "card_name",
@@ -296,6 +297,7 @@ def apply_rows(
             stock_by_key[key] = stock
             if row.quantity:
                 db.add(_movement(tenant.id, stock, actor_id, row.quantity, "CSV import: new card"))
+            restock.notify_waiting(db, tenant, stock)
             continue
 
         if row.quantity < stock.reserved:
@@ -323,6 +325,7 @@ def apply_rows(
         stock.updated_at = models.utcnow()
         if delta:
             db.add(_movement(tenant.id, stock, actor_id, delta, "CSV import"))
+        restock.notify_waiting(db, tenant, stock)
 
     return created, updated, unchanged, errors
 

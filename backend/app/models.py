@@ -262,10 +262,93 @@ class Notification(Base):
     kind: Mapped[str] = mapped_column(String(60))
     payload: Mapped[dict] = mapped_column(JSON, default=dict)
     channel: Mapped[str] = mapped_column(String(20), default="in_app")
+    recipient: Mapped[str | None] = mapped_column(String(320))
+    attempts: Mapped[int] = mapped_column(Integer, default=0)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     read_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (Index("ix_notifications_pending", "sent_at", "next_attempt_at"),)
+
+
+class CardRequest(Base):
+    """A customer asking the shop to source a card it does not have."""
+
+    __tablename__ = "card_requests"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    public_ref: Mapped[str] = mapped_column(String(20))
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id", ondelete="SET NULL"))
+    customer_name: Mapped[str] = mapped_column(String(200))
+    email: Mapped[str] = mapped_column(String(320))
+    phone: Mapped[str] = mapped_column(String(50), default="")
+    card_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("cards.id"))
+    requested_name: Mapped[str] = mapped_column(String(300))
+    set_code: Mapped[str] = mapped_column(String(20), default="")
+    collector_number: Mapped[str] = mapped_column(String(40), default="")
+    finish: Mapped[str] = mapped_column(String(20), default="nonfoil")
+    condition: Mapped[str] = mapped_column(String(10), default="NM")
+    language: Mapped[str] = mapped_column(String(10), default="en")
+    quantity: Mapped[int] = mapped_column(Integer, default=1)
+    target_price_minor: Mapped[int | None] = mapped_column(Integer)
+    currency: Mapped[str] = mapped_column(String(3), default="EUR")
+    customer_note: Mapped[str] = mapped_column(Text, default="")
+    status: Mapped[str] = mapped_column(String(20), default="REQUESTED")
+    quote_price_minor: Mapped[int | None] = mapped_column(Integer)
+    quote_currency: Mapped[str | None] = mapped_column(String(3))
+    quote_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    vendor_note: Mapped[str] = mapped_column(Text, default="")
+    reservation_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("reservations.id", ondelete="SET NULL"))
+    access_token_hash: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    reservation: Mapped[Reservation | None] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "public_ref", name="uq_card_requests_ref"),
+        CheckConstraint("quantity > 0", name="ck_card_requests_quantity"),
+        CheckConstraint(
+            "status IN ('REQUESTED','QUOTED','ACCEPTED','DECLINED','EXPIRED','CONVERTED','CANCELLED')",
+            name="ck_card_requests_status",
+        ),
+        Index("ix_card_requests_queue", "tenant_id", "status", "created_at"),
+    )
+
+
+class RestockAlert(Base):
+    """A customer waiting for a sold-out variant to come back."""
+
+    __tablename__ = "restock_alerts"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
+    customer_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("users.id", ondelete="SET NULL"))
+    customer_name: Mapped[str | None] = mapped_column(String(200))
+    email: Mapped[str] = mapped_column(String(320))
+    card_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("cards.id"), index=True)
+    stock_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("stock.id", ondelete="SET NULL"))
+    finish: Mapped[str] = mapped_column(String(20), default="nonfoil")
+    condition: Mapped[str] = mapped_column(String(10), default="NM")
+    language: Mapped[str] = mapped_column(String(10), default="en")
+    notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "email",
+            "card_id",
+            "finish",
+            "condition",
+            "language",
+            name="uq_restock_alerts_subscription",
+        ),
+        Index("ix_restock_alerts_variant", "tenant_id", "card_id", "finish", "condition", "language"),
+    )
 
 
 class AuditEvent(Base):

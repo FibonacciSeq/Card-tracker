@@ -14,7 +14,7 @@ async function signIn(page: Page) {
   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 }
 
-type PublicStock = { items: Array<{ stock_id: string; available: number; card: { name: string } }> };
+type PublicStock = { items: Array<{ stock_id: string; available: number; card: { id: string; name: string } }> };
 
 async function publicStock(request: APIRequestContext): Promise<PublicStock> {
   const response = await request.get(`${E2E.apiUrl}/v1/shops/${E2E.slug}/stock?limit=50`);
@@ -181,4 +181,87 @@ test("adds a team member and records it in activity", async ({ page }) => {
   await page.getByTestId("activity-filter").selectOption("staff");
   await expect(page.getByTestId("activity-table")).toContainText("Team member added");
   await expect(page.getByTestId("activity-table")).not.toContainText("Stock adjusted");
+});
+
+test("quotes a special order and converts it into a reservation", async ({ page, request }) => {
+  const before = await publicStock(request);
+  const item = before.items.find((entry) => entry.available > 0);
+  expect(item).toBeTruthy();
+
+  const created = await request.post(`${E2E.apiUrl}/v1/shops/${E2E.slug}/card-requests`, {
+    data: {
+      customer: { name: "E2E Requester", email: "requester@example.com", phone: "+381600000001" },
+      card_id: item!.card.id,
+      quantity: 1,
+      target_price_minor: 100000,
+      note: "Looking for a clean copy.",
+    },
+  });
+  expect(created.ok()).toBeTruthy();
+  const special = (await created.json()) as {
+    id: string;
+    public_ref: string;
+    access_token: string;
+  };
+
+  await signIn(page);
+  await nav(page, "Special orders").click();
+
+  const row = page.getByTestId(`request-row-${special.public_ref}`);
+  await expect(row).toBeVisible();
+  await expect(row).toContainText("E2E Requester");
+
+  await page.getByTestId(`quote-btn-${special.public_ref}`).click();
+  await page.getByTestId("quote-price").fill("1250.00");
+  await page.getByTestId("quote-submit").click();
+
+  await expect(row.getByText("Quoted")).toBeVisible();
+
+  const accepted = await request.post(`${E2E.apiUrl}/v1/card-requests/${special.id}/accept`, {
+    headers: {
+      "X-Shop-Slug": E2E.slug,
+      "X-Card-Request-Token": special.access_token,
+    },
+  });
+  expect(accepted.ok()).toBeTruthy();
+
+  await page.getByRole("button", { name: "Refresh" }).click();
+  await expect(row.getByText("Accepted")).toBeVisible();
+
+  await page.getByTestId(`convert-btn-${special.public_ref}`).click();
+  await page.getByTestId("convert-submit").click();
+
+  await expect(row.getByText("Converted")).toBeVisible();
+  await expect(row).toContainText(/Reservation R-/);
+
+  const after = await publicStock(request);
+  const updated = after.items.find((entry) => entry.stock_id === item!.stock_id);
+  expect(updated?.available).toBe(item!.available - 1);
+});
+
+test("shows how many customers are waiting for a sold-out variant", async ({ page, request }) => {
+  const stock = await publicStock(request);
+  const item = stock.items.find((entry) => entry.card.name === "Black Lotus");
+  expect(item).toBeTruthy();
+
+  const subscribed = await request.post(`${E2E.apiUrl}/v1/shops/${E2E.slug}/restock-alerts`, {
+    data: {
+      email: "waiting@example.com",
+      name: "Waiting Customer",
+      card_id: item!.card.id,
+      finish: "nonfoil",
+      condition: "NM",
+      language: "en",
+    },
+  });
+  expect(subscribed.ok()).toBeTruthy();
+
+  await signIn(page);
+  await nav(page, "Stock").click();
+  await page.getByTestId("stock-search").fill("Black Lotus");
+
+  const table = page.getByTestId("stock-table");
+  const row = table.getByRole("row", { name: /Black Lotus/ });
+  await expect(row).toBeVisible();
+  await expect(row.getByTestId("restock-waiting")).toContainText("1 waiting");
 });

@@ -14,10 +14,14 @@ server-side rendering — that keeps one backend as the only source of truth.
 | `/` | Dashboard: pending requests, active holds, sold today, low/stale stock |
 | `/stock` | Search, on-hand/price/visibility edits, adjustments, in-store sales |
 | `/reservations` | Queue by status, accept/ready/cancel, complete with per-line quantities |
+| `/requests` | Special orders: quote, decline, and convert an accepted request into a reservation |
+| `/team` | Owner-only: add staff, change roles, deactivate accounts |
+| `/activity` | Owner-only: audit trail with action filters |
 | `/settings` | Branding, hold duration, payment instructions, contact, directory opt-in |
 
 Stock numbers always pair colour with a text label (available / reserved / out)
-so they remain readable without colour vision.
+so they remain readable without colour vision. A "N waiting" badge on a stock
+row shows how many customers asked for a restock alert on that exact variant.
 
 Owner-only actions: saving settings uses `PATCH /v1/staff/settings`, which the
 API restricts to the `owner` role. Staff get a clear message instead of a crash.
@@ -61,7 +65,10 @@ SQLite database and runs the real UI against it:
 - adjusting stock is visible to the public storefront API;
 - a reservation can be confirmed, marked ready, and completed, and stock is
   released exactly once;
-- settings save and survive a reload.
+- settings save and survive a reload;
+- a special order can be quoted, accepted by the customer, and converted into a
+  confirmed reservation (stock availability drops by one);
+- restock-alert demand appears as a "waiting" badge on the stock row.
 
 It uses `CARDTRACKER_E2E_PYTHON` if set, otherwise `../.venv/bin/python`.
 
@@ -83,8 +90,8 @@ npm run api:types    # regenerate src/api/schema.d.ts
 
 - Excel (`.xlsx`) stock import; CSV only for now.
 - Roles beyond owner/staff.
-- Reservation alert emails and push delivery (outbox rows exist in the API).
-- Restock alerts and special-order requests.
+- Push delivery (email only; the API outbox worker supports console and SMTP).
+- Customer-facing restock/special-order screens (the mobile app is next).
 - Opening-hours editor: the API stores them, the form does not edit them yet.
 - Reports and per-shop subscription billing.
 - The API rate limiter is in-process, so it assumes a single worker for now.

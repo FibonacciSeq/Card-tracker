@@ -174,6 +174,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/shops/{slug}/restock-alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Subscribe Restock Alert */
+        post: operations["subscribe_restock_alert_v1_shops__slug__restock_alerts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shops/{slug}/restock-alerts/{alert_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Unsubscribe Restock Alert */
+        delete: operations["unsubscribe_restock_alert_v1_shops__slug__restock_alerts__alert_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shops/{slug}/card-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create Card Request */
+        post: operations["create_card_request_v1_shops__slug__card_requests_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/card-requests/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Card Request */
+        get: operations["get_card_request_v1_card_requests__request_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/card-requests/{request_id}/accept": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Accept Card Request */
+        post: operations["accept_card_request_v1_card_requests__request_id__accept_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/card-requests/{request_id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Cancel Card Request */
+        post: operations["cancel_card_request_v1_card_requests__request_id__cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/staff/auth/login": {
         parameters: {
             query?: never;
@@ -454,6 +556,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/staff/card-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Card Requests */
+        get: operations["list_card_requests_v1_staff_card_requests_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/card-requests/{request_id}/quote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Quote Card Request */
+        post: operations["quote_card_request_v1_staff_card_requests__request_id__quote_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/card-requests/{request_id}/decline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Decline Card Request */
+        post: operations["decline_card_request_v1_staff_card_requests__request_id__decline_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/card-requests/{request_id}/convert": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Convert Card Request */
+        post: operations["convert_card_request_v1_staff_card_requests__request_id__convert_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/staff/dashboard": {
         parameters: {
             query?: never;
@@ -589,6 +759,108 @@ export interface components {
             /** Image Large */
             image_large?: string | null;
         };
+        /** CardRequestCreateIn */
+        CardRequestCreateIn: {
+            customer: components["schemas"]["CustomerIn"];
+            /** Card Id */
+            card_id?: string | null;
+            /**
+             * Requested Name
+             * @default
+             */
+            requested_name: string;
+            /**
+             * Set Code
+             * @default
+             */
+            set_code: string;
+            /**
+             * Collector Number
+             * @default
+             */
+            collector_number: string;
+            /**
+             * Finish
+             * @default nonfoil
+             * @enum {string}
+             */
+            finish: "nonfoil" | "foil" | "etched";
+            /**
+             * Condition
+             * @default NM
+             * @enum {string}
+             */
+            condition: "NM" | "LP" | "MP" | "HP" | "DMG";
+            /**
+             * Language
+             * @default en
+             */
+            language: string;
+            /**
+             * Quantity
+             * @default 1
+             */
+            quantity: number;
+            /** Target Price Minor */
+            target_price_minor?: number | null;
+            /**
+             * Note
+             * @default
+             */
+            note: string;
+        };
+        /** CardRequestOut */
+        CardRequestOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Public Ref */
+            public_ref: string;
+            /** Status */
+            status: string;
+            /** Card Id */
+            card_id?: string | null;
+            /** Requested Name */
+            requested_name: string;
+            /** Set Code */
+            set_code: string;
+            /** Collector Number */
+            collector_number: string;
+            /** Finish */
+            finish: string;
+            /** Condition */
+            condition: string;
+            /** Language */
+            language: string;
+            /** Quantity */
+            quantity: number;
+            target_price?: components["schemas"]["Money"] | null;
+            quote_price?: components["schemas"]["Money"] | null;
+            /** Quote Expires At */
+            quote_expires_at?: string | null;
+            /** Vendor Note */
+            vendor_note: string;
+            /** Customer Name */
+            customer_name: string;
+            /** Reservation Id */
+            reservation_id?: string | null;
+            /** Reservation Ref */
+            reservation_ref?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Access Token */
+            access_token?: string | null;
+        };
         /** CompleteIn */
         CompleteIn: {
             /** Lines */
@@ -612,6 +884,11 @@ export interface components {
              */
             cancel_quantity: number;
         };
+        /** ConvertIn */
+        ConvertIn: {
+            /** Quantity */
+            quantity?: number | null;
+        };
         /** CustomerIn */
         CustomerIn: {
             /** Name */
@@ -633,6 +910,11 @@ export interface components {
             pending_reservations: number;
             /** Active Reservations */
             active_reservations: number;
+            /**
+             * Open Requests
+             * @default 0
+             */
+            open_requests: number;
             /** Today Sales Minor */
             today_sales_minor: number;
             /** Currency */
@@ -641,6 +923,14 @@ export interface components {
             low_stock: number;
             /** Stale Stock */
             stale_stock: number;
+        };
+        /** DeclineIn */
+        DeclineIn: {
+            /**
+             * Vendor Note
+             * @default
+             */
+            vendor_note: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -653,6 +943,18 @@ export interface components {
             amount_minor: number;
             /** Currency */
             currency: string;
+        };
+        /** QuoteIn */
+        QuoteIn: {
+            /** Quote Price Minor */
+            quote_price_minor: number;
+            /** Quote Expires At */
+            quote_expires_at?: string | null;
+            /**
+             * Vendor Note
+             * @default
+             */
+            vendor_note: string;
         };
         /** ReservationCreate */
         ReservationCreate: {
@@ -767,6 +1069,72 @@ export interface components {
             /** Line Count */
             line_count: number;
         };
+        /** RestockAlertCreateIn */
+        RestockAlertCreateIn: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Name */
+            name?: string | null;
+            /**
+             * Card Id
+             * Format: uuid
+             */
+            card_id: string;
+            /**
+             * Finish
+             * @default nonfoil
+             * @enum {string}
+             */
+            finish: "nonfoil" | "foil" | "etched";
+            /**
+             * Condition
+             * @default NM
+             * @enum {string}
+             */
+            condition: "NM" | "LP" | "MP" | "HP" | "DMG";
+            /**
+             * Language
+             * @default en
+             */
+            language: string;
+        };
+        /** RestockAlertOut */
+        RestockAlertOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Card Id
+             * Format: uuid
+             */
+            card_id: string;
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Finish */
+            finish: string;
+            /** Condition */
+            condition: string;
+            /** Language */
+            language: string;
+            /**
+             * Already Subscribed
+             * @default false
+             */
+            already_subscribed: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** SettingsUpdateIn */
         SettingsUpdateIn: {
             /** Brand Name */
@@ -852,6 +1220,67 @@ export interface components {
              * @default false
              */
             directory_opt_in: boolean;
+        };
+        /** StaffCardRequestOut */
+        StaffCardRequestOut: {
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Public Ref */
+            public_ref: string;
+            /** Status */
+            status: string;
+            /** Card Id */
+            card_id?: string | null;
+            /** Requested Name */
+            requested_name: string;
+            /** Set Code */
+            set_code: string;
+            /** Collector Number */
+            collector_number: string;
+            /** Finish */
+            finish: string;
+            /** Condition */
+            condition: string;
+            /** Language */
+            language: string;
+            /** Quantity */
+            quantity: number;
+            target_price?: components["schemas"]["Money"] | null;
+            quote_price?: components["schemas"]["Money"] | null;
+            /** Quote Expires At */
+            quote_expires_at?: string | null;
+            /** Vendor Note */
+            vendor_note: string;
+            /** Customer Name */
+            customer_name: string;
+            /** Reservation Id */
+            reservation_id?: string | null;
+            /** Reservation Ref */
+            reservation_ref?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /** Access Token */
+            access_token?: string | null;
+            /**
+             * Customer Email
+             * Format: email
+             */
+            customer_email: string;
+            /** Customer Phone */
+            customer_phone: string;
+            /** Customer Note */
+            customer_note: string;
         };
         /** StaffLoginIn */
         StaffLoginIn: {
@@ -1017,6 +1446,11 @@ export interface components {
             available: number;
             /** Sold 30D */
             sold_30d: number;
+            /**
+             * Restock Waiting
+             * @default 0
+             */
+            restock_waiting: number;
             price: components["schemas"]["Money"];
             /** Is Online */
             is_online: boolean;
@@ -1579,6 +2013,210 @@ export interface operations {
             };
         };
     };
+    subscribe_restock_alert_v1_shops__slug__restock_alerts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestockAlertCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RestockAlertOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unsubscribe_restock_alert_v1_shops__slug__restock_alerts__alert_id__delete: {
+        parameters: {
+            query: {
+                email: string;
+            };
+            header?: never;
+            path: {
+                slug: string;
+                alert_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_card_request_v1_shops__slug__card_requests_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CardRequestCreateIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardRequestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_card_request_v1_card_requests__request_id__get: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Shop-Slug": string;
+                "X-Card-Request-Token"?: string | null;
+            };
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardRequestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    accept_card_request_v1_card_requests__request_id__accept_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Shop-Slug": string;
+                "X-Card-Request-Token"?: string | null;
+            };
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardRequestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_card_request_v1_card_requests__request_id__cancel_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-Shop-Slug": string;
+                "X-Card-Request-Token"?: string | null;
+            };
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CardRequestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     login_v1_staff_auth_login_post: {
         parameters: {
             query?: never;
@@ -2130,6 +2768,143 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffReservationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_card_requests_v1_staff_card_requests_get: {
+        parameters: {
+            query?: {
+                status?: string | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCardRequestOut"][];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    quote_card_request_v1_staff_card_requests__request_id__quote_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["QuoteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCardRequestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    decline_card_request_v1_staff_card_requests__request_id__decline_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeclineIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCardRequestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    convert_card_request_v1_staff_card_requests__request_id__convert_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                request_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ConvertIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffCardRequestOut"];
                 };
             };
             /** @description Validation Error */

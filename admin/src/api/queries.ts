@@ -3,6 +3,10 @@ import { request } from "./client";
 import type {
   AuditEvent,
   CompleteIn,
+  ConvertIn,
+  DeclineIn,
+  QuoteIn,
+  StaffCardRequest,
   Dashboard,
   StaffReservation,
   ReservationSummary,
@@ -28,6 +32,7 @@ export const queryKeys = {
   settings: ["settings"] as const,
   team: ["team"] as const,
   audit: (action: string) => ["audit", action] as const,
+  requests: (status: string) => ["requests", status] as const,
 };
 
 export function useDashboard() {
@@ -197,6 +202,52 @@ export function useAudit(action: string) {
       return request<AuditEvent[]>(`/v1/staff/audit?${params.toString()}`, { signal });
     },
   });
+}
+
+export function useCardRequests(status: string) {
+  return useQuery({
+    queryKey: queryKeys.requests(status),
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams();
+      if (status !== "ALL") params.set("status", status);
+      const query = params.size ? `?${params.toString()}` : "";
+      return request<StaffCardRequest[]>(`/v1/staff/card-requests${query}`, { signal });
+    },
+  });
+}
+
+export function useQuoteCardRequest() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: QuoteIn }) =>
+      request<StaffCardRequest>(`/v1/staff/card-requests/${id}/quote`, { method: "POST", body }),
+    onSuccess: () => refreshRequests(client),
+  });
+}
+
+export function useDeclineCardRequest() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: DeclineIn }) =>
+      request<StaffCardRequest>(`/v1/staff/card-requests/${id}/decline`, { method: "POST", body }),
+    onSuccess: () => refreshRequests(client),
+  });
+}
+
+export function useConvertCardRequest() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, body }: { id: string; body: ConvertIn }) =>
+      request<StaffCardRequest>(`/v1/staff/card-requests/${id}/convert`, { method: "POST", body }),
+    onSuccess: () => refreshRequests(client),
+  });
+}
+
+function refreshRequests(client: ReturnType<typeof useQueryClient>) {
+  client.invalidateQueries({ queryKey: ["requests"] });
+  client.invalidateQueries({ queryKey: queryKeys.dashboard });
+  client.invalidateQueries({ queryKey: ["audit"] });
+  client.invalidateQueries({ queryKey: ["stock"] });
 }
 
 function refreshStock(client: ReturnType<typeof useQueryClient>) {

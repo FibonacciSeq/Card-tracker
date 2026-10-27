@@ -4,6 +4,7 @@ import { Layout } from "./components/Layout";
 import { ActivityPage } from "./pages/ActivityPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
+import { RequestsPage } from "./pages/RequestsPage";
 import { ReservationsPage } from "./pages/ReservationsPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { StockPage } from "./pages/StockPage";
@@ -18,6 +19,7 @@ export function App() {
           <Route index element={<DashboardPage />} />
           <Route path="stock" element={<StockPage />} />
           <Route path="reservations" element={<ReservationsPage />} />
+          <Route path="requests" element={<RequestsPage />} />
           <Route path="team" element={<TeamPage />} />
           <Route path="activity" element={<ActivityPage />} />
           <Route path="settings" element={<SettingsPage />} />

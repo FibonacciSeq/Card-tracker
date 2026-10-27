@@ -165,6 +165,15 @@ function StockRow({ item, expanded, onToggle }: { item: StaffStock; expanded: bo
                 {item.finish} · {item.language}
               </div>
               {!item.is_online ? <span className="badge badge--offline">Not online</span> : null}
+              {item.restock_waiting > 0 ? (
+                <span
+                  className="badge badge--requested"
+                  title="Customers waiting for this variant to come back in stock"
+                  data-testid="restock-waiting"
+                >
+                  {item.restock_waiting} waiting
+                </span>
+              ) : null}
             </div>
           </div>
         </td>

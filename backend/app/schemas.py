@@ -166,6 +166,7 @@ class StaffStockOut(BaseModel):
     reserved: int
     available: int
     sold_30d: int
+    restock_waiting: int = 0
     price: Money
     is_online: bool
     updated_at: datetime
@@ -215,6 +216,84 @@ class CompleteLineIn(BaseModel):
 
 class CompleteIn(BaseModel):
     lines: list[CompleteLineIn] | None = None
+
+
+class RestockAlertCreateIn(BaseModel):
+    email: EmailStr
+    name: str | None = Field(default=None, max_length=200)
+    card_id: uuid.UUID
+    finish: Literal["nonfoil", "foil", "etched"] = "nonfoil"
+    condition: Literal["NM", "LP", "MP", "HP", "DMG"] = "NM"
+    language: str = Field(default="en", min_length=2, max_length=5)
+
+
+class RestockAlertOut(BaseModel):
+    id: uuid.UUID
+    card_id: uuid.UUID
+    email: EmailStr
+    finish: str
+    condition: str
+    language: str
+    already_subscribed: bool = False
+    created_at: datetime
+
+
+class CardRequestCreateIn(BaseModel):
+    customer: CustomerIn
+    card_id: uuid.UUID | None = None
+    requested_name: str = Field(default="", max_length=300)
+    set_code: str = Field(default="", max_length=20)
+    collector_number: str = Field(default="", max_length=40)
+    finish: Literal["nonfoil", "foil", "etched"] = "nonfoil"
+    condition: Literal["NM", "LP", "MP", "HP", "DMG"] = "NM"
+    language: str = Field(default="en", min_length=2, max_length=5)
+    quantity: int = Field(default=1, ge=1, le=999)
+    target_price_minor: int | None = Field(default=None, ge=0)
+    note: str = Field(default="", max_length=2000)
+
+
+class CardRequestOut(BaseModel):
+    id: uuid.UUID
+    public_ref: str
+    status: str
+    card_id: uuid.UUID | None = None
+    requested_name: str
+    set_code: str
+    collector_number: str
+    finish: str
+    condition: str
+    language: str
+    quantity: int
+    target_price: Money | None = None
+    quote_price: Money | None = None
+    quote_expires_at: datetime | None = None
+    vendor_note: str
+    customer_name: str
+    reservation_id: uuid.UUID | None = None
+    reservation_ref: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    access_token: str | None = None
+
+
+class StaffCardRequestOut(CardRequestOut):
+    customer_email: EmailStr
+    customer_phone: str
+    customer_note: str
+
+
+class QuoteIn(BaseModel):
+    quote_price_minor: int = Field(ge=0)
+    quote_expires_at: datetime | None = None
+    vendor_note: str = Field(default="", max_length=2000)
+
+
+class DeclineIn(BaseModel):
+    vendor_note: str = Field(default="", max_length=2000)
+
+
+class ConvertIn(BaseModel):
+    quantity: int | None = Field(default=None, ge=1, le=999)
 
 
 class StaffUserOut(BaseModel):
@@ -270,6 +349,7 @@ class StockImportReportOut(BaseModel):
 class DashboardOut(BaseModel):
     pending_reservations: int
     active_reservations: int
+    open_requests: int = 0
     today_sales_minor: int
     currency: str
     low_stock: int

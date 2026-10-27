@@ -14,6 +14,7 @@ from app.api import public, staff
 from app.config import settings
 from app.db import SessionLocal, engine
 from app.models import Base
+from app.services.card_requests import CardRequestError
 from app.services.reservations import ReservationError
 
 
@@ -57,6 +58,21 @@ async def reservation_error_handler(_request: Request, exc: ReservationError) ->
     return JSONResponse(
         status_code=exc.status_code,
         content=content,
+        media_type="application/problem+json",
+    )
+
+
+@app.exception_handler(CardRequestError)
+async def card_request_error_handler(_request: Request, exc: CardRequestError) -> JSONResponse:
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "type": f"https://api.cardtracker.local/problems/{exc.code}",
+            "title": exc.code.replace("_", " ").title(),
+            "status": exc.status_code,
+            "code": exc.code,
+            "detail": exc.message,
+        },
         media_type="application/problem+json",
     )
 

@@ -7,8 +7,9 @@ import json
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, or_, select, tuple_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas, serializers
@@ -16,6 +17,7 @@ from app.config import settings
 from app.db import get_db
 from app.deps import get_tenant_by_slug
 from app.security import hash_guest_token
+from app.services import card_requests as card_request_service
 from app.services import ratelimit
 from app.services import reservations as reservation_service
 
@@ -291,3 +293,143 @@ def get_reservation_by_ref(
 @router.get("/health")
 def health():
     return {"status": "ok", "time": datetime.now().isoformat()}
+
+
+@router.post(
+    "/shops/{slug}/restock-alerts",
+    response_model=schemas.RestockAlertOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def subscribe_restock_alert(
+    slug: str,
+    payload: schemas.RestockAlertCreateIn,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    ratelimit.enforce(
+        request,
+        scope="restock-alert",
+        limit=settings.restock_alert_rate_limit,
+        window_seconds=settings.restock_alert_rate_window_seconds,
+    )
+    tenant = get_tenant_by_slug(slug, db)
+    card = db.get(models.Card, payload.card_id)
+    if card is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
+
+    email = str(payload.email).lower().strip()
+    language = payload.language.lower()
+    filters = (
+        models.RestockAlert.tenant_id == tenant.id,
+        func.lower(models.RestockAlert.email) == email,
+        models.RestockAlert.card_id == card.id,
+        models.RestockAlert.finish == payload.finish,
+        models.RestockAlert.condition == payload.condition,
+        models.RestockAlert.language == language,
+    )
+    existing = db.scalar(select(models.RestockAlert).where(*filters))
+    if existing is not None:
+        return serializers.restock_alert_out(existing, already_subscribed=True)
+
+    alert = models.RestockAlert(
+        tenant_id=tenant.id,
+        email=email,
+        customer_name=payload.name.strip() if payload.name else None,
+        card_id=card.id,
+        finish=payload.finish,
+        condition=payload.condition,
+        language=language,
+    )
+    db.add(alert)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = db.scalar(select(models.RestockAlert).where(*filters))
+        if existing is None:
+            raise
+        return serializers.restock_alert_out(existing, already_subscribed=True)
+    db.refresh(alert)
+    return serializers.restock_alert_out(alert)
+
+
+@router.delete("/shops/{slug}/restock-alerts/{alert_id}", status_code=status.HTTP_204_NO_CONTENT)
+def unsubscribe_restock_alert(
+    slug: str,
+    alert_id: uuid.UUID,
+    email: str = Query(min_length=3, max_length=320),
+    db: Session = Depends(get_db),
+):
+    tenant = get_tenant_by_slug(slug, db)
+    alert = db.scalar(
+        select(models.RestockAlert).where(
+            models.RestockAlert.id == alert_id,
+            models.RestockAlert.tenant_id == tenant.id,
+            func.lower(models.RestockAlert.email) == email.lower().strip(),
+        )
+    )
+    # Always 204: whether or not the row existed, the caller is unsubscribed.
+    if alert is not None:
+        db.delete(alert)
+        db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post(
+    "/shops/{slug}/card-requests",
+    response_model=schemas.CardRequestOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_card_request(
+    slug: str,
+    payload: schemas.CardRequestCreateIn,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    ratelimit.enforce(
+        request,
+        scope="card-request",
+        limit=settings.card_request_rate_limit,
+        window_seconds=settings.card_request_rate_window_seconds,
+    )
+    tenant = get_tenant_by_slug(slug, db)
+    row, access_token = card_request_service.create(db, tenant, payload)
+    return serializers.card_request_out(row, tenant, access_token=access_token)
+
+
+@router.get("/card-requests/{request_id}", response_model=schemas.CardRequestOut)
+def get_card_request(
+    request_id: uuid.UUID,
+    shop_slug: str = Header(alias="X-Shop-Slug"),
+    token: str | None = Header(default=None, alias="X-Card-Request-Token"),
+    db: Session = Depends(get_db),
+):
+    tenant = get_tenant_by_slug(shop_slug, db)
+    row = card_request_service.get_authorized(db, tenant, request_id, token)
+    return serializers.card_request_out(row, tenant)
+
+
+@router.post("/card-requests/{request_id}/accept", response_model=schemas.CardRequestOut)
+def accept_card_request(
+    request_id: uuid.UUID,
+    shop_slug: str = Header(alias="X-Shop-Slug"),
+    token: str | None = Header(default=None, alias="X-Card-Request-Token"),
+    db: Session = Depends(get_db),
+):
+    tenant = get_tenant_by_slug(shop_slug, db)
+    row = card_request_service.get_authorized(db, tenant, request_id, token)
+    row = card_request_service.accept(db, tenant, row)
+    return serializers.card_request_out(row, tenant)
+
+
+@router.post("/card-requests/{request_id}/cancel", response_model=schemas.CardRequestOut)
+def cancel_card_request(
+    request_id: uuid.UUID,
+    shop_slug: str = Header(alias="X-Shop-Slug"),
+    token: str | None = Header(default=None, alias="X-Card-Request-Token"),
+    db: Session = Depends(get_db),
+):
+    tenant = get_tenant_by_slug(shop_slug, db)
+    row = card_request_service.get_authorized(db, tenant, request_id, token)
+    row = card_request_service.cancel(db, tenant, row)
+    return serializers.card_request_out(row, tenant)

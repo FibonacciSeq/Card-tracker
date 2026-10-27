@@ -56,6 +56,10 @@ def new_public_ref() -> str:
     return "R-" + secrets.token_hex(3).upper()
 
 
+def new_request_ref() -> str:
+    return "Q-" + secrets.token_hex(3).upper()
+
+
 def new_guest_token() -> str:
     return secrets.token_urlsafe(32)
 

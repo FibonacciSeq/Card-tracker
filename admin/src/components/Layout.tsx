@@ -5,6 +5,7 @@ const NAV = [
   { to: "/", label: "Dashboard", end: true },
   { to: "/stock", label: "Stock", end: false },
   { to: "/reservations", label: "Reservations", end: false },
+  { to: "/requests", label: "Special orders", end: false },
   { to: "/team", label: "Team", end: false, ownerOnly: true },
   { to: "/activity", label: "Activity", end: false, ownerOnly: true },
   { to: "/settings", label: "Settings", end: false },

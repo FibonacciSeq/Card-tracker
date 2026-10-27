@@ -2,6 +2,10 @@ import type { ReservationStatus } from "../api/types";
 
 const LABELS: Record<string, string> = {
   REQUESTED: "Requested",
+  QUOTED: "Quoted",
+  ACCEPTED: "Accepted",
+  DECLINED: "Declined",
+  CONVERTED: "Converted",
   CONFIRMED: "Confirmed",
   READY: "Ready",
   COMPLETED: "Completed",

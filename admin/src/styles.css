@@ -873,11 +873,18 @@ input[aria-invalid="true"] {
   background: var(--reserved-bg);
 }
 
+.badge--quoted {
+  color: var(--reserved);
+  background: var(--reserved-bg);
+}
+
+.badge--accepted,
 .badge--confirmed {
   color: var(--sold);
   background: var(--sold-bg);
 }
 
+.badge--converted,
 .badge--ready {
   color: var(--available);
   background: var(--available-bg);
@@ -889,6 +896,7 @@ input[aria-invalid="true"] {
 }
 
 .badge--cancelled,
+.badge--declined,
 .badge--expired,
 .badge--offline {
   color: var(--grey);

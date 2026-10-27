@@ -176,6 +176,75 @@ def test_rls_hides_other_tenants(app_session: Session, admin: Session) -> None:
     assert shop_b["stock_id"] not in {row.id for row in visible}
 
 
+def test_requests_and_alerts_are_tenant_isolated(app_session: Session, admin: Session) -> None:
+    shop_a = _make_shop(admin)
+    shop_b = _make_shop(admin)
+
+    admin.add_all(
+        [
+            models.CardRequest(
+                tenant_id=shop_a["tenant_id"],
+                public_ref="Q-AAAAAA",
+                customer_name="Ana",
+                email="ana@example.com",
+                phone="",
+                card_id=shop_a["card_id"],
+                requested_name="Card A",
+                set_code="LEB",
+                collector_number="1",
+                finish="nonfoil",
+                condition="NM",
+                language="en",
+                quantity=1,
+                currency="RSD",
+                customer_note="",
+                status="REQUESTED",
+                vendor_note="",
+            ),
+            models.CardRequest(
+                tenant_id=shop_b["tenant_id"],
+                public_ref="Q-BBBBBB",
+                customer_name="Marko",
+                email="marko@example.com",
+                phone="",
+                card_id=shop_b["card_id"],
+                requested_name="Card B",
+                set_code="LEB",
+                collector_number="2",
+                finish="nonfoil",
+                condition="NM",
+                language="en",
+                quantity=1,
+                currency="RSD",
+                customer_note="",
+                status="REQUESTED",
+                vendor_note="",
+            ),
+            models.RestockAlert(
+                tenant_id=shop_a["tenant_id"],
+                email="ana@example.com",
+                card_id=shop_a["card_id"],
+                finish="nonfoil",
+                condition="NM",
+                language="en",
+            ),
+            models.RestockAlert(
+                tenant_id=shop_b["tenant_id"],
+                email="marko@example.com",
+                card_id=shop_b["card_id"],
+                finish="nonfoil",
+                condition="NM",
+                language="en",
+            ),
+        ]
+    )
+    admin.commit()
+
+    set_tenant_context(app_session, shop_a["tenant_id"])
+    assert [row.public_ref for row in app_session.scalars(select(models.CardRequest))] == ["Q-AAAAAA"]
+    assert [row.email for row in app_session.scalars(select(models.RestockAlert))] == ["ana@example.com"]
+
+
 def test_no_tenant_context_sees_no_tenant_rows(app_session: Session, admin: Session) -> None:
     shop = _make_shop(admin)
 

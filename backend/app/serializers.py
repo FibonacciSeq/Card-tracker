@@ -53,7 +53,7 @@ def stock_item_out(stock: models.Stock, card: models.Card | None = None) -> sche
     )
 
 
-def staff_stock_out(stock: models.Stock, sold_30d: int = 0) -> schemas.StaffStockOut:
+def staff_stock_out(stock: models.Stock, sold_30d: int = 0, restock_waiting: int = 0) -> schemas.StaffStockOut:
     return schemas.StaffStockOut(
         stock_id=stock.id,
         card=card_out(stock.card),
@@ -64,6 +64,7 @@ def staff_stock_out(stock: models.Stock, sold_30d: int = 0) -> schemas.StaffStoc
         reserved=stock.reserved,
         available=stock.available,
         sold_30d=sold_30d,
+        restock_waiting=restock_waiting,
         price=schemas.Money(amount_minor=stock.price_minor, currency=stock.currency),
         is_online=stock.is_online,
         updated_at=stock.updated_at,
@@ -127,4 +128,67 @@ def reservation_summary_out(reservation: models.Reservation) -> schemas.Reservat
         created_at=reservation.created_at,
         total=schemas.Money(amount_minor=reservation.total_minor, currency=reservation.currency),
         line_count=len(reservation.lines),
+    )
+
+
+def card_request_out(
+    row: models.CardRequest,
+    tenant: models.Tenant,
+    access_token: str | None = None,
+) -> schemas.CardRequestOut:
+    target = (
+        schemas.Money(amount_minor=row.target_price_minor, currency=row.currency)
+        if row.target_price_minor is not None
+        else None
+    )
+    quote = (
+        schemas.Money(amount_minor=row.quote_price_minor, currency=row.quote_currency or row.currency)
+        if row.quote_price_minor is not None
+        else None
+    )
+    return schemas.CardRequestOut(
+        id=row.id,
+        public_ref=row.public_ref,
+        status=row.status,
+        card_id=row.card_id,
+        requested_name=row.requested_name,
+        set_code=row.set_code,
+        collector_number=row.collector_number,
+        finish=row.finish,
+        condition=row.condition,
+        language=row.language,
+        quantity=row.quantity,
+        target_price=target,
+        quote_price=quote,
+        quote_expires_at=row.quote_expires_at,
+        vendor_note=row.vendor_note,
+        customer_name=row.customer_name,
+        reservation_id=row.reservation_id,
+        reservation_ref=row.reservation.public_ref if row.reservation else None,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+        access_token=access_token,
+    )
+
+
+def staff_card_request_out(row: models.CardRequest, tenant: models.Tenant) -> schemas.StaffCardRequestOut:
+    base = card_request_out(row, tenant)
+    return schemas.StaffCardRequestOut(
+        **base.model_dump(exclude={"access_token"}),
+        customer_email=row.email,
+        customer_phone=row.phone,
+        customer_note=row.customer_note,
+    )
+
+
+def restock_alert_out(row: models.RestockAlert, *, already_subscribed: bool = False) -> schemas.RestockAlertOut:
+    return schemas.RestockAlertOut(
+        id=row.id,
+        card_id=row.card_id,
+        email=row.email,
+        finish=row.finish,
+        condition=row.condition,
+        language=row.language,
+        already_subscribed=already_subscribed,
+        created_at=row.created_at,
     )

@@ -31,6 +31,20 @@ class Settings(BaseSettings):
     login_rate_window_seconds: int = 300
     reservation_rate_limit: int = 30
     reservation_rate_window_seconds: int = 3600
+    restock_alert_rate_limit: int = 20
+    restock_alert_rate_window_seconds: int = 3600
+    card_request_rate_limit: int = 10
+    card_request_rate_window_seconds: int = 3600
+    # Notification delivery. "console" logs messages (useful in development);
+    # "smtp" sends real email; "none" disables delivery entirely.
+    notification_backend: str = "console"
+    notification_max_attempts: int = 8
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_username: str = ""
+    smtp_password: str = ""
+    smtp_from: str = "no-reply@cardtracker.local"
+    smtp_starttls: bool = True
 
     @model_validator(mode="after")
     def _validate_jwt_secret(self) -> "Settings":

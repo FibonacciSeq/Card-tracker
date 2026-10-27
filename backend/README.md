@@ -7,15 +7,24 @@ desktop app is unchanged and still uses its own SQLite database.
 ## What is implemented
 
 - Multi-tenant data model: tenants, settings, users, cards, stock,
-  reservations, reservation lines, stock movements, notifications, idempotency.
+  reservations, reservation lines, stock movements, notifications, idempotency,
+  special-order requests, restock alerts.
 - Public storefront: shop directory, shop profile, stock search/filters/facets,
-  reservation create, reservation lookup, reservation cancel.
+  reservation create, reservation lookup, reservation cancel, restock-alert
+  subscribe/unsubscribe, special-order request create/track/accept/cancel.
 - Staff API: login, stock list/create/update/adjust/sell, reservation queue,
-  status transitions, completion with partial quantities, dashboard, settings.
+  status transitions, completion with partial quantities, dashboard, settings,
+  audit trail, staff management, special-order quote/decline/convert, and
+  per-variant "customers waiting" counts.
 - Reservation engine: all-or-nothing holds, stock conflict handling, customer
   cancellation, expiry, completion, movement ledger, idempotency keys.
 - Postgres RLS policies in the initial migration; tenant context is set for
   public shop requests, staff requests, and the expiry worker.
+- Restock alerts fire automatically when a variant returns to stock (manual
+  adjust, PATCH, create, or CSV import).
+- Notification outbox delivery worker with retry/backoff, console and SMTP
+  backends, per-tenant RLS iteration, and quote-expiry handling in the expiry
+  worker.
 - Expiry worker, Scryfall bulk importer, demo seed command.
 - Pytest suite running on SQLite for fast local/CI feedback, plus a
   PostgreSQL-only suite for RLS, tenant context, and last-copy locking.
@@ -91,8 +100,15 @@ cd backend
 docker compose up --build
 ```
 
-The API container runs `alembic upgrade head` before starting. The worker
-container releases expired reservations every 60 seconds.
+The API container runs `alembic upgrade head` before starting. The `worker`
+container releases expired reservations and quotes every 60 seconds; the
+`notifications` container drains the email outbox every 10 seconds.
+
+Notification delivery is controlled by `CARDTRACKER_NOTIFICATION_BACKEND`:
+`console` (default, logs the message), `smtp` (requires the
+`CARDTRACKER_SMTP_*` variables), or `none`. Failed sends retry with exponential
+backoff (60s doubling, capped at one hour) for
+`CARDTRACKER_NOTIFICATION_MAX_ATTEMPTS` attempts (default 8).
 
 For a manual migration:
 
@@ -190,6 +206,12 @@ Public:
 - `GET /v1/reservations/{id}` with `X-Shop-Slug` and `X-Reservation-Token`
 - `POST /v1/reservations/{id}/cancel` with the same headers
 - `GET /v1/shops/{slug}/reservations/{public_ref}` with the token
+- `POST /v1/shops/{slug}/restock-alerts`
+- `DELETE /v1/shops/{slug}/restock-alerts/{id}?email=...`
+- `POST /v1/shops/{slug}/card-requests`
+- `GET /v1/card-requests/{id}` with `X-Shop-Slug` and `X-Card-Request-Token`
+- `POST /v1/card-requests/{id}/accept` with the same headers
+- `POST /v1/card-requests/{id}/cancel` with the same headers
 
 Staff:
 
@@ -206,14 +228,18 @@ Staff:
 - `POST /v1/staff/reservations/{id}/status`
 - `POST /v1/staff/reservations/{id}/complete`
 - `GET|PATCH /v1/staff/settings`
+- `GET /v1/staff/card-requests?status=...`
+- `POST /v1/staff/card-requests/{id}/quote`
+- `POST /v1/staff/card-requests/{id}/decline`
+- `POST /v1/staff/card-requests/{id}/convert`
 
 ## Phase 0 gaps / before pilot
 
 - Customer OTP auth and customer accounts are not implemented yet; guest
   reservations use a per-reservation access token.
-- Restock alerts and special-order requests are in the spec but not yet
-  implemented.
-- Notification outbox rows are written, but email/push delivery workers are not.
-- Excel/CSV stock import and export endpoints are not implemented.
+- Push notifications (FCM/APNs) are not implemented; email is the only
+  delivery channel.
+- Restock alerts require an email address instead of a customer account; OTP
+  accounts in the mobile app will later attach them to a customer.
 - No mobile app or web admin yet. Those are Phase 1/2.
 - The root `make check` excludes `backend/`; use the backend commands above.

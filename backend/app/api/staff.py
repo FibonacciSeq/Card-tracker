@@ -16,7 +16,8 @@ from app.config import settings
 from app.db import get_db, set_tenant_context
 from app.deps import get_current_staff, require_owner
 from app.security import create_access_token, hash_password, verify_password
-from app.services import audit, ratelimit, stock_csv
+from app.services import audit, notifications, ratelimit, restock, stock_csv
+from app.services import card_requests as card_request_service
 from app.services import reservations as reservation_service
 
 router = APIRouter(prefix="/v1/staff", tags=["staff"])
@@ -351,7 +352,37 @@ def list_stock(
         stmt = stmt.where(models.Stock.is_online.is_(True))
 
     sold = _sold_30d(db, _staff_tenant(user))
-    items = [serializers.staff_stock_out(stock, sold.get(stock.id, 0)) for stock in db.scalars(stmt).all()]
+    waiting_rows = db.execute(
+        select(
+            models.RestockAlert.card_id,
+            models.RestockAlert.finish,
+            models.RestockAlert.condition,
+            models.RestockAlert.language,
+            func.count(),
+        )
+        .where(
+            models.RestockAlert.tenant_id == _staff_tenant(user),
+            models.RestockAlert.notified_at.is_(None),
+        )
+        .group_by(
+            models.RestockAlert.card_id,
+            models.RestockAlert.finish,
+            models.RestockAlert.condition,
+            models.RestockAlert.language,
+        )
+    ).all()
+    waiting = {
+        (card_id, finish, condition, language): int(count)
+        for card_id, finish, condition, language, count in waiting_rows
+    }
+    items = [
+        serializers.staff_stock_out(
+            stock,
+            sold.get(stock.id, 0),
+            waiting.get((stock.card_id, stock.finish, stock.condition, stock.language), 0),
+        )
+        for stock in db.scalars(stmt).all()
+    ]
     return schemas.StaffStockListOut(items=items)
 
 
@@ -484,6 +515,7 @@ def create_stock(
                     reason="initial stock",
                 )
             )
+        restock.notify_waiting(db, tenant, stock)
         audit.record(
             db,
             tenant_id=_staff_tenant(user),
@@ -550,6 +582,8 @@ def update_stock(
                 reason="stock update",
             )
         )
+    if delta > 0:
+        restock.notify_waiting(db, _tenant(db, user), stock)
     changes = payload.model_dump(exclude_unset=True)
     if changes:
         audit.record(
@@ -599,6 +633,8 @@ def adjust_stock(
             reason=payload.reason,
         )
     )
+    if payload.delta > 0:
+        restock.notify_waiting(db, _tenant(db, user), stock)
     audit.record(
         db,
         tenant_id=_staff_tenant(user),
@@ -735,6 +771,18 @@ def update_reservation_status(
         reservation = reservation_service.cancel_reservation(
             db, reservation, reason=payload.reason or "cancelled by staff", actor_id=user.id
         )
+        notifications.enqueue(
+            db,
+            _staff_tenant(user),
+            "RESERVATION_CANCELLED",
+            {
+                "reservation_id": str(reservation.id),
+                "public_ref": reservation.public_ref,
+                "status": "CANCELLED",
+            },
+            recipient=reservation.email,
+        )
+        db.commit()
     else:
         allowed = {
             "REQUESTED": {"CONFIRMED"},
@@ -748,12 +796,18 @@ def update_reservation_status(
             )
         reservation.status = payload.status
         reservation.updated_at = _now()
-        db.add(
-            models.Notification(
-                tenant_id=_staff_tenant(user),
-                kind=f"RESERVATION_{payload.status}",
-                payload={"reservation_id": str(reservation.id), "public_ref": reservation.public_ref},
-            )
+        notifications.enqueue(
+            db,
+            _staff_tenant(user),
+            f"RESERVATION_{payload.status}",
+            {
+                "reservation_id": str(reservation.id),
+                "public_ref": reservation.public_ref,
+                "status": payload.status,
+                "customer_name": reservation.customer_name,
+                "expires_at": reservation.expires_at.isoformat(),
+            },
+            recipient=reservation.email,
         )
         db.commit()
         db.refresh(reservation)
@@ -793,6 +847,115 @@ def complete_reservation(
     )
     tenant = _tenant(db, user)
     return serializers.staff_reservation_out(reservation, tenant)
+
+
+def _get_card_request(db: Session, tenant_id: uuid.UUID, request_id: uuid.UUID) -> models.CardRequest:
+    row = db.scalar(
+        select(models.CardRequest)
+        .options(joinedload(models.CardRequest.reservation))
+        .where(
+            models.CardRequest.id == request_id,
+            models.CardRequest.tenant_id == tenant_id,
+        )
+    )
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Request not found")
+    return row
+
+
+@router.get("/card-requests", response_model=list[schemas.StaffCardRequestOut])
+def list_card_requests(
+    status_filter: str | None = Query(default=None, alias="status", max_length=20),
+    limit: int = Query(default=200, ge=1, le=500),
+    user: models.User = Depends(get_current_staff),
+    db: Session = Depends(get_db),
+):
+    tenant = _tenant(db, user)
+    stmt = (
+        select(models.CardRequest)
+        .options(joinedload(models.CardRequest.reservation))
+        .where(models.CardRequest.tenant_id == _staff_tenant(user))
+        .order_by(models.CardRequest.created_at.desc())
+        .limit(limit)
+    )
+    if status_filter:
+        stmt = stmt.where(models.CardRequest.status == status_filter.upper())
+    return [serializers.staff_card_request_out(row, tenant) for row in db.scalars(stmt).all()]
+
+
+@router.post("/card-requests/{request_id}/quote", response_model=schemas.StaffCardRequestOut)
+def quote_card_request(
+    request_id: uuid.UUID,
+    payload: schemas.QuoteIn,
+    user: models.User = Depends(get_current_staff),
+    db: Session = Depends(get_db),
+):
+    tenant = _tenant(db, user)
+    row = _get_card_request(db, _staff_tenant(user), request_id)
+    row = card_request_service.quote(db, tenant, row, payload)
+    audit.record(
+        db,
+        tenant_id=_staff_tenant(user),
+        actor_id=user.id,
+        action="card_request.quote",
+        entity_type="card_request",
+        entity_id=row.id,
+        summary=f"Quoted {row.public_ref} at {row.quote_price_minor} {row.quote_currency}",
+        data={
+            "quote_price_minor": row.quote_price_minor,
+            "quote_expires_at": row.quote_expires_at.isoformat() if row.quote_expires_at else None,
+        },
+    )
+    db.commit()
+    return serializers.staff_card_request_out(row, tenant)
+
+
+@router.post("/card-requests/{request_id}/decline", response_model=schemas.StaffCardRequestOut)
+def decline_card_request(
+    request_id: uuid.UUID,
+    payload: schemas.DeclineIn,
+    user: models.User = Depends(get_current_staff),
+    db: Session = Depends(get_db),
+):
+    tenant = _tenant(db, user)
+    row = _get_card_request(db, _staff_tenant(user), request_id)
+    row = card_request_service.decline(db, tenant, row, payload.vendor_note)
+    audit.record(
+        db,
+        tenant_id=_staff_tenant(user),
+        actor_id=user.id,
+        action="card_request.decline",
+        entity_type="card_request",
+        entity_id=row.id,
+        summary=f"Declined {row.public_ref}",
+        data={"vendor_note": row.vendor_note},
+    )
+    db.commit()
+    return serializers.staff_card_request_out(row, tenant)
+
+
+@router.post("/card-requests/{request_id}/convert", response_model=schemas.StaffCardRequestOut)
+def convert_card_request(
+    request_id: uuid.UUID,
+    payload: schemas.ConvertIn,
+    user: models.User = Depends(get_current_staff),
+    db: Session = Depends(get_db),
+):
+    tenant = _tenant(db, user)
+    row = _get_card_request(db, _staff_tenant(user), request_id)
+    row, reservation = card_request_service.convert(db, tenant, row, payload.quantity)
+    audit.record(
+        db,
+        tenant_id=_staff_tenant(user),
+        actor_id=user.id,
+        action="card_request.convert",
+        entity_type="card_request",
+        entity_id=row.id,
+        summary=f"Converted {row.public_ref} into reservation {reservation.public_ref}",
+        data={"reservation_id": str(reservation.id), "reservation_ref": reservation.public_ref},
+    )
+    db.commit()
+    return serializers.staff_card_request_out(row, tenant)
 
 
 @router.get("/dashboard", response_model=schemas.DashboardOut)
@@ -836,6 +999,14 @@ def dashboard(
             (models.Stock.quantity - models.Stock.reserved) <= 2,
         )
     )
+    open_requests = db.scalar(
+        select(func.count())
+        .select_from(models.CardRequest)
+        .where(
+            models.CardRequest.tenant_id == _staff_tenant(user),
+            models.CardRequest.status.in_(card_request_service.ACTIVE_STATUSES),
+        )
+    )
     stale = db.scalar(
         select(func.count())
         .select_from(models.Stock)
@@ -849,6 +1020,7 @@ def dashboard(
     return schemas.DashboardOut(
         pending_reservations=int(pending or 0),
         active_reservations=int(active or 0),
+        open_requests=int(open_requests or 0),
         today_sales_minor=int(today_sales or 0),
         currency=tenant.currency if tenant else "EUR",
         low_stock=int(low_stock or 0),

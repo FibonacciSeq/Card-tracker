@@ -41,6 +41,13 @@ export function DashboardPage() {
               to="/reservations"
             />
             <Stat
+              label="Special orders"
+              value={data.open_requests}
+              hint="Requested, quoted, or accepted"
+              to="/requests"
+              tone={data.open_requests > 0 ? "attention" : undefined}
+            />
+            <Stat
               label="Sold today"
               value={`${data.today_sales_minor}`}
               hint="Copies sold through the app"
@@ -78,6 +85,14 @@ export function DashboardPage() {
             ) : (
               <p className="muted">No new reservation requests. Keep stock counts accurate so holds stay trustworthy.</p>
             )}
+            {data.open_requests > 0 ? (
+              <p>
+                <Link to="/requests">
+                  {data.open_requests} special order{data.open_requests === 1 ? "" : "s"}
+                </Link>{" "}
+                waiting for a quote or a conversion.
+              </p>
+            ) : null}
             {data.stale_stock > 0 ? (
               <p>
                 {data.stale_stock} online card{data.stale_stock === 1 ? " has" : "s have"} not been touched in a week.

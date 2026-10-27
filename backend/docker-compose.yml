@@ -43,5 +43,17 @@ services:
         condition: service_healthy
     command: ["python", "-m", "app.workers.expiry"]
 
+  notifications:
+    build: .
+    env_file:
+      - .env
+    environment:
+      CARDTRACKER_DATABASE_URL: postgresql+psycopg://cardtracker:cardtracker@db:5432/cardtracker
+      CARDTRACKER_AUTO_CREATE_TABLES: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "app.workers.notifications"]
+
 volumes:
   pgdata:
