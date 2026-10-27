@@ -26,6 +26,15 @@ def shop_out(tenant: models.Tenant) -> schemas.ShopOut:
     )
 
 
+def staff_shop_out(tenant: models.Tenant) -> schemas.StaffShopOut:
+    """Public shop profile plus settings only staff may see."""
+    base = shop_out(tenant)
+    return schemas.StaffShopOut(
+        **base.model_dump(),
+        notification_email=tenant.settings.notification_email if tenant.settings else None,
+    )
+
+
 def card_out(card: models.Card) -> schemas.CardOut:
     return schemas.CardOut.model_validate(card)
 
@@ -97,10 +106,22 @@ def reservation_out(
     )
 
 
+def staff_reservation_out(reservation: models.Reservation, tenant: models.Tenant) -> schemas.StaffReservationOut:
+    """Same shape as the public view plus the details staff need to respond."""
+    base = reservation_out(reservation, tenant)
+    return schemas.StaffReservationOut(
+        **base.model_dump(),
+        customer_email=reservation.email,
+        customer_phone=reservation.phone,
+        note=reservation.note,
+    )
+
+
 def reservation_summary_out(reservation: models.Reservation) -> schemas.ReservationSummaryOut:
     return schemas.ReservationSummaryOut(
         id=reservation.id,
         public_ref=reservation.public_ref,
+        customer_name=reservation.customer_name,
         status=reservation.status,
         expires_at=reservation.expires_at,
         created_at=reservation.created_at,

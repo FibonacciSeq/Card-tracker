@@ -34,6 +34,12 @@ class ShopOut(BaseModel):
     directory_opt_in: bool = False
 
 
+class StaffShopOut(ShopOut):
+    """Staff view: adds settings that must not appear on the public profile."""
+
+    notification_email: EmailStr | None = None
+
+
 class CardOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -111,9 +117,18 @@ class ReservationOut(BaseModel):
     access_token: str | None = None
 
 
+class StaffReservationOut(ReservationOut):
+    """Staff view: adds the contact details and note needed to act on a hold."""
+
+    customer_email: EmailStr
+    customer_phone: str
+    note: str
+
+
 class ReservationSummaryOut(BaseModel):
     id: uuid.UUID
     public_ref: str
+    customer_name: str
     status: str
     expires_at: datetime
     created_at: datetime

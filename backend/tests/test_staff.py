@@ -188,3 +188,39 @@ def test_staff_cannot_read_other_reservation(client, tenant, other_tenant, stock
     headers = {"Authorization": f"Bearer {create_access_token(other_owner.id, other_tenant.id, 'owner')}"}
     response = client.get(f"/v1/staff/reservations/{created['id']}", headers=headers)
     assert response.status_code == 404
+
+
+def test_staff_reservation_view_includes_contact_details(client, tenant, stock, reservation_payload, auth):
+    """Staff need contact details and the note; the public view must not add them."""
+    created = _create(client, tenant, reservation_payload)
+    assert created.status_code == 201, created.text
+    public = created.json()
+    assert "customer_email" not in public
+    assert "customer_phone" not in public
+    assert "note" not in public
+
+    listing = client.get("/v1/staff/reservations", headers=auth)
+    assert listing.status_code == 200
+    assert listing.json()[0]["customer_name"] == reservation_payload["customer"]["name"]
+
+    detail = client.get(f"/v1/staff/reservations/{public['id']}", headers=auth)
+    assert detail.status_code == 200
+    data = detail.json()
+    assert data["customer_name"] == reservation_payload["customer"]["name"]
+    assert data["customer_email"] == reservation_payload["customer"]["email"]
+    assert data["customer_phone"] == reservation_payload["customer"]["phone"]
+    assert data["note"] == reservation_payload["note"]
+
+
+def test_settings_include_alert_email_but_public_profile_does_not(client, tenant, auth, db):
+    tenant.settings.notification_email = "orders@example.com"
+    db.add(tenant.settings)
+    db.commit()
+
+    staff = client.get("/v1/staff/settings", headers=auth)
+    assert staff.status_code == 200
+    assert staff.json()["notification_email"] == "orders@example.com"
+
+    public = client.get(f"/v1/shops/{tenant.slug}")
+    assert public.status_code == 200
+    assert "notification_email" not in public.json()

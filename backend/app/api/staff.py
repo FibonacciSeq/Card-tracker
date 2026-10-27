@@ -357,7 +357,7 @@ def list_reservations(
     return [serializers.reservation_summary_out(res) for res in db.scalars(stmt).all()]
 
 
-@router.get("/reservations/{reservation_id}", response_model=schemas.ReservationOut)
+@router.get("/reservations/{reservation_id}", response_model=schemas.StaffReservationOut)
 def get_reservation(
     reservation_id: uuid.UUID,
     user: models.User = Depends(get_current_staff),
@@ -372,10 +372,10 @@ def get_reservation(
     if reservation is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reservation not found")
     tenant = _tenant(db, user)
-    return serializers.reservation_out(reservation, tenant)
+    return serializers.staff_reservation_out(reservation, tenant)
 
 
-@router.post("/reservations/{reservation_id}/status", response_model=schemas.ReservationOut)
+@router.post("/reservations/{reservation_id}/status", response_model=schemas.StaffReservationOut)
 def update_reservation_status(
     reservation_id: uuid.UUID,
     payload: schemas.StatusUpdateIn,
@@ -419,10 +419,10 @@ def update_reservation_status(
         db.refresh(reservation)
 
     tenant = _tenant(db, user)
-    return serializers.reservation_out(reservation, tenant)
+    return serializers.staff_reservation_out(reservation, tenant)
 
 
-@router.post("/reservations/{reservation_id}/complete", response_model=schemas.ReservationOut)
+@router.post("/reservations/{reservation_id}/complete", response_model=schemas.StaffReservationOut)
 def complete_reservation(
     reservation_id: uuid.UUID,
     payload: schemas.CompleteIn,
@@ -442,7 +442,7 @@ def complete_reservation(
         db, reservation, line_quantities=payload.lines, actor_id=user.id
     )
     tenant = _tenant(db, user)
-    return serializers.reservation_out(reservation, tenant)
+    return serializers.staff_reservation_out(reservation, tenant)
 
 
 @router.get("/dashboard", response_model=schemas.DashboardOut)
@@ -506,7 +506,7 @@ def dashboard(
     )
 
 
-@router.get("/settings", response_model=schemas.ShopOut)
+@router.get("/settings", response_model=schemas.StaffShopOut)
 def get_settings(
     user: models.User = Depends(get_current_staff),
     db: Session = Depends(get_db),
@@ -514,10 +514,10 @@ def get_settings(
     tenant = _tenant(db, user)
     if tenant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shop not found")
-    return serializers.shop_out(tenant)
+    return serializers.staff_shop_out(tenant)
 
 
-@router.patch("/settings", response_model=schemas.ShopOut)
+@router.patch("/settings", response_model=schemas.StaffShopOut)
 def update_settings(
     payload: schemas.SettingsUpdateIn,
     user: models.User = Depends(require_owner),
@@ -535,4 +535,4 @@ def update_settings(
         setattr(settings_row, field, value)
     db.commit()
     db.refresh(tenant)
-    return serializers.shop_out(tenant)
+    return serializers.staff_shop_out(tenant)
