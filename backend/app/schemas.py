@@ -217,6 +217,21 @@ class CompleteIn(BaseModel):
     lines: list[CompleteLineIn] | None = None
 
 
+class StockImportErrorOut(BaseModel):
+    row: int
+    message: str
+    field: str | None = None
+
+
+class StockImportReportOut(BaseModel):
+    dry_run: bool
+    rows: int
+    created: int
+    updated: int
+    unchanged: int
+    errors: list[StockImportErrorOut]
+
+
 class DashboardOut(BaseModel):
     pending_reservations: int
     active_reservations: int

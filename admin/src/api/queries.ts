@@ -11,6 +11,7 @@ import type {
   StaffStockList,
   StatusUpdate,
   StockAdjust,
+  StockImportReport,
   StockSell,
   StockUpdate,
 } from "./types";
@@ -72,6 +73,21 @@ export function useSellStock() {
         body: { quantity, reason: reason ?? "in-store sale" } satisfies StockSell,
       }),
     onSuccess: () => refreshStock(client),
+  });
+}
+
+export function useImportStock() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ file, dryRun }: { file: File; dryRun: boolean }) => {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("dry_run", String(dryRun));
+      return request<StockImportReport>("/v1/staff/stock/import", { method: "POST", body: form });
+    },
+    onSuccess: (report) => {
+      if (!report.dry_run) refreshStock(client);
+    },
   });
 }
 

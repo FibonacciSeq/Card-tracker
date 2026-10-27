@@ -381,6 +381,29 @@ a:hover {
   flex-wrap: wrap;
 }
 
+.toolbar__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-left: auto;
+}
+
+.import-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.import-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.import-panel__header h2 {
+  margin-bottom: 0.15rem;
+}
+
 .tabs {
   display: flex;
   gap: 0.35rem;

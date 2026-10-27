@@ -6,7 +6,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Response, UploadFile, status
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
@@ -17,6 +17,7 @@ from app.db import get_db, set_tenant_context
 from app.deps import get_current_staff, require_owner
 from app.security import create_access_token, verify_password
 from app.services import reservations as reservation_service
+from app.services import stock_csv
 
 router = APIRouter(prefix="/v1/staff", tags=["staff"])
 
@@ -147,6 +148,71 @@ def list_stock(
     sold = _sold_30d(db, _staff_tenant(user))
     items = [serializers.staff_stock_out(stock, sold.get(stock.id, 0)) for stock in db.scalars(stmt).all()]
     return schemas.StaffStockListOut(items=items)
+
+
+MAX_IMPORT_BYTES = 5 * 1024 * 1024
+
+
+@router.get("/stock/export.csv")
+def export_stock_csv(
+    user: models.User = Depends(get_current_staff),
+    db: Session = Depends(get_db),
+):
+    """Download stock in the same shape the importer accepts."""
+    tenant = _tenant(db, user)
+    body = stock_csv.render_csv(stock_csv.export_rows(db, _staff_tenant(user)))
+    return Response(
+        content=body,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="stock-{tenant.slug}.csv"'},
+    )
+
+
+@router.post("/stock/import", response_model=schemas.StockImportReportOut)
+def import_stock_csv(
+    file: UploadFile = File(...),
+    dry_run: bool = Form(default=True),
+    user: models.User = Depends(get_current_staff),
+    db: Session = Depends(get_db),
+):
+    """Import a stock CSV. Defaults to a dry run so a bad file changes nothing."""
+    tenant = _tenant(db, user)
+    raw = file.file.read(MAX_IMPORT_BYTES + 1)
+    if len(raw) > MAX_IMPORT_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="File is larger than 5 MB. Split the import into batches.",
+        )
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File must be UTF-8 encoded. In Excel, use Save as > CSV UTF-8.",
+        ) from exc
+
+    try:
+        rows, parse_errors = stock_csv.parse_csv(text, tenant.currency)
+    except stock_csv.CsvFormatError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    created, updated, unchanged, apply_errors = stock_csv.apply_rows(db, tenant, user.id, rows, dry_run=dry_run)
+    if dry_run:
+        db.rollback()
+    else:
+        db.commit()
+
+    errors = parse_errors + apply_errors
+    return schemas.StockImportReportOut(
+        dry_run=dry_run,
+        rows=len(rows) + len(parse_errors),
+        created=created,
+        updated=updated,
+        unchanged=unchanged,
+        errors=[
+            schemas.StockImportErrorOut(row=error.row, message=error.message, field=error.field) for error in errors
+        ],
+    )
 
 
 def _get_stock(db: Session, tenant_id: uuid.UUID, stock_id: uuid.UUID) -> models.Stock:

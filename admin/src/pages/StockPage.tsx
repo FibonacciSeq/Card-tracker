@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { ApiError } from "../api/client";
-import { useAdjustStock, useSellStock, useStock, useUpdateStock } from "../api/queries";
-import type { StaffStock } from "../api/types";
+import { ApiError, requestBlob } from "../api/client";
+import { useAdjustStock, useImportStock, useSellStock, useStock, useUpdateStock } from "../api/queries";
+import type { StaffStock, StockImportReport } from "../api/types";
 import { StockLevels } from "../components/StockLevels";
 import { formatDateTime, formatMoney } from "../lib/format";
 import { useDebounced } from "../lib/useDebounced";
@@ -10,10 +10,31 @@ export function StockPage() {
   const [search, setSearch] = useState("");
   const [onlyOnline, setOnlyOnline] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [importOpen, setImportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
   const query = useDebounced(search.trim());
   const { data, isPending, error, refetch, isFetching } = useStock(query, onlyOnline);
 
   const items = data?.items ?? [];
+
+  async function downloadCsv() {
+    setExportError(null);
+    setExporting(true);
+    try {
+      const blob = await requestBlob("/v1/staff/stock/export.csv");
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "stock.csv";
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (cause) {
+      setExportError(cause instanceof ApiError ? cause.message : "Could not export stock.");
+    } finally {
+      setExporting(false);
+    }
+  }
 
   return (
     <div className="page">
@@ -50,7 +71,29 @@ export function StockPage() {
         <span className="muted small" aria-live="polite">
           {isPending ? "Loading…" : `${items.length} card${items.length === 1 ? "" : "s"}`}
         </span>
+        <div className="toolbar__actions">
+          <button type="button" className="btn btn--small" onClick={() => void downloadCsv()} disabled={exporting}>
+            {exporting ? "Exporting…" : "Export CSV"}
+          </button>
+          <button
+            type="button"
+            className="btn btn--small"
+            onClick={() => setImportOpen((open) => !open)}
+            aria-expanded={importOpen}
+            data-testid="import-toggle"
+          >
+            Import CSV
+          </button>
+        </div>
       </div>
+
+      {exportError ? (
+        <p className="alert alert--error" role="alert">
+          {exportError}
+        </p>
+      ) : null}
+
+      {importOpen ? <StockImport onClose={() => setImportOpen(false)} /> : null}
 
       {error ? (
         <p className="alert alert--error" role="alert">
@@ -332,5 +375,112 @@ function StockEditor({ item, onClose }: { item: StaffStock; onClose: () => void 
         </button>
       </div>
     </div>
+  );
+}
+
+function StockImport({ onClose }: { onClose: () => void }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [checked, setChecked] = useState(false);
+  const [report, setReport] = useState<StockImportReport | null>(null);
+  const mutation = useImportStock();
+
+  function run(dryRun: boolean) {
+    if (!file) return;
+    mutation.mutate(
+      { file, dryRun },
+      {
+        onSuccess: (result) => {
+          setReport(result);
+          if (dryRun) setChecked(true);
+        },
+      },
+    );
+  }
+
+  return (
+    <section className="card import-panel" aria-labelledby="import-title" data-testid="import-panel">
+      <div className="import-panel__header">
+        <div>
+          <h2 id="import-title">Import stock from CSV</h2>
+          <p className="muted small">
+            Export first to get the template. The file is checked without changing anything, then applied.
+          </p>
+        </div>
+        <button type="button" className="btn btn--ghost btn--small" onClick={onClose}>
+          Close
+        </button>
+      </div>
+
+      <div className="inline-form">
+        <label htmlFor="import-file">CSV file</label>
+        <input
+          id="import-file"
+          type="file"
+          accept=".csv,text/csv"
+          data-testid="import-file"
+          onChange={(event) => {
+            setFile(event.target.files?.[0] ?? null);
+            setChecked(false);
+            setReport(null);
+          }}
+        />
+        <button
+          type="button"
+          className="btn btn--small"
+          disabled={!file || mutation.isPending}
+          onClick={() => run(true)}
+          data-testid="import-check"
+        >
+          {mutation.isPending && !checked ? "Checking…" : "Check file"}
+        </button>
+        <button
+          type="button"
+          className="btn btn--small btn--primary"
+          disabled={!file || !checked || mutation.isPending}
+          onClick={() => run(false)}
+          data-testid="import-apply"
+        >
+          Apply import
+        </button>
+      </div>
+
+      {mutation.error ? (
+        <p className="alert alert--error" role="alert">
+          {mutation.error instanceof ApiError ? mutation.error.message : String(mutation.error)}
+        </p>
+      ) : null}
+
+      {report ? (
+        <div aria-live="polite" data-testid="import-report">
+          <p>
+            <strong>{report.dry_run ? "Check only — nothing changed." : "Import applied."}</strong>{" "}
+            {report.rows} row{report.rows === 1 ? "" : "s"}: {report.created} new, {report.updated} updated,{" "}
+            {report.unchanged} unchanged, {report.errors.length} problem
+            {report.errors.length === 1 ? "" : "s"}.
+          </p>
+          {report.errors.length > 0 ? (
+            <table className="table table--tight">
+              <caption className="sr-only">Rows that will be skipped</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Row</th>
+                  <th scope="col">Column</th>
+                  <th scope="col">Problem</th>
+                </tr>
+              </thead>
+              <tbody>
+                {report.errors.map((issue, index) => (
+                  <tr key={`${issue.row}-${issue.field ?? "row"}-${index}`}>
+                    <td className="num">{issue.row}</td>
+                    <td>{issue.field ?? "—"}</td>
+                    <td>{issue.message}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
   );
 }

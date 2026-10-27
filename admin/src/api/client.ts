@@ -39,15 +39,24 @@ function detailFrom(payload: unknown, status: number): string {
   return `Request failed (${status}).`;
 }
 
+function authHeaders(): Record<string, string> {
+  return accessToken ? { Authorization: `Bearer ${accessToken}` } : {};
+}
+
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (options.body !== undefined) headers["Content-Type"] = "application/json";
-  if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+  const isForm = options.body instanceof FormData;
+  const headers: Record<string, string> = { Accept: "application/json", ...authHeaders() };
+  if (options.body !== undefined && !isForm) headers["Content-Type"] = "application/json";
 
   const response = await fetch(`${BASE_URL}${path}`, {
     method: options.method ?? "GET",
     headers,
-    body: options.body === undefined ? undefined : JSON.stringify(options.body),
+    body:
+      options.body === undefined
+        ? undefined
+        : isForm
+          ? (options.body as FormData)
+          : JSON.stringify(options.body),
     signal: options.signal,
   });
 
@@ -70,4 +79,15 @@ function safeJson(text: string): unknown {
   } catch {
     return text;
   }
+}
+
+/** Download a file (CSV export) with the same auth and error handling. */
+export async function requestBlob(path: string): Promise<Blob> {
+  const response = await fetch(`${BASE_URL}${path}`, { headers: authHeaders() });
+  if (!response.ok) {
+    if (response.status === 401) window.dispatchEvent(new Event("cardtracker:unauthorized"));
+    const text = await response.text();
+    throw new ApiError(response.status, detailFrom(text ? safeJson(text) : null, response.status));
+  }
+  return response.blob();
 }

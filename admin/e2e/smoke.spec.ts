@@ -124,3 +124,40 @@ test("saves shop settings", async ({ page }) => {
   await expect(page.getByLabel("Display name")).toHaveValue("Bolt Shop Deluxe");
   await expect(page.getByLabel("Hold duration (hours)")).toHaveValue("48");
 });
+
+test("exports the stock template and imports a checked change", async ({ page }) => {
+  await signIn(page);
+  await nav(page, "Stock").click();
+
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    page.getByRole("button", { name: "Export CSV" }).click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/stock.*\.csv/);
+
+  const csv =
+    "card_name,set_code,collector_number,finish,condition,language,quantity,price,currency,is_online\n" +
+    "Lightning Bolt,LEB,161,nonfoil,NM,en,7,1250.00,RSD,true\n";
+
+  await page.getByTestId("import-toggle").click();
+  await page.getByTestId("import-file").setInputFiles({
+    name: "stock.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(csv, "utf-8"),
+  });
+  await page.getByTestId("import-check").click();
+
+  const report = page.getByTestId("import-report");
+  await expect(report).toContainText("Check only");
+  await expect(report).toContainText("1 updated");
+  await expect(page.getByTestId("import-apply")).toBeEnabled();
+
+  await page.getByTestId("import-apply").click();
+  await expect(report).toContainText("Import applied.");
+
+  await page.getByTestId("stock-search").fill("Lightning Bolt");
+  const table = page.getByTestId("stock-table");
+  const row = table.getByRole("row", { name: /Lightning Bolt/ });
+  await expect(row).toBeVisible();
+  await expect(row.locator("dd").first()).toHaveText("7");
+});
