@@ -17,7 +17,8 @@ desktop app is unchanged and still uses its own SQLite database.
 - Postgres RLS policies in the initial migration; tenant context is set for
   public shop requests, staff requests, and the expiry worker.
 - Expiry worker, Scryfall bulk importer, demo seed command.
-- Pytest suite running on SQLite for fast local/CI feedback.
+- Pytest suite running on SQLite for fast local/CI feedback, plus a
+  PostgreSQL-only suite for RLS, tenant context, and last-copy locking.
 
 ## Local setup
 
@@ -118,17 +119,63 @@ policy exists.
 `tenant_settings` is intentionally not RLS-protected because the public shop
 directory reads branding across tenants. It contains no customer data.
 
+## Verify against PostgreSQL
+
+SQLite cannot exercise row-level security, `FOR UPDATE`, or the last-copy
+race, so those behaviours are covered by `tests/test_postgres.py`. The tests
+skip unless both URLs are set:
+
+```bash
+export CARDTRACKER_TEST_POSTGRES_ADMIN_URL='postgresql+psycopg://postgres@127.0.0.1:55432/cardtracker'
+export CARDTRACKER_TEST_POSTGRES_URL='postgresql+psycopg://cardtracker_app:cardtracker_app@127.0.0.1:55432/cardtracker'
+```
+
+`CARDTRACKER_TEST_POSTGRES_URL` must use a **non-owner, non-superuser** role,
+otherwise Postgres ignores RLS. The suite creates that role and grants it
+access when the admin URL is privileged enough to do so.
+
+Three ways to get a server:
+
+- **Portable, no Docker or root** — downloads a pinned PostgreSQL build into a
+  cache directory and runs it on a spare port:
+
+  ```bash
+  ./scripts/local_postgres.sh start
+  eval "$(./scripts/local_postgres.sh env)"
+  ```
+
+- **Docker** — `docker run --rm -p 55432:5432 -e POSTGRES_PASSWORD=postgres postgres:16`,
+  then use the URLs above.
+
+- **Managed** (Neon, Supabase, RDS) — use the provider's admin URL for
+  migrations and a dedicated non-owner role for `CARDTRACKER_TEST_POSTGRES_URL`.
+
+What the suite proves:
+
+| Test | Proves |
+| --- | --- |
+| `test_rls_hides_other_tenants` | Tenant A never sees tenant B's stock |
+| `test_no_tenant_context_sees_no_tenant_rows` | A missing tenant context fails closed |
+| `test_rls_blocks_cross_tenant_write` | `WITH CHECK` stops cross-tenant inserts |
+| `test_tenant_settings_are_readable_without_tenant_context` | The directory exception stays intentional |
+| `test_tenant_context_survives_commit` | The `after_begin` hook re-applies context after a commit |
+| `test_last_copy_race_has_exactly_one_winner` | Two simultaneous holds on the last copy: exactly one wins |
+
+The race test is a real regression test: removing `.with_for_update()` from
+`_lock_stocks` makes both attempts succeed.
+
 ## Tests and checks
 
 ```bash
 cd backend
-../.venv/bin/python -m pytest
+../.venv/bin/python -m pytest        # SQLite suite; Postgres tests skip
 ../.venv/bin/ruff check .
-../.venv/bin/mypy app
+../.venv/bin/mypy app tests
 ```
 
-Backend tests use an in-memory SQLite database. RLS, `FOR UPDATE`, and real
-concurrency must also be verified against Postgres before production.
+With the Postgres URLs exported, the same `pytest` run includes the isolation
+and locking tests. CI runs both, plus `alembic downgrade base && alembic
+upgrade head` and an assertion that RLS is enabled on every tenant table.
 
 ## API surface (Phase 0)
 
@@ -168,7 +215,5 @@ Staff:
   implemented.
 - Notification outbox rows are written, but email/push delivery workers are not.
 - Excel/CSV stock import and export endpoints are not implemented.
-- Postgres RLS, migrations, and last-copy concurrency need testing against a
-  real Postgres instance.
 - No mobile app or web admin yet. Those are Phase 1/2.
 - The root `make check` excludes `backend/`; use the backend commands above.
