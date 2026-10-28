@@ -227,6 +227,10 @@ class RestockAlertCreateIn(BaseModel):
     language: str = Field(default="en", min_length=2, max_length=5)
 
 
+class RestockUnsubscribeIn(BaseModel):
+    email: EmailStr
+
+
 class RestockAlertOut(BaseModel):
     id: uuid.UUID
     card_id: uuid.UUID

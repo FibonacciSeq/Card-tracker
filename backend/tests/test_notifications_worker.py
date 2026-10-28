@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import sessionmaker
 
+from app import models
 from app.config import settings
 from app.services import notifications
 from app.workers import notifications as worker
@@ -61,7 +62,8 @@ def test_failure_backs_off_then_retries(db, tenant):
     db.refresh(row)
     assert row.attempts == 1
     assert row.sent_at is None
-    assert row.error and "smtp down" in row.error
+    assert row.error == "RuntimeError: delivery failed"
+    assert "smtp down" not in (row.error or "")
     assert row.next_attempt_at is not None
 
     # Still inside the 60s backoff window.
@@ -89,6 +91,35 @@ def test_stops_retrying_after_the_attempt_limit(db, tenant, monkeypatch):
     assert later.sent == []
 
 
+def test_permanent_restock_failure_releases_the_alert(db, tenant, card, stock, monkeypatch):
+    monkeypatch.setattr(settings, "notification_max_attempts", 1)
+    alert = models.RestockAlert(
+        tenant_id=tenant.id,
+        email="reader@example.com",
+        card_id=card.id,
+        finish=stock.finish,
+        condition=stock.condition,
+        language=stock.language,
+        notified_at=datetime.now(UTC),
+    )
+    db.add(alert)
+    db.flush()
+    row = notifications.enqueue(
+        db,
+        tenant.id,
+        "RESTOCK_AVAILABLE",
+        {"name": card.name, "alert_id": str(alert.id)},
+        recipient="reader@example.com",
+    )
+    db.commit()
+
+    assert worker.deliver_tenant(db, tenant, RecordingSender(RuntimeError("smtp down")), now=datetime.now(UTC)) == 0
+    db.refresh(alert)
+    db.refresh(row)
+    assert row.attempts == 1
+    assert alert.notified_at is None
+
+
 def test_in_app_notifications_are_not_emailed(db, tenant):
     notifications.enqueue(db, tenant.id, "RESERVATION_CREATED", {}, recipient=None)
     db.commit()
@@ -96,6 +127,12 @@ def test_in_app_notifications_are_not_emailed(db, tenant):
     sender = RecordingSender()
     assert worker.deliver_tenant(db, tenant, sender, now=datetime.now(UTC)) == 0
     assert sender.sent == []
+
+
+def test_none_backend_disables_delivery(monkeypatch):
+    monkeypatch.setattr(settings, "notification_backend", "none")
+    assert worker.default_sender() is None
+    assert worker.run_once() == 0
 
 
 def test_run_once_drains_each_tenant(db, tenant, other_tenant, monkeypatch):

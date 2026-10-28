@@ -2,23 +2,25 @@ from __future__ import annotations
 
 from logging.config import fileConfig
 
+from sqlalchemy import create_engine
+
 from alembic import context
 from app import models  # noqa: F401
 from app.config import settings
-from app.db import engine
 from app.models import Base
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", settings.database_url)
+migration_url = settings.migration_database_url or settings.database_url
+config.set_main_option("sqlalchemy.url", migration_url)
 target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
     context.configure(
-        url=settings.database_url,
+        url=migration_url,
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
@@ -28,6 +30,7 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
+    engine = create_engine(migration_url, pool_pre_ping=True)
     with engine.connect() as connection:
         context.configure(connection=connection, target_metadata=target_metadata)
         with context.begin_transaction():

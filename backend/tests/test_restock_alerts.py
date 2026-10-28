@@ -98,6 +98,45 @@ def test_no_notification_when_still_sold_out_or_offline(client, auth, tenant, ca
     assert db.query(models.RestockAlert).one().notified_at is None
 
 
+def test_turning_stock_back_online_triggers_restock_alerts(client, auth, tenant, card, stock, db):
+    stock.quantity = 2
+    stock.is_online = False
+    db.commit()
+    _subscribe(client, tenant, card)
+
+    response = client.patch(
+        f"/v1/staff/stock/{stock.id}",
+        json={"is_online": True},
+        headers=auth,
+    )
+    assert response.status_code == 200, response.text
+
+    db.expire_all()
+    assert db.query(models.RestockAlert).one().notified_at is not None
+    assert db.query(models.Notification).filter_by(kind="RESTOCK_AVAILABLE").count() == 1
+
+
+def test_releasing_a_reservation_triggers_restock_alerts(client, tenant, stock, reservation_payload, db):
+    stock.quantity = 1
+    stock.reserved = 0
+    db.commit()
+    reservation_payload["items"][0]["quantity"] = 1
+    created = client.post(f"/v1/shops/{tenant.slug}/reservations", json=reservation_payload)
+    assert created.status_code == 201, created.text
+    body = created.json()
+    _subscribe(client, tenant, stock.card)
+
+    cancelled = client.post(
+        f"/v1/reservations/{body['id']}/cancel",
+        headers={"X-Shop-Slug": tenant.slug, "X-Reservation-Token": body["access_token"]},
+    )
+    assert cancelled.status_code == 200, cancelled.text
+
+    db.expire_all()
+    assert db.query(models.RestockAlert).one().notified_at is not None
+    assert db.query(models.Notification).filter_by(kind="RESTOCK_AVAILABLE").count() == 1
+
+
 def test_csv_import_triggers_restock_alerts(client, auth, tenant, card, stock, db):
     _sold_out(db, stock)
     _subscribe(client, tenant, card)
@@ -122,17 +161,26 @@ def test_csv_import_triggers_restock_alerts(client, auth, tenant, card, stock, d
 def test_unsubscribe_requires_the_matching_email(client, tenant, card, stock, db):
     alert = _subscribe(client, tenant, card).json()
 
-    wrong = client.delete(f"/v1/shops/{tenant.slug}/restock-alerts/{alert['id']}?email=other@example.com")
+    wrong = client.post(
+        f"/v1/shops/{tenant.slug}/restock-alerts/{alert['id']}/unsubscribe",
+        json={"email": "other@example.com"},
+    )
     assert wrong.status_code == 204
     db.expire_all()
     assert db.query(models.RestockAlert).count() == 1
 
-    ok = client.delete(f"/v1/shops/{tenant.slug}/restock-alerts/{alert['id']}?email=READER@example.com")
+    ok = client.post(
+        f"/v1/shops/{tenant.slug}/restock-alerts/{alert['id']}/unsubscribe",
+        json={"email": "READER@example.com"},
+    )
     assert ok.status_code == 204
     db.expire_all()
     assert db.query(models.RestockAlert).count() == 0
 
-    again = client.delete(f"/v1/shops/{tenant.slug}/restock-alerts/{alert['id']}?email=reader@example.com")
+    again = client.post(
+        f"/v1/shops/{tenant.slug}/restock-alerts/{alert['id']}/unsubscribe",
+        json={"email": "reader@example.com"},
+    )
     assert again.status_code == 204
 
 

@@ -8,9 +8,9 @@ stock, at which point it becomes an ordinary CONFIRMED reservation.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app import models, schemas
@@ -20,6 +20,8 @@ from app.services import notifications
 from app.services import reservations as reservation_service
 
 ACTIVE_STATUSES = ("REQUESTED", "QUOTED", "ACCEPTED")
+# An accepted quote should not sit forever if the shop never converts it.
+ACCEPTED_EXPIRY_DAYS = 14
 
 
 class CardRequestError(Exception):
@@ -56,7 +58,7 @@ def _unique_ref(db: Session, tenant_id: uuid.UUID) -> str:
 
 
 def _notification_recipient(tenant: models.Tenant) -> str | None:
-    return tenant.settings.notification_email if tenant.settings else None
+    return notifications.staff_recipient(tenant)
 
 
 def create(
@@ -144,6 +146,10 @@ def quote(
     if row.status not in ("REQUESTED", "QUOTED"):
         raise CardRequestError("invalid_status", f"Cannot quote a {row.status.lower()} request.", 409)
 
+    quote_expires_at = _as_utc(payload.quote_expires_at)
+    if quote_expires_at is not None and quote_expires_at <= _now():
+        raise CardRequestError("invalid_expiry", "The quote expiry must be in the future.", 422)
+
     row.quote_price_minor = payload.quote_price_minor
     row.quote_currency = tenant.currency
     row.quote_expires_at = payload.quote_expires_at
@@ -173,7 +179,7 @@ def quote(
 
 
 def decline(db: Session, tenant: models.Tenant, row: models.CardRequest, note: str) -> models.CardRequest:
-    if row.status not in ("REQUESTED", "QUOTED"):
+    if row.status not in ("REQUESTED", "QUOTED", "ACCEPTED"):
         raise CardRequestError("invalid_status", f"Cannot decline a {row.status.lower()} request.", 409)
 
     row.status = "DECLINED"
@@ -201,6 +207,13 @@ def accept(db: Session, tenant: models.Tenant, row: models.CardRequest) -> model
     if row.status == "QUOTED" and expires_at is not None and expires_at <= now:
         row.status = "EXPIRED"
         row.updated_at = now
+        notifications.enqueue(
+            db,
+            tenant.id,
+            "CARD_REQUEST_EXPIRED",
+            {"public_ref": row.public_ref, "requested_name": row.requested_name},
+            recipient=row.email,
+        )
         db.commit()
         raise CardRequestError("quote_expired", "This quote has expired. Ask the shop for a new one.", 409)
     if row.status != "QUOTED":
@@ -320,9 +333,17 @@ def expire_due_quotes(db: Session, now: datetime | None = None) -> int:
                 select(models.CardRequest)
                 .where(
                     models.CardRequest.tenant_id == tenant.id,
-                    models.CardRequest.status == "QUOTED",
-                    models.CardRequest.quote_expires_at.is_not(None),
-                    models.CardRequest.quote_expires_at <= now,
+                    or_(
+                        and_(
+                            models.CardRequest.status == "QUOTED",
+                            models.CardRequest.quote_expires_at.is_not(None),
+                            models.CardRequest.quote_expires_at <= now,
+                        ),
+                        and_(
+                            models.CardRequest.status == "ACCEPTED",
+                            models.CardRequest.updated_at <= now - timedelta(days=ACCEPTED_EXPIRY_DAYS),
+                        ),
+                    ),
                 )
                 .with_for_update(skip_locked=True)
             ).all()

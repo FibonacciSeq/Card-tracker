@@ -5,14 +5,14 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.config import settings
 from app.db import set_tenant_context
-from app.security import hash_guest_token, new_guest_token, new_public_ref
+from app.security import derive_guest_token, hash_guest_token, new_guest_token, new_public_ref
 from app.services import notifications
 
 ACTIVE_STATUSES = ("REQUESTED", "CONFIRMED", "READY")
@@ -93,8 +93,17 @@ def create_reservation(
     idempotency_key: str | None = None,
 ) -> tuple[models.Reservation, str | None]:
     request_hash = _request_hash(payload)
+    now = _now()
 
     if idempotency_key:
+        # Expired keys are never reused; prune them while the tenant context is
+        # active so the table does not grow without bound.
+        db.execute(
+            delete(models.IdempotencyKey).where(
+                models.IdempotencyKey.tenant_id == tenant.id,
+                models.IdempotencyKey.expires_at < now,
+            )
+        )
         existing = db.get(models.IdempotencyKey, idempotency_key)
         if existing is not None:
             if existing.tenant_id != tenant.id or existing.request_hash != request_hash:
@@ -106,14 +115,14 @@ def create_reservation(
             reservation = db.get(models.Reservation, uuid.UUID(existing.response["reservation_id"]))
             if reservation is None:
                 raise ReservationError("not_found", "Reservation not found.", status_code=404)
-            return reservation, existing.response.get("access_token")
+            token = existing.response.get("access_token") or derive_guest_token(idempotency_key)
+            return reservation, token
 
     quantities: dict[uuid.UUID, int] = {}
     for item in payload.items:
         quantities[item.stock_id] = quantities.get(item.stock_id, 0) + item.quantity
 
-    now = _now()
-    access_token = new_guest_token()
+    access_token = derive_guest_token(idempotency_key) if idempotency_key else new_guest_token()
 
     try:
         stocks = _lock_stocks(db, tenant.id, set(quantities))
@@ -218,7 +227,6 @@ def create_reservation(
 
         reservation.total_minor = total
         reservation.updated_at = now
-        recipient = tenant.settings.notification_email if tenant.settings else None
         notifications.enqueue(
             db,
             tenant.id,
@@ -232,7 +240,7 @@ def create_reservation(
                 "currency": reservation.currency,
                 "expires_at": reservation.expires_at.isoformat(),
             },
-            recipient=recipient,
+            recipient=notifications.staff_recipient(tenant),
         )
 
         if idempotency_key:
@@ -243,10 +251,9 @@ def create_reservation(
                     endpoint="POST /v1/shops/{slug}/reservations",
                     request_hash=request_hash,
                     status=201,
-                    response={
-                        "reservation_id": str(reservation.id),
-                        "access_token": access_token,
-                    },
+                    # The token is derived from the key on replay, so new
+                    # idempotency rows never store a usable guest credential.
+                    response={"reservation_id": str(reservation.id)},
                     expires_at=now + timedelta(hours=24),
                 )
             )
@@ -262,7 +269,7 @@ def create_reservation(
             if existing is not None and existing.request_hash == request_hash:
                 reservation = db.get(models.Reservation, uuid.UUID(existing.response["reservation_id"]))
                 if reservation is not None:
-                    return reservation, existing.response.get("access_token")
+                    return reservation, existing.response.get("access_token") or derive_guest_token(idempotency_key)
         raise ReservationError("conflict", "The reservation could not be created.", status_code=409) from exc
     except Exception:
         db.rollback()
@@ -444,17 +451,30 @@ def _release(
     reservation.updated_at = now
     if reason:
         reservation.cancel_reason = reason
-    db.add(
-        models.Notification(
-            tenant_id=reservation.tenant_id,
-            kind="RESERVATION_COMPLETED" if sold_any else f"RESERVATION_{new_status}",
-            payload={
-                "reservation_id": str(reservation.id),
-                "public_ref": reservation.public_ref,
-                "reason": reason,
-            },
-        )
+
+    kind = "RESERVATION_COMPLETED" if sold_any else f"RESERVATION_{new_status}"
+    notifications.enqueue(
+        db,
+        reservation.tenant_id,
+        kind,
+        {
+            "reservation_id": str(reservation.id),
+            "public_ref": reservation.public_ref,
+            "status": reservation.status,
+            "reason": reason,
+        },
+        recipient=reservation.email,
     )
+
+    # Releasing a hold can make a sold-out variant available again. The alert
+    # query is a no-op when nobody is waiting, and locks the rows so parallel
+    # releases cannot double-send the same alert.
+    from app.services import restock
+
+    tenant = db.get(models.Tenant, reservation.tenant_id)
+    if tenant is not None:
+        for stock in stocks.values():
+            restock.notify_waiting(db, tenant, stock)
 
 
 def cancel_reservation(
@@ -544,6 +564,7 @@ def complete_reservation(
 
     stocks = _lock_stocks(db, locked.tenant_id, {res_line.stock_id for res_line, _, _ in plan})
     now = _now()
+    released_stocks: list[models.Stock] = []
 
     try:
         for res_line, complete_q, cancel_q in plan:
@@ -582,6 +603,7 @@ def complete_reservation(
                     )
                 stock.reserved -= cancel_q
                 res_line.cancelled_quantity += cancel_q
+                released_stocks.append(stock)
                 db.add(
                     _movement(
                         tenant_id=locked.tenant_id,
@@ -598,19 +620,34 @@ def complete_reservation(
             stock.updated_at = now
 
         resolved = all(line.completed_quantity + line.cancelled_quantity == line.quantity for line in locked.lines)
+        sold_any = False
         if resolved:
             sold_any = any(line.completed_quantity > 0 for line in locked.lines)
             locked.status = "COMPLETED" if sold_any else "CANCELLED"
             locked.completed_at = now if sold_any else None
             locked.cancelled_at = None if sold_any else now
         locked.updated_at = now
-        db.add(
-            models.Notification(
-                tenant_id=locked.tenant_id,
-                kind="RESERVATION_COMPLETED" if locked.status == "COMPLETED" else "RESERVATION_UPDATED",
-                payload={"reservation_id": str(locked.id), "public_ref": locked.public_ref},
-            )
+
+        kind = ("RESERVATION_COMPLETED" if sold_any else "RESERVATION_CANCELLED") if resolved else "RESERVATION_UPDATED"
+        notifications.enqueue(
+            db,
+            locked.tenant_id,
+            kind,
+            {
+                "reservation_id": str(locked.id),
+                "public_ref": locked.public_ref,
+                "status": locked.status,
+            },
+            recipient=locked.email if resolved else None,
         )
+
+        if released_stocks:
+            from app.services import restock
+
+            tenant = db.get(models.Tenant, locked.tenant_id)
+            if tenant is not None:
+                for stock in released_stocks:
+                    restock.notify_waiting(db, tenant, stock)
 
         db.commit()
         db.refresh(locked)

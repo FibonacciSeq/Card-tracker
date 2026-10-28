@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import smtplib
 import time
+import uuid
 from datetime import UTC, datetime, timedelta
 from email.message import EmailMessage
 from typing import Protocol
@@ -35,7 +36,10 @@ class Sender(Protocol):
 
 class ConsoleSender:
     def send(self, *, recipient: str, subject: str, body: str) -> None:
-        logger.info("Email to %s | %s\n%s", recipient, subject, body)
+        # Development convenience only: never log the recipient or body, which
+        # contain customer PII and order details. The subject is enough to
+        # verify the pipeline.
+        logger.info("Email notification rendered: %s", subject)
 
 
 class SmtpSender:
@@ -57,12 +61,14 @@ class SmtpSender:
             smtp.send_message(message)
 
 
-def default_sender() -> Sender:
+def default_sender() -> Sender | None:
     backend = settings.notification_backend.lower().strip()
     if backend == "smtp":
         return SmtpSender()
     if backend in ("console", "log"):
         return ConsoleSender()
+    if backend == "none":
+        return None
     raise RuntimeError(f"Unknown CARDTRACKER_NOTIFICATION_BACKEND: {backend!r}")
 
 
@@ -102,11 +108,30 @@ def deliver_tenant(
             sender.send(recipient=row.recipient, subject=subject, body=body)
         except Exception as exc:  # one bad address must not stall the queue
             row.attempts += 1
-            row.error = f"{type(exc).__name__}: {exc}"[:1000]
+            # SMTP exceptions can embed the recipient address. Store only the
+            # type (and SMTP status code when present) so neither the database
+            # nor the worker log becomes a PII sink.
+            error_type = type(exc).__name__
+            smtp_code = getattr(exc, "smtp_code", None)
+            if isinstance(smtp_code, int):
+                error_type = f"{error_type} ({smtp_code})"
+            row.error = f"{error_type}: delivery failed"[:1000]
             if row.attempts < settings.notification_max_attempts:
                 delay = min(BACKOFF_MAX_SECONDS, BACKOFF_BASE_SECONDS * 2 ** (row.attempts - 1))
                 row.next_attempt_at = now + timedelta(seconds=delay)
-            logger.warning("Notification %s failed (attempt %s): %s", row.id, row.attempts, row.error)
+            else:
+                # A permanently failed restock email should not consume the
+                # one-shot alert. Clear the marker so the next stock increase
+                # can try again.
+                alert_id = (row.payload or {}).get("alert_id")
+                if alert_id:
+                    try:
+                        alert = db.get(models.RestockAlert, uuid.UUID(str(alert_id)))
+                    except ValueError:
+                        alert = None
+                    if alert is not None and alert.tenant_id == row.tenant_id:
+                        alert.notified_at = None
+            logger.warning("Notification %s failed (attempt %s): %s", row.id, row.attempts, error_type)
         else:
             row.sent_at = now
             row.error = None
@@ -124,6 +149,10 @@ def run_once(
     limit_per_tenant: int = 50,
 ) -> int:
     sender = sender or default_sender()
+    if sender is None:
+        # `none` is a supported deployment mode: leave the outbox untouched so
+        # enabling SMTP later drains it instead of losing messages.
+        return 0
     now = now or datetime.now(UTC)
     delivered = 0
     with SessionLocal() as db:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import secrets
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -62,6 +63,20 @@ def new_request_ref() -> str:
 
 def new_guest_token() -> str:
     return secrets.token_urlsafe(32)
+
+
+def derive_guest_token(idempotency_key: str) -> str:
+    """Derive a stable guest token from an idempotency key.
+
+    This lets a retried reservation return the same token without storing the
+    plaintext token in the idempotency row. The token remains unguessable
+    because the derivation key is the server secret.
+    """
+    return hmac.new(
+        settings.jwt_secret.encode("utf-8"),
+        f"guest-token:{idempotency_key}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
 
 
 def hash_guest_token(token: str) -> str:

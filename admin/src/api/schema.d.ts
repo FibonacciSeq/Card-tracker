@@ -191,7 +191,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/v1/shops/{slug}/restock-alerts/{alert_id}": {
+    "/v1/shops/{slug}/restock-alerts/{alert_id}/unsubscribe": {
         parameters: {
             query?: never;
             header?: never;
@@ -200,9 +200,9 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
         /** Unsubscribe Restock Alert */
-        delete: operations["unsubscribe_restock_alert_v1_shops__slug__restock_alerts__alert_id__delete"];
+        post: operations["unsubscribe_restock_alert_v1_shops__slug__restock_alerts__alert_id__unsubscribe_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1135,6 +1135,14 @@ export interface components {
              */
             created_at: string;
         };
+        /** RestockUnsubscribeIn */
+        RestockUnsubscribeIn: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+        };
         /** SettingsUpdateIn */
         SettingsUpdateIn: {
             /** Brand Name */
@@ -2048,11 +2056,9 @@ export interface operations {
             };
         };
     };
-    unsubscribe_restock_alert_v1_shops__slug__restock_alerts__alert_id__delete: {
+    unsubscribe_restock_alert_v1_shops__slug__restock_alerts__alert_id__unsubscribe_post: {
         parameters: {
-            query: {
-                email: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 slug: string;
@@ -2060,7 +2066,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RestockUnsubscribeIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {

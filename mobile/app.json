@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Card Tracker",
+    "slug": "cardtracker",
+    "scheme": "cardtracker",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.cardtracker.customer"
+    },
+    "android": {
+      "package": "com.cardtracker.customer",
+      "adaptiveIcon": {
+        "backgroundColor": "#F4EFE4",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-image",
+      "expo-secure-store",
+      "expo-font"
+    ]
+  }
+}

@@ -7,15 +7,48 @@ and an **owner** app on top of the [Scryfall](https://scryfall.com) database —
 with prices converted to EUR and RSD, foil/non-foil tracking, stock and order
 management, plus Excel import/export for the original collection tool.
 
-Built with Python + Tkinter.
+Built with Python + Tkinter (legacy desktop apps).
 
 > **Platform rewrite in progress.** The `backend/` FastAPI service and the
-> `admin/` vendor web app are the new multi-vendor platform; see
-> [`STATUS.md`](STATUS.md) for what is implemented, verification results,
-> and the roadmap. The Tkinter apps described below remain the legacy
-> single-shop desktop version.
+> `admin/` vendor web app are the new multi-vendor platform. Both are
+> implemented through Step 4 plus the 2026-10-28 audit hardening. The customer
+> app in `mobile/` now has a working guest slice: shop discovery, storefront,
+> cart, reservations, and cancellation. See [`STATUS.md`](STATUS.md) for the
+> roadmap and [`mobile/README.md`](mobile/README.md) for the app. The Tkinter
+> apps described below remain the legacy single-shop desktop version.
+>
+> The legacy and platform stacks have separate checks: root `make check` covers
+> the Tkinter apps, while `backend/`, `admin/`, and `mobile/` have their own
+> commands in their READMEs.
 
-## Features
+### New multi-vendor platform
+
+Run each block in its own terminal, starting from this repository root:
+
+```bash
+# API (SQLite for local development)
+cd backend
+CARDTRACKER_AUTO_CREATE_TABLES=true ../.venv/bin/uvicorn app.main:app --reload
+
+# Vendor web admin (second terminal)
+cd admin
+npm install
+npm run dev
+
+# Customer mobile app (third terminal)
+cd mobile
+npm install
+npm start
+```
+
+PostgreSQL/Compose, migrations, the non-owner app role, notification delivery,
+and the API surface are documented in [`backend/README.md`](backend/README.md).
+The admin screens, security headers, client logging, and Playwright suite are
+documented in [`admin/README.md`](admin/README.md). The customer app setup,
+API URL, guest flow, and current scope are documented in
+[`mobile/README.md`](mobile/README.md).
+
+## Legacy desktop features
 
 - **Search** the full Scryfall bulk database through a local SQLite FTS5 index, ranked by relevance
 - **Collection tracking** with separate foil and non-foil entries, quantities, and running totals
@@ -25,7 +58,7 @@ Built with Python + Tkinter.
 - **Export** your collection to a formatted `.xlsx` with totals
 - **Card previews** on hover, cached to disk
 
-## Customer and owner apps
+## Legacy customer and owner apps
 
 The shop is split into two separate programs that share one local SQLite
 database (`cardtracker_shop.db`):
@@ -200,6 +233,9 @@ notes.
 ## Project layout
 
 ```
+backend/             Multi-vendor FastAPI API, Alembic migrations, workers, tests
+admin/               Vendor web admin (Vite/React/TypeScript)
+mobile/              Customer app (Expo/React Native; guest slice implemented)
 customer_app.py       Entry point: customer shop window (market, cart, checkout)
 owner_app.py          Entry point: owner window (stock and orders)
 main.py               Entry point: original combined collection app

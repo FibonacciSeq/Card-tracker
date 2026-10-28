@@ -15,6 +15,10 @@ class Settings(BaseSettings):
 
     environment: str = "development"
     database_url: str = "sqlite+pysqlite:///./cardtracker_platform.db"
+    # Migrations need the schema owner; the runtime API should use a
+    # non-owner role so Postgres RLS is enforced. When unset (local SQLite and
+    # tests), migrations use database_url.
+    migration_database_url: str | None = None
     jwt_secret: str = "dev-only-change-me"
     jwt_issuer: str = "cardtracker-platform"
     access_token_minutes: int = 60

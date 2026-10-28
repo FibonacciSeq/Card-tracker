@@ -6,6 +6,9 @@ platform API: all stock, reservation, and tenant rules live in `backend/`.
 Built with Vite, React, TypeScript, and TanStack Query. No UI framework, no
 server-side rendering — that keeps one backend as the only source of truth.
 
+The customer-facing Expo app lives in [`../mobile`](../mobile); this admin is
+staff-only.
+
 ## Screens
 
 | Route | Purpose |
@@ -25,6 +28,26 @@ row shows how many customers asked for a restock alert on that exact variant.
 
 Owner-only actions: saving settings uses `PATCH /v1/staff/settings`, which the
 API restricts to the `owner` role. Staff get a clear message instead of a crash.
+
+The reservation queue only offers transitions the API accepts:
+`REQUESTED → CONFIRMED → READY → COMPLETED`, with cancellation from any active
+state. It does not offer the invalid `REQUESTED → READY` jump. The dashboard,
+reservation list, and reservation detail poll every 20 seconds so new guest
+holds appear without a manual refresh.
+
+## Security and error handling
+
+- Production builds set `sourcemap: false`; `npm run build` must leave no
+  `.map` files in `dist/`.
+- `public/_headers` ships a CSP and browser security headers for static hosts.
+  Vite also applies dev/preview headers; the production host must serve the
+  `_headers` file itself. If `VITE_API_BASE_URL` points at another origin, add
+  that origin to `connect-src` in `public/_headers`.
+- Client logging is development-only and sanitized. `src/lib/logger.ts` records
+  only error type/status, never `ApiError.payload`, request bodies, tokens, or
+  customer details. ESLint enforces `no-console` everywhere except that file.
+- `ErrorBoundary` replaces a crashed screen with a reload fallback and global
+  `error`/`unhandledrejection` handlers report sanitized metadata.
 
 ## Local development
 
@@ -52,14 +75,15 @@ CARDTRACKER_AUTO_CREATE_TABLES=true ../.venv/bin/python -m app.cli.seed_demo \
 ## Checks
 
 ```bash
-npm run lint         # eslint
+npm run lint         # eslint, including no-console
 npm run typecheck    # tsc --noEmit
 npm run build        # typecheck + production bundle
+find dist -name '*.map'   # must print nothing
 npm run test:e2e     # Playwright, starts its own API and dev server
 ```
 
 The Playwright suite starts a throwaway API (`e2e/api-server.sh`) with a seeded
-SQLite database and runs the real UI against it:
+SQLite database and runs the real UI against it (8 tests):
 
 - wrong password is rejected, then sign-in succeeds;
 - adjusting stock is visible to the public storefront API;
@@ -90,8 +114,16 @@ npm run api:types    # regenerate src/api/schema.d.ts
 
 - Excel (`.xlsx`) stock import; CSV only for now.
 - Roles beyond owner/staff.
-- Push delivery (email only; the API outbox worker supports console and SMTP).
-- Customer-facing restock/special-order screens (the mobile app is next).
+- Push delivery (email only; the API outbox worker supports console, SMTP, and
+  a pending-only `none` mode).
+- Customer-facing restock/special-order screens (the mobile app currently
+  covers browsing, guest reservations, and cancellation only).
 - Opening-hours editor: the API stores them, the form does not edit them yet.
 - Reports and per-shop subscription billing.
+- No production client telemetry/error reporting endpoint; the logger is
+  development-only and intentionally omits payloads.
+- The queue/dashboard use 20-second polling rather than server-sent events or
+  websockets.
+- The production static host must serve `public/_headers` (or equivalent CSP and
+  security headers); Vite only applies them in dev/preview.
 - The API rate limiter is in-process, so it assumes a single worker for now.

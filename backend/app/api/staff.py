@@ -474,6 +474,26 @@ def _get_stock(db: Session, tenant_id: uuid.UUID, stock_id: uuid.UUID) -> models
     return stock
 
 
+def _normalize_stock_language(value: str) -> str:
+    language = value.strip().lower()
+    if not (2 <= len(language) <= 5 and language.isascii() and language.isalpha()):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="language must be a 2–5 letter code such as 'en' or 'ja'",
+        )
+    return language
+
+
+def _stock_currency(value: str | None, tenant: models.Tenant) -> str:
+    currency = (value or tenant.currency).strip().upper()
+    if currency != tenant.currency.upper():
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=f"Stock currency must match the shop currency ({tenant.currency})",
+        )
+    return currency
+
+
 @router.post("/stock", response_model=schemas.StaffStockOut, status_code=status.HTTP_201_CREATED)
 def create_stock(
     payload: schemas.StockCreateIn,
@@ -492,10 +512,10 @@ def create_stock(
         card_id=card.id,
         finish=payload.finish,
         condition=payload.condition,
-        language=payload.language.strip().lower() or "en",
+        language=_normalize_stock_language(payload.language),
         quantity=payload.quantity,
         price_minor=payload.price_minor,
-        currency=payload.currency or tenant.currency,
+        currency=_stock_currency(payload.currency, tenant),
         is_online=payload.is_online,
     )
     db.add(stock)
@@ -551,6 +571,7 @@ def update_stock(
     db: Session = Depends(get_db),
 ):
     stock = _get_stock(db, _staff_tenant(user), stock_id)
+    was_online = stock.is_online
 
     if payload.quantity is not None and payload.quantity < stock.reserved:
         raise HTTPException(
@@ -582,7 +603,7 @@ def update_stock(
                 reason="stock update",
             )
         )
-    if delta > 0:
+    if delta > 0 or (payload.is_online is True and not was_online):
         restock.notify_waiting(db, _tenant(db, user), stock)
     changes = payload.model_dump(exclude_unset=True)
     if changes:
@@ -770,17 +791,6 @@ def update_reservation_status(
     if payload.status == "CANCELLED":
         reservation = reservation_service.cancel_reservation(
             db, reservation, reason=payload.reason or "cancelled by staff", actor_id=user.id
-        )
-        notifications.enqueue(
-            db,
-            _staff_tenant(user),
-            "RESERVATION_CANCELLED",
-            {
-                "reservation_id": str(reservation.id),
-                "public_ref": reservation.public_ref,
-                "status": "CANCELLED",
-            },
-            recipient=reservation.email,
         )
         db.commit()
     else:

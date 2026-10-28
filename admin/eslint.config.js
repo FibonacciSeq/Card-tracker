@@ -19,6 +19,7 @@ export default tseslint.config(
     },
     plugins: { "react-refresh": reactRefresh },
     rules: {
+      "no-console": "error",
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
     },

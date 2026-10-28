@@ -6,7 +6,7 @@ import argparse
 
 from sqlalchemy import select
 
-from app.db import SessionLocal
+from app.db import SessionLocal, set_tenant_context
 from app.models import Card, Stock, Tenant, TenantSettings, User
 from app.security import hash_password
 
@@ -33,15 +33,21 @@ def main() -> None:
             locale="en",
             status="active",
         )
+        db.add(tenant)
+        db.flush()
+        # Tenant-owned inserts need the RLS context when connected with the
+        # non-owner application role used in production/Compose.
+        set_tenant_context(db, tenant.id)
+
         tenant.settings = TenantSettings(
             brand_name=args.name,
             hold_hours=24,
             directory_opt_in=True,
             payment_instructions="Pay in store when collecting.",
             contact={"email": args.email},
+            notification_email=args.email,
         )
-        db.add(tenant)
-        db.flush()
+        db.add(tenant.settings)
 
         owner = User(
             tenant_id=tenant.id,

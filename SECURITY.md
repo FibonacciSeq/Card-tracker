@@ -2,8 +2,9 @@
 
 ## Supported versions
 
-Card Tracker is currently a pre-1.0 desktop application. Security fixes are
-applied to the latest release and to `main`.
+Card Tracker is currently a pre-1.0 project with a legacy Tkinter desktop app
+and a multi-vendor platform (`backend/`, `admin/`, `mobile/`). Security fixes
+are applied to the latest release and to `main`.
 
 | Version | Supported |
 | --- | --- |
@@ -45,6 +46,26 @@ order notes, and order history. It is intentionally excluded from Git.
 The SQL Server schema in `database/` stores the same kind of data in a
 multi-user deployment. Apply the same access control, backup, and retention
 rules there.
+
+The platform backend stores shop, customer, reservation, and special-order data
+in PostgreSQL in production (SQLite locally). Treat database dumps, API logs,
+and notification payloads as sensitive. The mobile app keeps only a local cart
+and the guest reservation metadata needed to reopen a hold.
+
+## Mobile app tokens
+
+- A guest reservation access token is a credential. Native builds store it in
+  Expo SecureStore; the web preview falls back to AsyncStorage because
+  SecureStore has no web implementation. Do not use the web preview as a
+  production customer channel.
+- The app sends an idempotency key when creating a reservation and reuses it
+  while a submission is retried, preventing duplicate holds after a lost
+  response.
+- `EXPO_PUBLIC_*` environment variables are embedded in the client bundle and
+  are not secret. Never put API secrets, SMTP credentials, or staff tokens in
+  a mobile environment file.
+- The customer app does not collect or transmit payment details; payment stays
+  with the shop.
 
 ## Secrets and environment variables
 
@@ -92,7 +113,8 @@ database and any spreadsheet imports as sensitive input.
 
 ## Dependency and code checks
 
-Every pull request runs:
+Every pull request runs the checks for the parts it touches. The legacy
+desktop workflow runs:
 
 ```bash
 ruff check .
@@ -102,6 +124,10 @@ pytest --cov --cov-report=term-missing
 bandit -q -c pyproject.toml -r .
 pip-audit -r requirements.txt --progress-spinner off
 ```
+
+The platform workflows run backend Ruff/mypy/pytest (SQLite and PostgreSQL),
+admin ESLint/typecheck/build/Playwright, and mobile ESLint/typecheck/web export.
+See [`STATUS.md`](STATUS.md) and the component READMEs for the exact commands.
 
 Dependabot checks Python dependencies and GitHub Actions monthly. If you add a
 dependency, pin a lower bound that contains the current security fixes and

@@ -82,6 +82,15 @@ def test_complete_reservation_sells_stock(client, tenant, stock, reservation_pay
     movements = db.query(models.StockMovement).filter_by(stock_id=stock.id).all()
     assert any(m.kind == "SELL" for m in movements)
 
+    note = (
+        db.query(models.Notification)
+        .filter_by(kind="RESERVATION_COMPLETED")
+        .order_by(models.Notification.id.desc())
+        .first()
+    )
+    assert note is not None
+    assert note.recipient == "marko@example.com"
+
 
 def test_partial_completion_releases_the_rest(client, tenant, stock, reservation_payload, auth, db):
     created = _create(client, tenant, reservation_payload).json()
@@ -224,3 +233,58 @@ def test_settings_include_alert_email_but_public_profile_does_not(client, tenant
     public = client.get(f"/v1/shops/{tenant.slug}")
     assert public.status_code == 200
     assert "notification_email" not in public.json()
+
+
+def test_staff_alert_falls_back_to_the_public_contact_email(client, tenant, stock, reservation_payload, db):
+    tenant.settings.notification_email = None
+    tenant.settings.contact = {"email": "hello@shop.example"}
+    db.add(tenant.settings)
+    db.commit()
+
+    created = _create(client, tenant, reservation_payload)
+    assert created.status_code == 201, created.text
+
+    db.expire_all()
+    note = (
+        db.query(models.Notification)
+        .filter_by(kind="RESERVATION_CREATED")
+        .order_by(models.Notification.id.desc())
+        .first()
+    )
+    assert note is not None
+    assert note.recipient == "hello@shop.example"
+
+
+def test_new_stock_rejects_a_mismatched_currency(client, tenant, card, auth):
+    response = client.post(
+        "/v1/staff/stock",
+        headers=auth,
+        json={
+            "card_id": str(card.id),
+            "finish": "foil",
+            "condition": "NM",
+            "language": "en",
+            "quantity": 1,
+            "price_minor": 1000,
+            "currency": "EUR",
+        },
+    )
+    assert response.status_code == 422
+    assert "shop currency" in response.json()["detail"]
+
+
+def test_new_stock_rejects_an_invalid_language(client, tenant, card, auth):
+    response = client.post(
+        "/v1/staff/stock",
+        headers=auth,
+        json={
+            "card_id": str(card.id),
+            "finish": "etched",
+            "condition": "NM",
+            "language": "english",
+            "quantity": 1,
+            "price_minor": 1000,
+        },
+    )
+    assert response.status_code == 422
+    assert "language" in response.json()["detail"]

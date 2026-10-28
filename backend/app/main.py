@@ -5,6 +5,7 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
@@ -43,6 +44,25 @@ app.add_middleware(
 
 app.include_router(public.router)
 app.include_router(staff.router)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(_request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Return validation errors without echoing the submitted value.
+
+    FastAPI's default handler includes ``input`` (and sometimes ``ctx``) for
+    every error. For auth and staff-creation payloads that means a password
+    can end up in the response, browser devtools, and client error logs.
+    """
+    errors = [
+        {
+            "type": error.get("type", "value_error"),
+            "loc": error.get("loc", ()),
+            "msg": error.get("msg", "Invalid value"),
+        }
+        for error in exc.errors()
+    ]
+    return JSONResponse(status_code=422, content={"detail": errors})
 
 
 @app.exception_handler(ReservationError)

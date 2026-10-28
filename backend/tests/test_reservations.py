@@ -64,7 +64,7 @@ def test_all_or_nothing(client, tenant, stock, second_stock, reservation_payload
     assert by_id[str(second_stock.id)]["available"] == 1
 
 
-def test_idempotency_key_prevents_double_hold(client, tenant, stock, reservation_payload):
+def test_idempotency_key_prevents_double_hold(client, tenant, stock, reservation_payload, db):
     headers = {"Idempotency-Key": "test-key-1"}
     first = _create(client, tenant, reservation_payload, headers=headers)
     second = _create(client, tenant, reservation_payload, headers=headers)
@@ -72,9 +72,17 @@ def test_idempotency_key_prevents_double_hold(client, tenant, stock, reservation
     assert first.status_code == 201
     assert second.status_code == 201
     assert first.json()["id"] == second.json()["id"]
+    # The replay returns the same derived token, not a newly generated one.
+    assert first.json()["access_token"] == second.json()["access_token"]
+    assert first.json()["access_token"]
 
     stock_response = client.get(f"/v1/shops/{tenant.slug}/stock").json()
     assert stock_response["items"][0]["available"] == 1
+
+    db.expire_all()
+    key = db.get(models.IdempotencyKey, "test-key-1")
+    assert key is not None
+    assert "access_token" not in key.response
 
 
 def test_lookup_by_public_ref(client, tenant, stock, reservation_payload):
@@ -133,6 +141,16 @@ def test_expiry_releases_stock(client, tenant, stock, reservation_payload, db):
     assert reservation is not None and reservation.status == "EXPIRED"
     assert stock_row is not None and stock_row.reserved == 0
     assert stock_row.available == 3
+
+    note = (
+        db.query(models.Notification)
+        .filter_by(kind="RESERVATION_EXPIRED")
+        .order_by(models.Notification.id.desc())
+        .first()
+    )
+    assert note is not None
+    assert note.recipient == "marko@example.com"
+    assert note.channel == "email"
 
 
 def test_movement_ledger_created(client, tenant, stock, reservation_payload, db):

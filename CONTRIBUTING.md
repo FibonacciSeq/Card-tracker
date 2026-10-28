@@ -1,12 +1,14 @@
 # Contributing
 
-Thanks for helping improve Card Tracker. This project is a desktop Tkinter
-application with a local SQLite catalog and shop database, so changes should
-preserve offline operation and existing user data.
+Thanks for helping improve Card Tracker. The repository contains the legacy
+Tkinter desktop app and the multi-vendor platform (`backend/`, `admin/`, and
+`mobile/`). Changes should preserve offline operation and existing local user
+data for the desktop app, and keep the platform API as the single source of
+truth for the web and mobile clients.
 
 ## Development setup
 
-Requirements: Python 3.10–3.14 and Tkinter.
+The legacy desktop app requires Python 3.10–3.14 and Tkinter.
 
 ```bash
 git clone https://github.com/aleksacvele/card-tracker.git
@@ -19,7 +21,7 @@ pip install -r requirements-dev.txt
 pre-commit install
 ```
 
-Run the apps:
+Run the legacy apps:
 
 ```bash
 python owner_app.py       # add stock first
@@ -27,16 +29,49 @@ python customer_app.py    # browse stock and submit an order
 python main.py            # original combined collection app
 ```
 
+The platform components have separate setup instructions:
+
+- [`backend/README.md`](backend/README.md) — FastAPI API, migrations, demo seed,
+  PostgreSQL/Compose, RLS, workers.
+- [`admin/README.md`](admin/README.md) — Vite shop admin, Playwright, security
+  headers.
+- [`mobile/README.md`](mobile/README.md) — Expo customer app, API host
+  resolution, guest flow, current scope.
+
 ## Quality gates
 
-Before opening a pull request, run:
+Before opening a pull request, run the checks for the parts you changed. The
+legacy desktop gate is:
 
 ```bash
 make check          # Ruff (lint + format) + mypy + pytest
 make security       # Bandit + pip-audit
 ```
 
-The individual commands are:
+The platform checks are:
+
+```bash
+# From the repository root
+cd backend
+../.venv/bin/ruff check .
+../.venv/bin/ruff format --check .
+../.venv/bin/mypy app tests
+../.venv/bin/python -m pytest
+
+cd ../admin
+npm run lint
+npm run typecheck
+npm run build
+npm run test:e2e
+
+cd ../mobile
+npm run lint
+npm run typecheck
+npm run export:web
+npm run doctor
+```
+
+The individual legacy commands are:
 
 ```bash
 ruff check .
@@ -70,9 +105,11 @@ reservations, contact validation, and database migrations.
 Do not commit:
 
 - `cardtracker_shop.db*` (customer contact data)
+- `cardtracker_platform.db*` (platform customer data)
 - `my_collection.json`, `my_collection.xlsx`
 - `scryfall.db`, `scryfall_default_cards.jsonl`, `temp_scryfall_data.jsonl.gz`
 - `image_cache/`
+- `node_modules/`, `mobile/.expo/`, `mobile/dist/`
 
 These paths are already in `.gitignore`. If you need sample data, use
 `examples/sample_collection.json` or create synthetic fixtures in `tests/`.
@@ -81,9 +118,11 @@ These paths are already in `.gitignore`. If you need sample data, use
 
 - Keep each PR focused and describe the user-visible change.
 - Include the commands you ran and note any platform-specific UI testing.
-- Update `README.md` when behaviour, setup, or commands change.
-- Make sure CI is green. The required jobs are lint/format, type check,
-  security, tests (Python 3.10–3.14), and the import smoke test.
+- Update the relevant README, `STATUS.md`, or mobile app docs when behaviour,
+  setup, or commands change.
+- Make sure CI is green. The required jobs cover the legacy desktop checks,
+  backend SQLite/PostgreSQL tests, admin build and Playwright, and mobile
+  lint/typecheck/web export.
 
 For security issues, follow [`SECURITY.md`](SECURITY.md) instead of opening a
 public issue.

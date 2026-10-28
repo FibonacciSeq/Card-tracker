@@ -38,9 +38,9 @@ export type ConvertIn = Schemas["ConvertIn"];
 /** Statuses that still hold stock. Mirrors the backend ACTIVE_STATUSES tuple. */
 export const ACTIVE_STATUSES = ["REQUESTED", "CONFIRMED", "READY"] as const;
 
-/** Transitions a vendor may make from the queue. */
+/** Transitions a vendor may make from the queue. Mirrors the staff API. */
 export const NEXT_STATUS: Record<string, StatusUpdate["status"][]> = {
-  REQUESTED: ["CONFIRMED", "READY", "CANCELLED"],
+  REQUESTED: ["CONFIRMED", "CANCELLED"],
   CONFIRMED: ["READY", "CANCELLED"],
   READY: ["CANCELLED"],
 };

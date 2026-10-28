@@ -8,6 +8,7 @@ image_cache/
 my_collection.json
 my_collection.xlsx
 cardtracker_shop.db*
+backend/cardtracker_platform.db*
 *.tmp
 *.part
 

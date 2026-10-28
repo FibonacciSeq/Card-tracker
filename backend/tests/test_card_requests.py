@@ -131,14 +131,15 @@ def test_declined_requests_cannot_be_accepted(client, auth, tenant, card):
     assert accepted.status_code == 409
 
 
-def test_expired_quote_is_rejected(client, auth, tenant, card):
+def test_expired_quote_is_rejected(client, auth, tenant, card, db):
     data = _create(client, tenant, card)
-    _quote(
-        client,
-        auth,
-        data["id"],
-        quote_expires_at=(datetime.now(UTC) - timedelta(minutes=1)).isoformat(),
-    )
+    row = db.get(models.CardRequest, uuid.UUID(data["id"]))
+    assert row is not None
+    row.status = "QUOTED"
+    row.quote_price_minor = 275000
+    row.quote_currency = "RSD"
+    row.quote_expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    db.commit()
 
     accepted = _accept(client, tenant, data["id"], data["access_token"])
     assert accepted.status_code == 409
@@ -150,15 +151,25 @@ def test_expired_quote_is_rejected(client, auth, tenant, card):
     )
     assert fetched.json()["status"] == "EXPIRED"
 
+    db.expire_all()
+    note = (
+        db.query(models.Notification)
+        .filter_by(kind="CARD_REQUEST_EXPIRED")
+        .order_by(models.Notification.id.desc())
+        .first()
+    )
+    assert note is not None and note.recipient == "ana@example.com"
+
 
 def test_expiry_worker_expires_stale_quotes(client, auth, tenant, card, db):
     data = _create(client, tenant, card)
-    _quote(
-        client,
-        auth,
-        data["id"],
-        quote_expires_at=(datetime.now(UTC) - timedelta(minutes=5)).isoformat(),
-    )
+    row = db.get(models.CardRequest, uuid.UUID(data["id"]))
+    assert row is not None
+    row.status = "QUOTED"
+    row.quote_price_minor = 275000
+    row.quote_currency = "RSD"
+    row.quote_expires_at = datetime.now(UTC) - timedelta(minutes=5)
+    db.commit()
 
     assert request_service.expire_due_quotes(db) == 1
     db.expire_all()
@@ -172,6 +183,48 @@ def test_expiry_worker_expires_stale_quotes(client, auth, tenant, card, db):
         .first()
     )
     assert note is not None and note.recipient == "ana@example.com"
+
+
+def test_quote_rejects_an_expiry_in_the_past(client, auth, tenant, card):
+    data = _create(client, tenant, card)
+    response = _quote(
+        client,
+        auth,
+        data["id"],
+        quote_expires_at=(datetime.now(UTC) - timedelta(minutes=1)).isoformat(),
+    )
+    assert response.status_code == 422
+    assert "future" in response.json()["detail"]
+
+
+def test_staff_can_decline_an_accepted_request(client, auth, tenant, card):
+    data = _create(client, tenant, card)
+    _quote(client, auth, data["id"])
+    assert _accept(client, tenant, data["id"], data["access_token"]).status_code == 200
+
+    declined = client.post(
+        f"/v1/staff/card-requests/{data['id']}/decline",
+        headers=auth,
+        json={"vendor_note": "The supplier cancelled."},
+    )
+    assert declined.status_code == 200, declined.text
+    assert declined.json()["status"] == "DECLINED"
+
+
+def test_expiry_worker_expires_abandoned_accepted_requests(client, auth, tenant, card, db):
+    data = _create(client, tenant, card)
+    _quote(client, auth, data["id"])
+    assert _accept(client, tenant, data["id"], data["access_token"]).status_code == 200
+
+    row = db.get(models.CardRequest, uuid.UUID(data["id"]))
+    assert row is not None
+    row.updated_at = datetime.now(UTC) - timedelta(days=request_service.ACCEPTED_EXPIRY_DAYS + 1)
+    db.commit()
+
+    assert request_service.expire_due_quotes(db) == 1
+    db.expire_all()
+    row = db.get(models.CardRequest, uuid.UUID(data["id"]))
+    assert row is not None and row.status == "EXPIRED"
 
 
 def test_conversion_creates_a_confirmed_reservation(client, auth, tenant, card, stock, db):

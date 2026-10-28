@@ -39,6 +39,7 @@ export function useDashboard() {
   return useQuery({
     queryKey: queryKeys.dashboard,
     queryFn: () => request<Dashboard>("/v1/staff/dashboard"),
+    refetchInterval: 20_000,
   });
 }
 
@@ -110,6 +111,7 @@ export function useReservations(status: string) {
       if (status !== "ALL") params.set("status", status);
       return request<ReservationSummary[]>(`/v1/staff/reservations?${params.toString()}`, { signal });
     },
+    refetchInterval: 20_000,
   });
 }
 
@@ -118,6 +120,7 @@ export function useReservation(id: string | null) {
     queryKey: queryKeys.reservation(id ?? "none"),
     enabled: id !== null,
     queryFn: () => request<StaffReservation>(`/v1/staff/reservations/${id}`),
+    refetchInterval: 20_000,
   });
 }
 

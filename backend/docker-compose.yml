@@ -2,13 +2,14 @@ services:
   db:
     image: postgres:16-alpine
     environment:
-      POSTGRES_USER: cardtracker
-      POSTGRES_PASSWORD: cardtracker
+      POSTGRES_USER: cardtracker_owner
+      POSTGRES_PASSWORD: cardtracker_owner
       POSTGRES_DB: cardtracker
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/10-app-role.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cardtracker -d cardtracker"]
+      test: ["CMD-SHELL", "pg_isready -U cardtracker_owner -d cardtracker"]
       interval: 5s
       timeout: 5s
       retries: 10
@@ -20,7 +21,8 @@ services:
     env_file:
       - .env
     environment:
-      CARDTRACKER_DATABASE_URL: postgresql+psycopg://cardtracker:cardtracker@db:5432/cardtracker
+      CARDTRACKER_DATABASE_URL: postgresql+psycopg://cardtracker_app:cardtracker_app@db:5432/cardtracker
+      CARDTRACKER_MIGRATION_DATABASE_URL: postgresql+psycopg://cardtracker_owner:cardtracker_owner@db:5432/cardtracker
       CARDTRACKER_AUTO_CREATE_TABLES: "false"
     depends_on:
       db:
@@ -36,7 +38,7 @@ services:
     env_file:
       - .env
     environment:
-      CARDTRACKER_DATABASE_URL: postgresql+psycopg://cardtracker:cardtracker@db:5432/cardtracker
+      CARDTRACKER_DATABASE_URL: postgresql+psycopg://cardtracker_app:cardtracker_app@db:5432/cardtracker
       CARDTRACKER_AUTO_CREATE_TABLES: "false"
     depends_on:
       db:
@@ -48,7 +50,7 @@ services:
     env_file:
       - .env
     environment:
-      CARDTRACKER_DATABASE_URL: postgresql+psycopg://cardtracker:cardtracker@db:5432/cardtracker
+      CARDTRACKER_DATABASE_URL: postgresql+psycopg://cardtracker_app:cardtracker_app@db:5432/cardtracker
       CARDTRACKER_AUTO_CREATE_TABLES: "false"
     depends_on:
       db:

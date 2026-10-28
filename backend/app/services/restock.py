@@ -19,7 +19,8 @@ def notify_waiting(db, tenant: models.Tenant, stock: models.Stock) -> int:
 
     alerts = list(
         db.scalars(
-            select(models.RestockAlert).where(
+            select(models.RestockAlert)
+            .where(
                 models.RestockAlert.tenant_id == tenant.id,
                 models.RestockAlert.card_id == stock.card_id,
                 models.RestockAlert.finish == stock.finish,
@@ -27,6 +28,7 @@ def notify_waiting(db, tenant: models.Tenant, stock: models.Stock) -> int:
                 models.RestockAlert.language == stock.language,
                 models.RestockAlert.notified_at.is_(None),
             )
+            .with_for_update(skip_locked=True)
         ).all()
     )
     if not alerts:
@@ -50,6 +52,7 @@ def notify_waiting(db, tenant: models.Tenant, stock: models.Stock) -> int:
                 "currency": stock.currency,
                 "stock_id": str(stock.id),
                 "shop_slug": tenant.slug,
+                "alert_id": str(alert.id),
             },
             recipient=alert.email,
         )

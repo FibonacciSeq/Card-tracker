@@ -8,7 +8,7 @@ import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
-from sqlalchemy import func, or_, select, tuple_
+from sqlalchemy import and_, func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -24,16 +24,18 @@ from app.services import reservations as reservation_service
 router = APIRouter(prefix="/v1", tags=["public"])
 
 
-def _encode_cursor(name: str, stock_id: uuid.UUID) -> str:
-    raw = json.dumps({"n": name.lower(), "i": str(stock_id)}, separators=(",", ":")).encode()
+def _encode_cursor(**fields: object) -> str:
+    raw = json.dumps(fields, separators=(",", ":")).encode()
     return base64.urlsafe_b64encode(raw).decode()
 
 
-def _decode_cursor(cursor: str) -> tuple[str, uuid.UUID]:
+def _decode_cursor(cursor: str) -> dict:
     try:
         raw = base64.urlsafe_b64decode(cursor.encode()).decode()
         data = json.loads(raw)
-        return str(data["n"]).lower(), uuid.UUID(data["i"])
+        if not isinstance(data, dict):
+            raise ValueError("cursor must be an object")
+        return data
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cursor") from exc
 
@@ -135,14 +137,35 @@ def list_stock(
         stmt = stmt.order_by(models.Stock.created_at.desc(), models.Stock.id)
     elif sort == "name" or sort == "relevance":
         stmt = stmt.order_by(func.lower(models.Card.name), models.Stock.id)
-        if cursor:
-            name, stock_id = _decode_cursor(cursor)
-            stmt = stmt.where(tuple_(func.lower(models.Card.name), models.Stock.id) > (name, stock_id))
 
-    if sort in ("price_asc", "price_desc", "newest") and cursor:
-        last_id = uuid.UUID(cursor) if sort == "newest" else None
-        if last_id is not None:
-            stmt = stmt.where(models.Stock.id > last_id)
+    if cursor:
+        data = _decode_cursor(cursor)
+        try:
+            last_id = uuid.UUID(str(data["i"]))
+            if sort in ("name", "relevance"):
+                name = str(data["n"]).lower()
+                stmt = stmt.where(tuple_(func.lower(models.Card.name), models.Stock.id) > (name, last_id))
+            elif sort == "price_asc":
+                price = int(data["p"])
+                stmt = stmt.where(tuple_(models.Stock.price_minor, models.Stock.id) > (price, last_id))
+            elif sort == "price_desc":
+                price = int(data["p"])
+                stmt = stmt.where(
+                    or_(
+                        models.Stock.price_minor < price,
+                        and_(models.Stock.price_minor == price, models.Stock.id > last_id),
+                    )
+                )
+            elif sort == "newest":
+                created_at = datetime.fromisoformat(str(data["t"]))
+                stmt = stmt.where(
+                    or_(
+                        models.Stock.created_at < created_at,
+                        and_(models.Stock.created_at == created_at, models.Stock.id > last_id),
+                    )
+                )
+        except (KeyError, TypeError, ValueError) as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cursor") from exc
 
     rows = db.execute(stmt.limit(limit + 1)).all()
     has_more = len(rows) > limit
@@ -153,9 +176,13 @@ def list_stock(
     if has_more and rows:
         last_stock = rows[-1][0]
         if sort in ("name", "relevance"):
-            next_cursor = _encode_cursor(rows[-1][1].name, last_stock.id)
+            next_cursor = _encode_cursor(n=rows[-1][1].name.lower(), i=str(last_stock.id))
+        elif sort == "price_asc" or sort == "price_desc":
+            next_cursor = _encode_cursor(p=last_stock.price_minor, i=str(last_stock.id))
+        elif sort == "newest":
+            next_cursor = _encode_cursor(t=last_stock.created_at.isoformat(), i=str(last_stock.id))
         else:
-            next_cursor = str(last_stock.id)
+            next_cursor = _encode_cursor(i=str(last_stock.id))
 
     return schemas.StockListOut(items=items, next_cursor=next_cursor)
 
@@ -353,11 +380,11 @@ def subscribe_restock_alert(
     return serializers.restock_alert_out(alert)
 
 
-@router.delete("/shops/{slug}/restock-alerts/{alert_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/shops/{slug}/restock-alerts/{alert_id}/unsubscribe", status_code=status.HTTP_204_NO_CONTENT)
 def unsubscribe_restock_alert(
     slug: str,
     alert_id: uuid.UUID,
-    email: str = Query(min_length=3, max_length=320),
+    payload: schemas.RestockUnsubscribeIn,
     db: Session = Depends(get_db),
 ):
     tenant = get_tenant_by_slug(slug, db)
@@ -365,7 +392,7 @@ def unsubscribe_restock_alert(
         select(models.RestockAlert).where(
             models.RestockAlert.id == alert_id,
             models.RestockAlert.tenant_id == tenant.id,
-            func.lower(models.RestockAlert.email) == email.lower().strip(),
+            func.lower(models.RestockAlert.email) == str(payload.email).lower().strip(),
         )
     )
     # Always 204: whether or not the row existed, the caller is unsubscribed.

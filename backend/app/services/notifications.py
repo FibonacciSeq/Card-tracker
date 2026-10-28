@@ -39,6 +39,19 @@ def shop_label(tenant: models.Tenant) -> str:
     return tenant.name
 
 
+def staff_recipient(tenant: models.Tenant) -> str | None:
+    """Best available inbox for staff alerts.
+
+    ``notification_email`` is the explicit setting; fall back to the public
+    contact email so a newly seeded shop is not silently alert-less.
+    """
+    if not tenant.settings:
+        return None
+    contact = tenant.settings.contact or {}
+    email = contact.get("email") if isinstance(contact, dict) else None
+    return tenant.settings.notification_email or (str(email).strip() if email else None) or None
+
+
 def _money(amount_minor: int | None, currency: str | None) -> str:
     if amount_minor is None:
         return "—"
@@ -89,6 +102,19 @@ def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
     if kind == "RESERVATION_CANCELLED":
         subject = f"Reservation {ref} cancelled"
         body = f"Reservation {ref} at {shop} has been cancelled and the cards released."
+        return subject, body
+
+    if kind == "RESERVATION_EXPIRED":
+        subject = f"Reservation {ref} expired"
+        body = (
+            f"The hold on reservation {ref} at {shop} has expired and the cards were released.\n"
+            f"Reserve them again in the app if you still want them."
+        )
+        return subject, body
+
+    if kind == "RESERVATION_COMPLETED":
+        subject = f"Thanks for collecting {ref}"
+        body = f"Reservation {ref} at {shop} is complete. The cards are now marked as sold."
         return subject, body
 
     if kind == "CARD_REQUEST_CREATED":
