@@ -4,6 +4,7 @@ import type {
   Reservation,
   ReservationCreate,
   Shop,
+  StockItem,
   StockList,
   StockQuery,
 } from "./types";
@@ -38,7 +39,7 @@ function detailFrom(payload: unknown, status: number): string {
       }
     }
   }
-  if (status === 403) return "This reservation belongs to a different device or session.";
+  if (status === 403) return "This item belongs to a different device or session.";
   if (status === 404) return "That item is no longer available.";
   if (status === 429) return "Too many requests. Please wait a moment and try again.";
   if (status >= 500) return "The shop is having trouble right now. Please try again.";
@@ -104,6 +105,17 @@ export function getStock(
       cursor: query.cursor,
       limit: query.limit ?? 40,
     })}`,
+    { signal },
+  );
+}
+
+export function getStockItem(
+  slug: string,
+  stockId: string,
+  signal?: AbortSignal,
+): Promise<StockItem> {
+  return request<StockItem>(
+    `/v1/shops/${encodeURIComponent(slug)}/stock/${encodeURIComponent(stockId)}`,
     { signal },
   );
 }

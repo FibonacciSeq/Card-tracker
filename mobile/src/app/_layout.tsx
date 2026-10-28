@@ -34,8 +34,13 @@ export default function RootLayout() {
               }}
             >
               <Stack.Screen name="index" options={{ headerShown: false }} />
+              <Stack.Screen name="scan" options={{ title: "Scan a code", presentation: "modal" }} />
               <Stack.Screen name="shop/[slug]/index" options={{ title: "Shop" }} />
               <Stack.Screen name="shop/[slug]/cart" options={{ title: "Your hold" }} />
+              <Stack.Screen
+                name="shop/[slug]/card/[stockId]"
+                options={{ title: "Card" }}
+              />
               <Stack.Screen name="reservation/[id]" options={{ title: "Reservation" }} />
             </Stack>
           </ReservationsProvider>

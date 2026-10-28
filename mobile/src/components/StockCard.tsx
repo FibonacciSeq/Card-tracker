@@ -12,41 +12,79 @@ type StockCardProps = {
   onAdd: () => void;
   onIncrease: () => void;
   onDecrease: () => void;
+  onPress?: () => void;
 };
 
-export function StockCard({ item, quantity, onAdd, onIncrease, onDecrease }: StockCardProps) {
+export function StockCard({
+  item,
+  quantity,
+  onAdd,
+  onIncrease,
+  onDecrease,
+  onPress,
+}: StockCardProps) {
   const soldOut = item.available <= 0;
+  const image = (
+    <View style={styles.imageWrap}>
+      {item.card.image_small ? (
+        <Image
+          source={{ uri: item.card.image_small }}
+          style={styles.image}
+          contentFit="cover"
+          transition={120}
+        />
+      ) : (
+        <View style={styles.imageFallback}>
+          <Ionicons name="albums-outline" size={24} color={colors.inkMuted} />
+        </View>
+      )}
+    </View>
+  );
+  const summary = (
+    <View style={styles.summary}>
+      <View style={styles.titleRow}>
+        <Text numberOfLines={2} style={styles.name}>
+          {item.card.name}
+        </Text>
+        <Text style={styles.price}>{formatMoney(item.price)}</Text>
+      </View>
+      <Text style={styles.setLine}>
+        {item.card.set_code.toUpperCase()} · #{item.card.collector_number} · {item.card.rarity}
+      </Text>
+      <View style={styles.badgeRow}>
+        <Text style={styles.badge}>{titleCase(item.finish)}</Text>
+        <Text style={styles.badge}>{item.condition}</Text>
+        <Text style={styles.badge}>{item.language.toUpperCase()}</Text>
+      </View>
+    </View>
+  );
   return (
     <View style={styles.card}>
-      <View style={styles.imageWrap}>
-        {item.card.image_small ? (
-          <Image
-            source={{ uri: item.card.image_small }}
-            style={styles.image}
-            contentFit="cover"
-            transition={120}
-          />
-        ) : (
-          <View style={styles.imageFallback}>
-            <Ionicons name="albums-outline" size={24} color={colors.inkMuted} />
-          </View>
-        )}
-      </View>
+      {onPress ? (
+        <Pressable
+          accessibilityLabel={`View ${item.card.name}`}
+          accessibilityRole="button"
+          onPress={onPress}
+          style={({ pressed }) => pressed && styles.pressed}
+        >
+          {image}
+        </Pressable>
+      ) : (
+        image
+      )}
       <View style={styles.body}>
-        <View style={styles.titleRow}>
-          <Text numberOfLines={2} style={styles.name}>
-            {item.card.name}
-          </Text>
-          <Text style={styles.price}>{formatMoney(item.price)}</Text>
-        </View>
-        <Text style={styles.setLine}>
-          {item.card.set_code.toUpperCase()} · #{item.card.collector_number} · {item.card.rarity}
-        </Text>
-        <View style={styles.badgeRow}>
-          <Text style={styles.badge}>{titleCase(item.finish)}</Text>
-          <Text style={styles.badge}>{item.condition}</Text>
-          <Text style={styles.badge}>{item.language.toUpperCase()}</Text>
-        </View>
+        {onPress ? (
+          <Pressable
+            accessibilityLabel={`View details for ${item.card.name}`}
+            accessibilityRole="button"
+            onPress={onPress}
+            style={({ pressed }) => pressed && styles.pressed}
+          >
+            {summary}
+          </Pressable>
+        ) : (
+          summary
+        )}
         <View style={styles.bottomRow}>
           <Text style={[styles.available, soldOut && styles.soldOut]}>
             {soldOut ? "Sold out" : `${item.available} available`}
@@ -120,6 +158,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   body: { flex: 1, gap: 3 },
+  summary: { gap: 3 },
   titleRow: {
     flexDirection: "row",
     alignItems: "flex-start",

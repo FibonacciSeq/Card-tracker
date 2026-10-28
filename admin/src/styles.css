@@ -372,6 +372,45 @@ a:hover {
   border-radius: var(--radius);
 }
 
+.qr-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 1.5rem;
+}
+
+.qr-panel__code {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 0.4rem;
+  line-height: 0;
+}
+
+.qr-panel__body {
+  flex: 1;
+  min-width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.qr-panel__body h2 {
+  margin: 0;
+}
+
+.qr-panel__body p {
+  margin: 0;
+  max-width: 56ch;
+}
+
+.qr-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 /* ------------------------------------------------------------------ nav -- */
 
 .toolbar {

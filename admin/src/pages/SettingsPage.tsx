@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { QRCodeCanvas } from "qrcode.react";
 import { ApiError } from "../api/client";
 import { useSettings, useUpdateSettings } from "../api/queries";
 import type { SettingsUpdate, StaffShop } from "../api/types";
@@ -70,6 +71,77 @@ export function SettingsPage() {
   return <SettingsForm key={shop.slug} shop={shop} />;
 }
 
+function ShopQrPanel({ slug }: { slug: string }) {
+  const link = `cardtracker://shop/${encodeURIComponent(slug)}`;
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (!copied) return;
+    const timer = setTimeout(() => setCopied(false), 2500);
+    return () => clearTimeout(timer);
+  }, [copied]);
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(link);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  }
+
+  function downloadPng() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${slug}-cardtracker-qr.png`;
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }, "image/png");
+  }
+
+  return (
+    <section className="card qr-panel" data-testid="shop-qr-panel" aria-labelledby="shop-qr-title">
+      <div className="qr-panel__code">
+        <QRCodeCanvas
+          ref={canvasRef}
+          value={link}
+          size={168}
+          marginSize={4}
+          level="M"
+          bgColor="#ffffff"
+          fgColor="#15181d"
+          title={`QR code that opens the ${slug} storefront`}
+        />
+      </div>
+      <div className="qr-panel__body">
+        <h2 id="shop-qr-title">Shop QR code</h2>
+        <p className="muted">
+          Print this and put it on the counter. Customers scan it in the Card Tracker app
+          to open your storefront and see live stock.
+        </p>
+        <div className="mono small">{link}</div>
+        <div className="qr-panel__actions">
+          <button type="button" className="btn btn--small" onClick={() => void copyLink()}>
+            {copied ? "Copied" : "Copy link"}
+          </button>
+          <button type="button" className="btn btn--small" onClick={downloadPng}>
+            Download PNG
+          </button>
+          <span className="small tone--available" aria-live="polite">
+            {copied ? "Link copied." : null}
+          </span>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function SettingsForm({ shop }: { shop: StaffShop }) {
   const update = useUpdateSettings();
   const [form, setForm] = useState<FormState>(() => toForm(shop));
@@ -128,6 +200,8 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
           <div>{shop.timezone}</div>
         </div>
       </div>
+
+      <ShopQrPanel slug={shop.slug} />
 
       <form className="form form--wide" onSubmit={handleSubmit} data-testid="settings-form">
         <fieldset>

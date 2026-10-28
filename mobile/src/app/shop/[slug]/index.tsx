@@ -5,6 +5,7 @@ import { useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Pressable,
   RefreshControl,
   StyleSheet,
   Text,
@@ -46,7 +47,22 @@ export default function ShopScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title }} />
+      <Stack.Screen
+        options={{
+          title,
+          headerRight: () => (
+            <Pressable
+              accessibilityLabel="Scan a shop or card code"
+              accessibilityRole="button"
+              hitSlop={8}
+              onPress={() => router.push("/scan")}
+              style={({ pressed }) => pressed && styles.headerPressed}
+            >
+              <Ionicons name="qr-code-outline" size={22} color={colors.primary} />
+            </Pressable>
+          ),
+        }}
+      />
       <View style={styles.screen}>
         <FlatList
           data={items}
@@ -111,6 +127,7 @@ export default function ShopScreen() {
             <StockRow
               item={item}
               quantity={cartLines.find((line) => line.stockId === item.stock_id)?.quantity ?? 0}
+              onOpen={() => router.push(`/shop/${encodeURIComponent(slug)}/card/${item.stock_id}`)}
               onAdd={() => cart.add(slug, item)}
               onIncrease={() => {
                 const line = cartLines.find((entry) => entry.stockId === item.stock_id);
@@ -226,12 +243,14 @@ function StockRow({
   item,
   quantity,
   onAdd,
+  onOpen,
   onIncrease,
   onDecrease,
 }: {
   item: StockItem;
   quantity: number;
   onAdd: () => void;
+  onOpen: () => void;
   onIncrease: () => void;
   onDecrease: () => void;
 }) {
@@ -241,6 +260,7 @@ function StockRow({
         item={item}
         quantity={quantity}
         onAdd={onAdd}
+        onPress={onOpen}
         onIncrease={onIncrease}
         onDecrease={onDecrease}
       />
@@ -250,6 +270,7 @@ function StockRow({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.background },
+  headerPressed: { opacity: 0.6 },
   hero: {
     margin: spacing.lg,
     marginBottom: spacing.md,

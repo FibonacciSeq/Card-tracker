@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { API_BASE_URL, shopPath } from "../lib/config";
@@ -48,6 +48,16 @@ export default function HomeScreen() {
           <Text style={styles.subtitle}>
             Browse local card shops, put a card on hold, and collect it in store.
           </Text>
+          <Pressable
+            accessibilityHint="Opens the camera to scan a QR code at a shop"
+            accessibilityLabel="Scan a shop code"
+            accessibilityRole="button"
+            onPress={() => router.push("/scan")}
+            style={({ pressed }) => [styles.scanButton, pressed && styles.scanPressed]}
+          >
+            <Ionicons name="qr-code-outline" size={18} color={colors.primary} />
+            <Text style={styles.scanLabel}>Scan a shop code</Text>
+          </Pressable>
         </View>
 
         <View style={styles.content}>
@@ -196,6 +206,23 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginTop: spacing.sm,
     maxWidth: 330,
+  },
+  scanButton: {
+    marginTop: spacing.lg,
+    alignSelf: "flex-start",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.white,
+    borderRadius: 999,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: 11,
+  },
+  scanPressed: { opacity: 0.85 },
+  scanLabel: {
+    color: colors.primary,
+    fontSize: type.small,
+    fontWeight: "800",
   },
   content: {
     paddingHorizontal: spacing.lg,

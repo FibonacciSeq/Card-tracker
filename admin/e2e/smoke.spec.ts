@@ -112,6 +112,17 @@ test("saves shop settings", async ({ page }) => {
   await signIn(page);
   await nav(page, "Settings").click();
 
+  const qr = page.getByTestId("shop-qr-panel");
+  await expect(qr).toBeVisible();
+  await expect(qr).toContainText("cardtracker://shop/bolt-shop");
+  await expect(qr.locator("canvas")).toBeVisible();
+
+  const [printable] = await Promise.all([
+    page.waitForEvent("download"),
+    qr.getByRole("button", { name: "Download PNG" }).click(),
+  ]);
+  expect(printable.suggestedFilename()).toBe("bolt-shop-cardtracker-qr.png");
+
   const name = page.getByLabel("Display name");
   await expect(name).toBeVisible();
   await name.fill("Bolt Shop Deluxe");
