@@ -31,11 +31,25 @@ BACKOFF_MAX_SECONDS = 3600
 
 
 class Sender(Protocol):
-    def send(self, *, recipient: str, subject: str, body: str) -> None: ...
+    def send(
+        self,
+        *,
+        recipient: str,
+        subject: str,
+        body: str,
+        headers: dict[str, str] | None = None,
+    ) -> None: ...
 
 
 class ConsoleSender:
-    def send(self, *, recipient: str, subject: str, body: str) -> None:
+    def send(
+        self,
+        *,
+        recipient: str,
+        subject: str,
+        body: str,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         # Development convenience only: never log the recipient or body, which
         # contain customer PII and order details. The subject is enough to
         # verify the pipeline.
@@ -47,11 +61,20 @@ class SmtpSender:
         if not settings.smtp_host:
             raise RuntimeError("CARDTRACKER_SMTP_HOST is required for the smtp backend")
 
-    def send(self, *, recipient: str, subject: str, body: str) -> None:
+    def send(
+        self,
+        *,
+        recipient: str,
+        subject: str,
+        body: str,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         message = EmailMessage()
         message["From"] = settings.smtp_from
         message["To"] = recipient
         message["Subject"] = subject
+        for key, value in (headers or {}).items():
+            message[key] = value
         message.set_content(body)
         with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as smtp:
             if settings.smtp_starttls:
@@ -105,7 +128,12 @@ def deliver_tenant(
         try:
             subject, body = notifications.render(row, tenant)
             assert row.recipient is not None
-            sender.send(recipient=row.recipient, subject=subject, body=body)
+            sender.send(
+                recipient=row.recipient,
+                subject=subject,
+                body=body,
+                headers=notifications.headers(row, tenant),
+            )
         except Exception as exc:  # one bad address must not stall the queue
             row.attempts += 1
             # SMTP exceptions can embed the recipient address. Store only the

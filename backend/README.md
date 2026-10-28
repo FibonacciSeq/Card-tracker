@@ -28,9 +28,11 @@ desktop app is unchanged and still uses its own SQLite database.
 - Notification outbox delivery worker with retry/backoff, console and SMTP
   backends, per-tenant RLS iteration, and quote-expiry handling in the expiry
   worker. The `none` backend leaves queued mail untouched.
-- Validation errors are redacted (no `input`/`ctx`), guest idempotency tokens
-  are derived with HMAC rather than stored, and restock unsubscribe uses a
-  JSON body instead of a query-string email.
+- Validation errors are redacted (no `input`/`ctx`) and guest idempotency
+  tokens are derived with HMAC rather than stored. Restock alerts return a
+  signed, stateless manage token; unsubscribe works with the token in the app,
+  from the HTML confirmation page, or via an RFC 8058 one-click POST. Restock
+  emails include a card deep link and `List-Unsubscribe` headers.
 - Expiry worker, Scryfall bulk importer, demo seed command.
 - Pytest suite running on SQLite for fast local/CI feedback, plus a
   PostgreSQL-only suite for RLS, tenant context, and last-copy locking.
@@ -127,7 +129,10 @@ Postgres volume, create the app role manually or reset the volume once.
 Notification delivery is controlled by `CARDTRACKER_NOTIFICATION_BACKEND`:
 `console` (default, logs only the rendered subject), `smtp` (requires the
 `CARDTRACKER_SMTP_*` variables), or `none` (leaves the outbox pending so it can
-be drained after delivery is enabled). Failed sends retry with exponential
+be drained after delivery is enabled). Set `CARDTRACKER_PUBLIC_API_URL` to the
+externally reachable API origin so restock unsubscribe links work in email;
+`CARDTRACKER_UNSUBSCRIBE_SECRET` can hold a dedicated HMAC key (it falls back
+to the JWT secret when unset). Failed sends retry with exponential
 backoff (60s doubling, capped at one hour) for
 `CARDTRACKER_NOTIFICATION_MAX_ATTEMPTS` attempts (default 8). The console
 backend deliberately does not log recipients or message bodies, and a failed
@@ -211,14 +216,14 @@ The race test is a real regression test: removing `.with_for_update()` from
 
 ```bash
 cd backend
-../.venv/bin/python -m pytest        # SQLite: 99 passed, 7 Postgres tests skipped
+../.venv/bin/python -m pytest        # SQLite: 102 passed, 7 Postgres tests skipped
 ../.venv/bin/ruff check .
 ../.venv/bin/ruff format --check .
 ../.venv/bin/mypy app tests
 ```
 
 With the Postgres URLs exported, the same `pytest` run includes the isolation
-and locking tests (106 passed). CI runs both, plus `alembic downgrade base &&
+and locking tests (109 passed). CI runs both, plus `alembic downgrade base &&
 alembic upgrade head` and an assertion that RLS is enabled on every tenant
 table.
 
@@ -245,8 +250,10 @@ Public:
 - `GET /v1/reservations/{id}` with `X-Shop-Slug` and `X-Reservation-Token`
 - `POST /v1/reservations/{id}/cancel` with the same headers
 - `GET /v1/shops/{slug}/reservations/{public_ref}` with the token
-- `POST /v1/shops/{slug}/restock-alerts`
-- `POST /v1/shops/{slug}/restock-alerts/{id}/unsubscribe` with JSON `{"email": "..."}`
+- `POST /v1/shops/{slug}/restock-alerts` (`manage_token` is returned for the app)
+- `POST /v1/shops/{slug}/restock-alerts/{id}/unsubscribe?token=...` (or JSON `{"email": "..."}`)
+- `GET /v1/shops/{slug}/restock-alerts/{id}/unsubscribe?token=...` (HTML confirmation)
+- `POST /v1/shops/{slug}/restock-alerts/{id}/unsubscribe/one-click?token=...` (RFC 8058)
 - `POST /v1/shops/{slug}/card-requests`
 - `GET /v1/card-requests/{id}` with `X-Shop-Slug` and `X-Card-Request-Token`
 - `POST /v1/card-requests/{id}/accept` with the same headers
@@ -276,10 +283,11 @@ Staff:
 
 The Expo customer app lives in [`../mobile`](../mobile). It is a guest-first
 vertical slice over the public API: shop directory, storefront search and
-pagination, local cart, reservation create/lookup/cancel, and local hold
-history. Guest tokens are stored in SecureStore on native platforms and in
-AsyncStorage for the web preview. See [`mobile/README.md`](../mobile/README.md)
-for setup and current scope.
+pagination, local cart, reservation create/lookup/cancel, hold history,
+restock alerts, and special-order request/quote/cancel flows. Guest tokens are
+stored in SecureStore on native platforms and in AsyncStorage for the web
+preview. See [`mobile/README.md`](../mobile/README.md) for setup and current
+scope.
 
 ## Phase 0 gaps / before pilot
 
@@ -288,11 +296,13 @@ for setup and current scope.
 - Push notifications (FCM/APNs) are not implemented; email is the only
   delivery channel. Staff in-app notifications exist in the outbox but are not
   surfaced in the admin yet.
-- Restock alerts require an email address instead of a customer account; OTP
-  accounts in the mobile app will later attach them to a customer.
+- Restock alerts and special orders are guest-local: the app stores their
+  metadata and tokens on the device. OTP accounts in the mobile app will later
+  attach them to a customer and sync them across devices.
 - The mobile app is a guest-only slice: it has no OTP accounts, push handling,
-  restock-alert UI, special-order UI, QR scanner, offline cache, or device E2E
-  suite yet. The API and vendor web admin are otherwise implemented.
+  offline cache, localization, or device E2E suite yet. It does support
+  QR/deep-link entry, card detail, restock alerts, and special orders. The API
+  and vendor web admin are otherwise implemented.
 - PostgreSQL-only tests skip unless `CARDTRACKER_TEST_POSTGRES_ADMIN_URL` and
   `CARDTRACKER_TEST_POSTGRES_URL` are set; SQLite cannot prove RLS or locking.
 - Rate limiting is in-process, so it assumes a single API worker.

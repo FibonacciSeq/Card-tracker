@@ -29,11 +29,13 @@ def test_subscribe_is_idempotent_and_shows_on_the_stock_list(client, auth, tenan
     assert first.status_code == 201, first.text
     assert first.json()["already_subscribed"] is False
     assert first.json()["email"] == "reader@example.com"
+    assert first.json()["manage_token"]
 
     second = _subscribe(client, tenant, card)
     assert second.status_code == 201
     assert second.json()["already_subscribed"] is True
     assert second.json()["id"] == first.json()["id"]
+    assert second.json()["manage_token"] == first.json()["manage_token"]
 
     rows = client.get("/v1/staff/stock", headers=auth).json()["items"]
     row = next(item for item in rows if item["stock_id"] == str(stock.id))
@@ -182,6 +184,46 @@ def test_unsubscribe_requires_the_matching_email(client, tenant, card, stock, db
         json={"email": "reader@example.com"},
     )
     assert again.status_code == 204
+
+
+def test_manage_token_unsubscribes_without_email(client, tenant, card, stock, db):
+    alert = _subscribe(client, tenant, card).json()
+    path = f"/v1/shops/{tenant.slug}/restock-alerts/{alert['id']}/unsubscribe"
+
+    bad = client.post(f"{path}?token=not-a-real-token")
+    assert bad.status_code == 400
+    db.expire_all()
+    assert db.query(models.RestockAlert).count() == 1
+
+    # The human-facing link shows a confirmation page and does not mutate.
+    page = client.get(f"{path}?token={alert['manage_token']}")
+    assert page.status_code == 200
+    assert "Unsubscribe from restock alerts" in page.text
+    assert f'action="{path}/one-click?token={alert["manage_token"]}"' in page.text
+    db.expire_all()
+    assert db.query(models.RestockAlert).count() == 1
+
+    one_click = client.post(
+        f"{path}/one-click?token={alert['manage_token']}",
+        data={"List-Unsubscribe": "One-Click"},
+    )
+    assert one_click.status_code == 200
+    assert "Unsubscribed" in one_click.text
+    db.expire_all()
+    assert db.query(models.RestockAlert).count() == 0
+
+    repeat = client.post(f"{path}/one-click?token={alert['manage_token']}")
+    assert repeat.status_code == 200
+    assert "Unsubscribed" in repeat.text
+
+
+def test_invalid_unsubscribe_page_is_not_actionable(client, tenant, card, stock):
+    response = client.get(
+        f"/v1/shops/{tenant.slug}/restock-alerts/00000000-0000-0000-0000-000000000000/unsubscribe?token=bad"
+    )
+    assert response.status_code == 400
+    assert "Invalid link" in response.text
+    assert "<button" not in response.text
 
 
 def test_unknown_card_is_rejected(client, tenant):

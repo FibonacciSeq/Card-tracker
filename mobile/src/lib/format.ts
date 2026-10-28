@@ -47,9 +47,14 @@ export function statusTone(status: string): "success" | "accent" | "muted" | "da
       return "success";
     case "REQUESTED":
     case "CONFIRMED":
+    case "QUOTED":
       return "accent";
+    case "ACCEPTED":
+    case "CONVERTED":
+      return "success";
     case "CANCELLED":
     case "EXPIRED":
+    case "DECLINED":
       return "danger";
     default:
       return "muted";

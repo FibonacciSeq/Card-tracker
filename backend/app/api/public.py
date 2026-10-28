@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import base64
+import html
 import json
 import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
+from fastapi.responses import HTMLResponse
 from sqlalchemy import and_, func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -16,7 +18,7 @@ from app import models, schemas, serializers
 from app.config import settings
 from app.db import get_db
 from app.deps import get_tenant_by_slug
-from app.security import hash_guest_token
+from app.security import hash_guest_token, restock_unsubscribe_token, verify_restock_unsubscribe_token
 from app.services import card_requests as card_request_service
 from app.services import ratelimit
 from app.services import reservations as reservation_service
@@ -356,7 +358,7 @@ def subscribe_restock_alert(
     )
     existing = db.scalar(select(models.RestockAlert).where(*filters))
     if existing is not None:
-        return serializers.restock_alert_out(existing, already_subscribed=True)
+        return _restock_alert_out(existing, already_subscribed=True)
 
     alert = models.RestockAlert(
         tenant_id=tenant.id,
@@ -375,31 +377,191 @@ def subscribe_restock_alert(
         existing = db.scalar(select(models.RestockAlert).where(*filters))
         if existing is None:
             raise
-        return serializers.restock_alert_out(existing, already_subscribed=True)
+        return _restock_alert_out(existing, already_subscribed=True)
     db.refresh(alert)
-    return serializers.restock_alert_out(alert)
+    return _restock_alert_out(alert)
 
 
-@router.post("/shops/{slug}/restock-alerts/{alert_id}/unsubscribe", status_code=status.HTTP_204_NO_CONTENT)
+def _restock_alert_out(
+    alert: models.RestockAlert,
+    *,
+    already_subscribed: bool = False,
+) -> schemas.RestockAlertOut:
+    return serializers.restock_alert_out(
+        alert,
+        already_subscribed=already_subscribed,
+        manage_token=restock_unsubscribe_token(alert.tenant_id, alert.id),
+    )
+
+
+@router.post(
+    "/shops/{slug}/restock-alerts/{alert_id}/unsubscribe",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
 def unsubscribe_restock_alert(
     slug: str,
     alert_id: uuid.UUID,
-    payload: schemas.RestockUnsubscribeIn,
+    payload: schemas.RestockUnsubscribeIn | None = None,
+    token: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):
     tenant = get_tenant_by_slug(slug, db)
-    alert = db.scalar(
-        select(models.RestockAlert).where(
-            models.RestockAlert.id == alert_id,
-            models.RestockAlert.tenant_id == tenant.id,
-            func.lower(models.RestockAlert.email) == str(payload.email).lower().strip(),
+    if token is not None:
+        if not verify_restock_unsubscribe_token(tenant.id, alert_id, token):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid unsubscribe token")
+        alert = db.scalar(
+            select(models.RestockAlert).where(
+                models.RestockAlert.id == alert_id,
+                models.RestockAlert.tenant_id == tenant.id,
+            )
         )
-    )
+    else:
+        if payload is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Provide either an email or an unsubscribe token.",
+            )
+        alert = db.scalar(
+            select(models.RestockAlert).where(
+                models.RestockAlert.id == alert_id,
+                models.RestockAlert.tenant_id == tenant.id,
+                func.lower(models.RestockAlert.email) == str(payload.email).lower().strip(),
+            )
+        )
     # Always 204: whether or not the row existed, the caller is unsubscribed.
     if alert is not None:
         db.delete(alert)
         db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+_UNSUBSCRIBE_STYLE = """
+body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+       background: #f5f0e6; color: #1b211d;
+       font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+main { width: min(440px, calc(100vw - 48px)); background: #fffdf8;
+       border: 1px solid #ddd4c5; border-radius: 20px; padding: 28px; }
+h1 { font-size: 22px; margin: 0 0 10px; }
+p { color: #626a63; margin: 0 0 20px; }
+button { width: 100%; min-height: 48px; border: 0; border-radius: 999px;
+         background: #1e6a57; color: #fff; font-size: 15px; font-weight: 700;
+         cursor: pointer; }
+.note { margin-top: 18px; font-size: 12px; color: #626a63; }
+"""
+
+
+def _unsubscribe_page(
+    title: str,
+    message: str,
+    *,
+    action_url: str | None = None,
+    status_code: int = 200,
+) -> HTMLResponse:
+    action = ""
+    if action_url:
+        action = (
+            f'<form method="post" action="{html.escape(action_url, quote=True)}">'
+            '<button type="submit">Unsubscribe</button></form>'
+        )
+    body = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex">
+  <title>{html.escape(title)} · Card Tracker</title>
+  <style>{_UNSUBSCRIBE_STYLE}</style>
+</head>
+<body>
+  <main>
+    <h1>{html.escape(title)}</h1>
+    <p>{html.escape(message)}</p>
+    {action}
+    <p class="note">This page does not change your other alerts or reservations.</p>
+  </main>
+</body>
+</html>"""
+    return HTMLResponse(
+        content=body,
+        status_code=status_code,
+        headers={
+            "Cache-Control": "no-store",
+            "Referrer-Policy": "no-referrer",
+            "X-Robots-Tag": "noindex",
+            "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'",
+        },
+    )
+
+
+@router.get(
+    "/shops/{slug}/restock-alerts/{alert_id}/unsubscribe",
+    response_class=HTMLResponse,
+)
+def restock_unsubscribe_page(
+    slug: str,
+    alert_id: uuid.UUID,
+    request: Request,
+    token: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    tenant = get_tenant_by_slug(slug, db)
+    if not verify_restock_unsubscribe_token(tenant.id, alert_id, token):
+        return _unsubscribe_page(
+            "Invalid link",
+            "This unsubscribe link is invalid. Ask the shop to remove the alert instead.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    alert = db.scalar(
+        select(models.RestockAlert).where(
+            models.RestockAlert.id == alert_id,
+            models.RestockAlert.tenant_id == tenant.id,
+        )
+    )
+    if alert is None:
+        return _unsubscribe_page(
+            "Already unsubscribed",
+            f"You are no longer on the restock list at {tenant.name}.",
+        )
+    root_path = str(request.scope.get("root_path", "")).rstrip("/")
+    action_url = f"{root_path}{request.url.path}/one-click?token={token}"
+    return _unsubscribe_page(
+        "Unsubscribe from restock alerts",
+        f"Stop sending restock alerts for this card from {tenant.name}?",
+        action_url=action_url,
+    )
+
+
+@router.post(
+    "/shops/{slug}/restock-alerts/{alert_id}/unsubscribe/one-click",
+    response_class=HTMLResponse,
+)
+def restock_unsubscribe_one_click(
+    slug: str,
+    alert_id: uuid.UUID,
+    token: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """RFC 8058 one-click target used by the List-Unsubscribe header."""
+    tenant = get_tenant_by_slug(slug, db)
+    if not verify_restock_unsubscribe_token(tenant.id, alert_id, token):
+        return _unsubscribe_page(
+            "Invalid link",
+            "This unsubscribe link is invalid. Ask the shop to remove the alert instead.",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
+    alert = db.scalar(
+        select(models.RestockAlert).where(
+            models.RestockAlert.id == alert_id,
+            models.RestockAlert.tenant_id == tenant.id,
+        )
+    )
+    if alert is not None:
+        db.delete(alert)
+        db.commit()
+    return _unsubscribe_page(
+        "Unsubscribed",
+        f"You will not receive any more restock alerts for this card from {tenant.name}.",
+    )
 
 
 @router.post(

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
-import { getReservation, getShop, getShops, getStock, getStockItem } from "./client";
+import { getCardRequest, getReservation, getShop, getShops, getStock, getStockItem } from "./client";
 import type { StockSort } from "./types";
 
 export const queryKeys = {
@@ -11,6 +11,7 @@ export const queryKeys = {
     ["stock", slug, search, sort, availableOnly] as const,
   stockItem: (slug: string, stockId: string) => ["stock-item", slug, stockId] as const,
   reservation: (id: string) => ["reservation", id] as const,
+  cardRequest: (id: string) => ["card-request", id] as const,
 };
 
 export function useShops(search: string) {
@@ -76,6 +77,21 @@ export function useGuestReservation(
   });
 }
 
+export function useGuestCardRequest(
+  id: string,
+  slug: string,
+  token: string | null,
+) {
+  return useQuery({
+    queryKey: [...queryKeys.cardRequest(id), token],
+    queryFn: ({ signal }) => getCardRequest(id, slug, token ?? "", signal),
+    enabled: Boolean(id && slug && token),
+    retry: (count, error) => {
+      const status = (error as { status?: number }).status;
+      return status !== 403 && status !== 404 && count < 1;
+    },
+  });
+}
 
 export function useDebouncedValue<T>(value: T, delay = 350): T {
   const [debounced, setDebounced] = useState(value);

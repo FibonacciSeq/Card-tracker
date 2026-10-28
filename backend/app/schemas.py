@@ -239,6 +239,8 @@ class RestockAlertOut(BaseModel):
     condition: str
     language: str
     already_subscribed: bool = False
+    # Returned once at subscribe time; used by the app to manage the alert.
+    manage_token: str | None = None
     created_at: datetime
 
 

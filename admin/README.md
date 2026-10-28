@@ -20,7 +20,7 @@ staff-only.
 | `/requests` | Special orders: quote, decline, and convert an accepted request into a reservation |
 | `/team` | Owner-only: add staff, change roles, deactivate accounts |
 | `/activity` | Owner-only: audit trail with action filters |
-| `/settings` | Branding, hold duration, payment instructions, contact, directory opt-in |
+| `/settings` | Branding, hold duration, payment instructions, contact, directory opt-in, printable shop QR code |
 
 Stock numbers always pair colour with a text label (available / reserved / out)
 so they remain readable without colour vision. A "N waiting" badge on a stock
@@ -28,6 +28,10 @@ row shows how many customers asked for a restock alert on that exact variant.
 
 Owner-only actions: saving settings uses `PATCH /v1/staff/settings`, which the
 API restricts to the `owner` role. Staff get a clear message instead of a crash.
+
+Settings also renders the shop QR code for `cardtracker://shop/<slug>` entirely
+in the browser (no external image service), with copy and download-PNG actions.
+The customer app scans that code from its home screen.
 
 The reservation queue only offers transitions the API accepts:
 `REQUESTED → CONFIRMED → READY → COMPLETED`, with cancellation from any active
@@ -89,7 +93,8 @@ SQLite database and runs the real UI against it (8 tests):
 - adjusting stock is visible to the public storefront API;
 - a reservation can be confirmed, marked ready, and completed, and stock is
   released exactly once;
-- settings save and survive a reload;
+- settings save and survive a reload, and the shop QR code and its deep link
+  are rendered;
 - a special order can be quoted, accepted by the customer, and converted into a
   confirmed reservation (stock availability drops by one);
 - restock-alert demand appears as a "waiting" badge on the stock row.
@@ -116,8 +121,9 @@ npm run api:types    # regenerate src/api/schema.d.ts
 - Roles beyond owner/staff.
 - Push delivery (email only; the API outbox worker supports console, SMTP, and
   a pending-only `none` mode).
-- Customer-facing restock/special-order screens (the mobile app currently
-  covers browsing, guest reservations, and cancellation only).
+- Push notifications are not implemented; restock and special-order updates
+  are email-based, and the mobile screens keep guest metadata locally until
+  customer accounts exist.
 - Opening-hours editor: the API stores them, the form does not edit them yet.
 - Reports and per-shop subscription billing.
 - No production client telemetry/error reporting endpoint; the logger is

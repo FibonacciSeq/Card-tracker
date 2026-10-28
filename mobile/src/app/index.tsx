@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from "react-native";
+import { RefreshControl, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { API_BASE_URL, shopPath } from "../lib/config";
@@ -9,9 +9,12 @@ import { useDebouncedValue, useShops } from "../api/queries";
 import { EmptyState } from "../components/EmptyState";
 import { HoldCard } from "../components/HoldCard";
 import { ErrorState, LoadingState } from "../components/LoadingState";
+import { RequestCard } from "../components/RequestCard";
 import { SearchField } from "../components/SearchField";
 import { ShopCard } from "../components/ShopCard";
 import { useReservations } from "../state/reservations";
+import { useRestockAlerts } from "../state/restockAlerts";
+import { useSpecialOrders } from "../state/specialOrders";
 import { colors, radii, spacing, type } from "../theme";
 
 export default function HomeScreen() {
@@ -21,6 +24,8 @@ export default function HomeScreen() {
   const debouncedSearch = useDebouncedValue(search);
   const shops = useShops(debouncedSearch);
   const { hydrated, reservations } = useReservations();
+  const { hydrated: alertsHydrated, alerts } = useRestockAlerts();
+  const { hydrated: requestsHydrated, requests } = useSpecialOrders();
 
   const hasNoShops = shops.isSuccess && shops.data.length === 0;
 
@@ -67,6 +72,21 @@ export default function HomeScreen() {
             placeholder="Search shops by name"
           />
 
+          <View style={styles.quickRow}>
+            <QuickAction
+              count={requestsHydrated ? requests.length : 0}
+              icon="sparkles-outline"
+              label="Special orders"
+              onPress={() => router.push("/requests")}
+            />
+            <QuickAction
+              count={alertsHydrated ? alerts.length : 0}
+              icon="notifications-outline"
+              label="Restock alerts"
+              onPress={() => router.push("/alerts")}
+            />
+          </View>
+
           {hydrated && reservations.length > 0 ? (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
@@ -82,6 +102,34 @@ export default function HomeScreen() {
                   />
                 ))}
               </View>
+            </View>
+          ) : null}
+
+          {requestsHydrated && requests.length > 0 ? (
+            <View style={styles.section}>
+              <View style={styles.sectionHeader}>
+                <Text style={styles.sectionTitle}>Your special orders</Text>
+                <Text style={styles.sectionCount}>{requests.length}</Text>
+              </View>
+              <View style={styles.holdList}>
+                {requests.slice(0, 3).map((request) => (
+                  <RequestCard
+                    key={request.id}
+                    request={request}
+                    onPress={() => router.push(`/requests/${request.id}`)}
+                  />
+                ))}
+              </View>
+              {requests.length > 3 ? (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => router.push("/requests")}
+                  style={({ pressed }) => [styles.seeAll, pressed && styles.scanPressed]}
+                >
+                  <Text style={styles.seeAllLabel}>See all {requests.length} requests</Text>
+                  <Ionicons name="arrow-forward" size={16} color={colors.primary} />
+                </Pressable>
+              ) : null}
             </View>
           ) : null}
 
@@ -145,6 +193,36 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
     </View>
+  );
+}
+
+function QuickAction({
+  count,
+  icon,
+  label,
+  onPress,
+}: {
+  count: number;
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityLabel={`${label}${count ? `, ${count} saved` : ""}`}
+      accessibilityRole="button"
+      onPress={onPress}
+      style={({ pressed }) => [styles.quickCard, pressed && styles.scanPressed]}
+    >
+      <View style={styles.quickIcon}>
+        <Ionicons name={icon} size={17} color={colors.primary} />
+      </View>
+      <View style={styles.quickText}>
+        <Text style={styles.quickLabel}>{label}</Text>
+        <Text style={styles.quickCount}>{count === 0 ? "None yet" : `${count} saved`}</Text>
+      </View>
+      <Ionicons name="chevron-forward" size={16} color={colors.inkMuted} />
+    </Pressable>
   );
 }
 
@@ -229,6 +307,37 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     gap: spacing.xl,
   },
+  quickRow: { flexDirection: "row", gap: spacing.sm },
+  quickCard: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.surface,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    padding: spacing.md,
+  },
+  quickIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 12,
+    backgroundColor: colors.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  quickText: { flex: 1, gap: 1 },
+  quickLabel: { color: colors.ink, fontSize: type.small, fontWeight: "800" },
+  quickCount: { color: colors.inkMuted, fontSize: type.tiny },
+  seeAll: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    minHeight: 40,
+  },
+  seeAllLabel: { color: colors.primary, fontSize: type.small, fontWeight: "800" },
   section: { gap: spacing.md },
   sectionHeader: {
     flexDirection: "row",

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.orm import sessionmaker
@@ -15,10 +16,24 @@ class RecordingSender:
         self.sent: list[dict] = []
         self.error = error
 
-    def send(self, *, recipient: str, subject: str, body: str) -> None:
+    def send(
+        self,
+        *,
+        recipient: str,
+        subject: str,
+        body: str,
+        headers: dict[str, str] | None = None,
+    ) -> None:
         if self.error is not None:
             raise self.error
-        self.sent.append({"recipient": recipient, "subject": subject, "body": body})
+        self.sent.append(
+            {
+                "recipient": recipient,
+                "subject": subject,
+                "body": body,
+                "headers": headers or {},
+            }
+        )
 
 
 def _ready_payload(ref: str = "R-ABC123") -> dict:
@@ -166,3 +181,29 @@ def test_render_staff_alert_mentions_the_customer(db, tenant):
     assert "New reservation R-ZZZ999" in subject
     assert "Ana requested 2 card line(s)" in body
     assert "2500.00 RSD" in body
+
+
+def test_restock_email_has_deep_link_and_one_click_unsubscribe(db, tenant, card, stock):
+    alert_id = uuid.uuid4()
+    _enqueue(
+        db,
+        tenant,
+        kind="RESTOCK_AVAILABLE",
+        payload={
+            "name": card.name,
+            "alert_id": str(alert_id),
+            "shop_slug": tenant.slug,
+            "stock_id": str(stock.id),
+            "price_minor": 125000,
+            "currency": "RSD",
+        },
+    )
+    sender = RecordingSender()
+    assert worker.deliver_tenant(db, tenant, sender, now=datetime.now(UTC)) == 1
+
+    sent = sender.sent[0]
+    assert f"cardtracker://shop/{tenant.slug}/card/{stock.id}" in sent["body"]
+    assert "Unsubscribe:" in sent["body"]
+    assert sent["headers"]["List-Unsubscribe"].startswith("<http")
+    assert "/unsubscribe/one-click?token=" in sent["headers"]["List-Unsubscribe"]
+    assert sent["headers"]["List-Unsubscribe-Post"] == "List-Unsubscribe=One-Click"

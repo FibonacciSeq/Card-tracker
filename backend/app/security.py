@@ -81,3 +81,27 @@ def derive_guest_token(idempotency_key: str) -> str:
 
 def hash_guest_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def restock_unsubscribe_token(tenant_id: uuid.UUID, alert_id: uuid.UUID | str) -> str:
+    """Signed, stateless token for restock-alert unsubscribe links.
+
+    The token is deterministic so re-subscribing can return a fresh link
+    without storing the plaintext token in the database.
+    """
+    secret = settings.unsubscribe_secret or settings.jwt_secret
+    return hmac.new(
+        secret.encode("utf-8"),
+        f"restock-unsubscribe:{tenant_id}:{alert_id}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+
+
+def verify_restock_unsubscribe_token(
+    tenant_id: uuid.UUID,
+    alert_id: uuid.UUID | str,
+    token: str | None,
+) -> bool:
+    if not token:
+        return False
+    return hmac.compare_digest(restock_unsubscribe_token(tenant_id, alert_id), token)

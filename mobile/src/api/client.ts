@@ -1,8 +1,12 @@
 import { API_BASE_URL } from "../lib/config";
 import type {
+  CardRequest,
+  CardRequestCreate,
   Facets,
   Reservation,
   ReservationCreate,
+  RestockAlert,
+  RestockAlertCreate,
   Shop,
   StockItem,
   StockList,
@@ -161,6 +165,80 @@ export function cancelReservation(
     headers: {
       "X-Shop-Slug": slug,
       "X-Reservation-Token": token,
+    },
+  });
+}
+
+export function createRestockAlert(
+  slug: string,
+  payload: RestockAlertCreate,
+): Promise<RestockAlert> {
+  return request<RestockAlert>(`/v1/shops/${encodeURIComponent(slug)}/restock-alerts`, {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function unsubscribeRestockAlert(
+  slug: string,
+  alertId: string,
+  token: string,
+): Promise<void> {
+  return request<void>(
+    `/v1/shops/${encodeURIComponent(slug)}/restock-alerts/${encodeURIComponent(alertId)}/unsubscribe?token=${encodeURIComponent(token)}`,
+    { method: "POST" },
+  );
+}
+
+export function createCardRequest(
+  slug: string,
+  payload: CardRequestCreate,
+): Promise<CardRequest> {
+  return request<CardRequest>(`/v1/shops/${encodeURIComponent(slug)}/card-requests`, {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export function getCardRequest(
+  id: string,
+  slug: string,
+  token: string,
+  signal?: AbortSignal,
+): Promise<CardRequest> {
+  return request<CardRequest>(`/v1/card-requests/${encodeURIComponent(id)}`, {
+    signal,
+    headers: {
+      "X-Shop-Slug": slug,
+      "X-Card-Request-Token": token,
+    },
+  });
+}
+
+export function acceptCardRequest(
+  id: string,
+  slug: string,
+  token: string,
+): Promise<CardRequest> {
+  return request<CardRequest>(`/v1/card-requests/${encodeURIComponent(id)}/accept`, {
+    method: "POST",
+    headers: {
+      "X-Shop-Slug": slug,
+      "X-Card-Request-Token": token,
+    },
+  });
+}
+
+export function cancelCardRequest(
+  id: string,
+  slug: string,
+  token: string,
+): Promise<CardRequest> {
+  return request<CardRequest>(`/v1/card-requests/${encodeURIComponent(id)}/cancel`, {
+    method: "POST",
+    headers: {
+      "X-Shop-Slug": slug,
+      "X-Card-Request-Token": token,
     },
   });
 }

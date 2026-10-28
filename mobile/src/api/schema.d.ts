@@ -198,10 +198,31 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** Restock Unsubscribe Page */
+        get: operations["restock_unsubscribe_page_v1_shops__slug__restock_alerts__alert_id__unsubscribe_get"];
         put?: never;
         /** Unsubscribe Restock Alert */
         post: operations["unsubscribe_restock_alert_v1_shops__slug__restock_alerts__alert_id__unsubscribe_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/shops/{slug}/restock-alerts/{alert_id}/unsubscribe/one-click": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restock Unsubscribe One Click
+         * @description RFC 8058 one-click target used by the List-Unsubscribe header.
+         */
+        post: operations["restock_unsubscribe_one_click_v1_shops__slug__restock_alerts__alert_id__unsubscribe_one_click_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1129,6 +1150,8 @@ export interface components {
              * @default false
              */
             already_subscribed: boolean;
+            /** Manage Token */
+            manage_token?: string | null;
             /**
              * Created At
              * Format: date-time
@@ -2056,9 +2079,11 @@ export interface operations {
             };
         };
     };
-    unsubscribe_restock_alert_v1_shops__slug__restock_alerts__alert_id__unsubscribe_post: {
+    restock_unsubscribe_page_v1_shops__slug__restock_alerts__alert_id__unsubscribe_get: {
         parameters: {
-            query?: never;
+            query?: {
+                token?: string | null;
+            };
             header?: never;
             path: {
                 slug: string;
@@ -2066,9 +2091,43 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody: {
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unsubscribe_restock_alert_v1_shops__slug__restock_alerts__alert_id__unsubscribe_post: {
+        parameters: {
+            query?: {
+                token?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+                alert_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
             content: {
-                "application/json": components["schemas"]["RestockUnsubscribeIn"];
+                "application/json": components["schemas"]["RestockUnsubscribeIn"] | null;
             };
         };
         responses: {
@@ -2078,6 +2137,40 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restock_unsubscribe_one_click_v1_shops__slug__restock_alerts__alert_id__unsubscribe_one_click_post: {
+        parameters: {
+            query?: {
+                token?: string | null;
+            };
+            header?: never;
+            path: {
+                slug: string;
+                alert_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
             };
             /** @description Validation Error */
             422: {

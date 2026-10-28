@@ -16,6 +16,7 @@ import type { StockItem } from "../../../../api/types";
 import { CartBar } from "../../../../components/CartBar";
 import { EmptyState } from "../../../../components/EmptyState";
 import { LoadingState } from "../../../../components/LoadingState";
+import { RestockAlertForm } from "../../../../components/RestockAlertForm";
 import { formatDateTime, formatMoney, titleCase } from "../../../../lib/format";
 import { shopPath } from "../../../../lib/config";
 import { useCart } from "../../../../state/cart";
@@ -169,7 +170,45 @@ export default function CardDetailScreen() {
             )}
           </View>
 
+          {soldOut ? (
+            <RestockAlertForm shopSlug={slug} shopName={shopName} item={item} />
+          ) : null}
+
           <Details item={item} />
+
+          <Pressable
+            accessibilityHint="Opens the special-order request form"
+            accessibilityLabel={`Ask ${shopName} to source this card`}
+            accessibilityRole="button"
+            onPress={() =>
+              router.push({
+                pathname: "/requests/new",
+                params: {
+                  shopSlug: slug,
+                  shopName,
+                  cardId: item.card.id,
+                  name: item.card.name,
+                  setCode: item.card.set_code,
+                  collectorNumber: item.card.collector_number,
+                  finish: item.finish,
+                  condition: item.condition,
+                  language: item.language,
+                },
+              })
+            }
+            style={({ pressed }) => [styles.specialOrder, pressed && styles.pressed]}
+          >
+            <View style={styles.specialOrderIcon}>
+              <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
+            </View>
+            <View style={styles.specialOrderText}>
+              <Text style={styles.specialOrderTitle}>Need a different copy?</Text>
+              <Text style={styles.specialOrderBody}>
+                Ask {shopName} to source this card as a special order.
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.inkMuted} />
+          </Pressable>
 
           <Pressable
             accessibilityLabel={`See everything at ${shopName}`}

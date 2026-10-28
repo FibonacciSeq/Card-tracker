@@ -1,8 +1,8 @@
 # Card Tracker platform — status
 
 Last updated: **2026-10-28**
-Latest feature commit: **`e0c4d10` — Add restock alerts, special orders, and notification delivery**
-Working tree: post-Step-4 audit hardening and the Step 5 customer guest slice (uncommitted at the time of writing)
+Latest feature commit: **`a0c0b8a` — Add guest customer app and platform audit fixes**
+Working tree: Step 5 QR/deep-link entry, card detail, restock alerts, special orders, and the admin shop QR (uncommitted at the time of writing)
 
 This file is the quick, human-readable status of the multi-vendor platform.
 The full product/technical specification lives outside the repository in the
@@ -148,6 +148,8 @@ Correctness and security fixes applied after the first platform audit:
   usable guest credential; expired keys are pruned on the next create.
 - Restock unsubscribe moved from `DELETE ...?email=...` to
   `POST .../unsubscribe` with a JSON body, keeping addresses out of URL logs.
+  The app now also uses a signed, tenant/alert-scoped token, with an HTML
+  confirmation page and an RFC 8058 one-click endpoint for email clients.
 - Reservation expiry, customer cancellation, and completion now enqueue
   customer email notifications; staff recipients fall back to the public
   contact address.
@@ -181,7 +183,7 @@ Pages:
 | `/requests` | Special orders: quote, decline, convert to reservation |
 | `/team` | Owner-only staff management |
 | `/activity` | Owner-only audit trail |
-| `/settings` | Branding, hold duration, payment instructions, contact, directory opt-in |
+| `/settings` | Branding, hold duration, payment instructions, contact, directory opt-in, printable shop QR |
 
 Colour-coded stock/status values always include a text label. The production
 bundle has no source maps; `admin/public/_headers` supplies CSP and browser
@@ -202,13 +204,32 @@ The customer app now exists as a working guest vertical slice:
   local hold history, detail refresh, and cancellation.
 - Guest reservation tokens use SecureStore on native platforms; the web
   preview falls back to AsyncStorage.
-- `cardtracker://` scheme configured for future QR and deep links.
-- Mobile checks: TypeScript, ESLint, production web export, and a local
-  browser smoke test through the full guest hold flow.
+- Dedicated card-detail route with a large image, price, live availability,
+  variant metadata, add-to-hold controls, and a link back to the shop.
+- In-store QR entry: `expo-camera` scans shop and card codes, with manual
+  shop-code entry as the fallback on web and when the camera is unavailable.
+- Deep links `cardtracker://shop/<slug>` and
+  `cardtracker://shop/<slug>/card/<stock-id>` open the same routes on cold start
+  or while running. The parser also accepts the equivalent `https` path, Expo Go
+  `exp://…/--/…` links, a bare path, or a slug, and rejects other schemes/paths.
+- The vendor admin renders the shop QR code (and copy/download actions) from
+  **Settings**, entirely in the browser.
+- Sold-out card detail offers a single-opt-in restock alert. Alerts have a
+  dedicated list screen and can be removed with a signed manage token.
+- Restock emails contain a card deep link, an unsubscribe link, and RFC 8058
+  `List-Unsubscribe` / `List-Unsubscribe-Post` headers. Unsubscribe works from
+  the app, an HTML confirmation page, or a one-click POST.
+- Special-order request form, local request list, live status detail, quote
+  accept, and cancel. The guest request token is stored in SecureStore.
+- Mobile checks: TypeScript, ESLint, production web export, and a local browser
+  smoke test through QR/manual entry, card detail, add-to-hold, restock
+  subscribe/unsubscribe, special-order create, staff quote, and quote accept.
 
-Still missing from Step 5: QR scanning/deep-link entry, a dedicated card-detail
-route, restock-alert and special-order screens, customer accounts/OTP,
-`/v1/me`, push notifications, offline caching, localization, and device E2E.
+Still missing from Step 5: customer accounts/OTP, `/v1/me`, push notifications,
+offline caching, localization, and device E2E. Restock alerts and special
+orders are currently tied to the device that created them. Printed codes use
+the custom scheme; universal links on a public HTTPS domain are not configured
+yet.
 
 ---
 
@@ -216,8 +237,8 @@ route, restock-alert and special-order screens, customer accounts/OTP,
 
 | Check | Result |
 | --- | --- |
-| Backend SQLite suite | **99 passed, 7 skipped** |
-| Backend with PostgreSQL test URLs | **106 passed** |
+| Backend SQLite suite | **102 passed, 7 skipped** |
+| Backend with PostgreSQL test URLs | **109 passed** |
 | Backend PostgreSQL-only suite (RLS, locking) | **7 passed** |
 | Backend Ruff / format / mypy | Clean |
 | Admin ESLint / TypeScript / production build | Clean |
@@ -226,7 +247,8 @@ route, restock-alert and special-order screens, customer accounts/OTP,
 | Mobile TypeScript / ESLint | Clean |
 | Mobile `expo-doctor` | **20/20** |
 | Mobile production web export | Passed |
-| Mobile browser smoke test (local API) | Passed: directory → storefront → hold → cancel |
+| Mobile browser smoke test (local API) | Passed: scan entry → storefront → card detail → add to hold; restock subscribe/unsubscribe; special-order create → staff quote → customer accept |
+| Mobile deep-link parser cases | Passed: custom scheme, https, Expo Go, path, slug, bad UUID, traversal, foreign scheme |
 | Root legacy `make check` | **268 passed** |
 | Alembic downgrade base → upgrade head | Verified on PostgreSQL |
 | RLS enabled + forced | All 10 tenant tables, including `card_requests` and `restock_alerts` |
@@ -262,7 +284,7 @@ make check
 PostgreSQL verification uses `backend/scripts/local_postgres.sh`; export the
 admin and non-owner app URLs as described in `backend/README.md`. Without
 those variables the SQLite run reports 7 skips; with the local server and both
-URLs exported it reports 106 passed. CI supplies a real non-owner role.
+URLs exported it reports 109 passed. CI supplies a real non-owner role.
 
 CI already runs four workflows: legacy (`ci.yml`), backend (`backend.yml`),
 admin (`admin.yml`), and mobile (`mobile.yml`). The backend workflow includes
@@ -275,15 +297,13 @@ mobile workflow runs lint, typecheck, and the production web export.
 
 ### Step 5 — customer mobile app (in progress)
 
-The guest vertical slice is working. The remaining app work, in order:
+The guest vertical slice is working, including QR/deep-link entry, card detail,
+restock alerts, and special orders. The remaining app work, in order:
 
-1. Add QR scanning/deep-link entry and a dedicated card-detail route.
-2. Add the restock-alert UI and special-order flow: request, track, accept
-   quote, cancel.
-3. Add customer OTP accounts and `/v1/me` endpoints; claim guest reservations
-   and restock alerts when an account is created.
-4. Add push notifications (FCM/APNs) on top of the existing outbox.
-5. Add offline caching, localization, and device E2E (Maestro/Detox), then
+1. Add customer OTP accounts and `/v1/me` endpoints; claim guest reservations,
+   restock alerts, and special orders when an account is created.
+2. Add push notifications (FCM/APNs) on top of the existing outbox.
+3. Add offline caching, localization, and device E2E (Maestro/Detox), then
    pilot-shop onboarding.
 
 ### Pilot readiness (after the app)
@@ -298,6 +318,8 @@ The guest vertical slice is working. The remaining app work, in order:
   production static host; the Vite headers only cover dev/preview.
 - Run the PostgreSQL-only suite against the production-like database role and
   migration round trip before onboarding.
+- Configure universal/app links (`https://…/shop/…`) on the production domain
+  before printing QR codes at scale; today's codes use `cardtracker://`.
 - Move rate limiting to Redis if the API runs more than one worker.
 - Decide whether converting a special order should apply the quoted price
   instead of the current shelf price (today the shelf price wins).
@@ -316,12 +338,16 @@ The guest vertical slice is working. The remaining app work, in order:
 ## 5. Current limitations
 
 - Customer app is a guest-only vertical slice; there is no account screen,
-  push delivery, restock-alert UI, special-order UI, QR scanner, offline cache,
-  or device E2E yet.
+  push delivery, offline cache, or device E2E yet. Restock alerts and special
+  orders are stored per device and cannot be recovered on another device.
+- Printed QR codes use the `cardtracker://` custom scheme. Universal/app links
+  on a public HTTPS domain are not configured, and app-store fallback for
+  customers without the app is not implemented yet.
 - Guests only: no customer OTP accounts or `/v1/me` endpoints.
 - Email notifications only; no push delivery and no staff notification inbox.
 - Restock alerts are one-shot and email-based; they are not yet tied to
-  customer accounts.
+  customer accounts. The card link in those emails uses the custom scheme
+  until universal links are configured.
 - The PostgreSQL-only tests skip locally unless the two test URLs are set;
   SQLite cannot exercise RLS, row locking, or the last-copy race.
 - The admin static host must serve the CSP/security headers from

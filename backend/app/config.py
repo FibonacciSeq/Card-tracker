@@ -27,6 +27,12 @@ class Settings(BaseSettings):
     # auto-create explicitly.
     auto_create_tables: bool = False
     cors_origins: str = "*"
+    # Public base URL used in customer emails (unsubscribe pages). Set this to
+    # the externally reachable API origin in production.
+    public_api_url: str = "http://localhost:8000"
+    # Optional dedicated key for signed unsubscribe links. Falls back to the
+    # JWT secret so existing deployments keep working without new config.
+    unsubscribe_secret: str = ""
     min_app_version: str = "0.1.0"
     # In-process sliding windows; move to Redis when the API runs multiple
     # workers. Generous enough to never bother a person, tight enough to stop

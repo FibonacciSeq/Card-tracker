@@ -10,6 +10,8 @@ from __future__ import annotations
 import uuid
 
 from app import models
+from app.config import settings
+from app.security import restock_unsubscribe_token
 
 
 def enqueue(
@@ -62,6 +64,45 @@ def _when(value: str | None) -> str:
     if not value:
         return "—"
     return value.replace("T", " ")[:16] + " UTC"
+
+
+def app_card_url(tenant: models.Tenant, payload: dict) -> str:
+    """Deep link that opens the card (or shop) in the customer app."""
+    slug = str(payload.get("shop_slug") or tenant.slug)
+    stock_id = payload.get("stock_id")
+    if stock_id:
+        return f"cardtracker://shop/{slug}/card/{stock_id}"
+    return f"cardtracker://shop/{slug}"
+
+
+def unsubscribe_url(
+    row: models.Notification,
+    tenant: models.Tenant,
+    *,
+    one_click: bool = False,
+) -> str | None:
+    payload = row.payload or {}
+    alert_id = payload.get("alert_id")
+    if not alert_id:
+        return None
+    token = restock_unsubscribe_token(tenant.id, str(alert_id))
+    slug = payload.get("shop_slug") or tenant.slug
+    base = settings.public_api_url.rstrip("/")
+    action = "unsubscribe/one-click" if one_click else "unsubscribe"
+    return f"{base}/v1/shops/{slug}/restock-alerts/{alert_id}/{action}?token={token}"
+
+
+def headers(row: models.Notification, tenant: models.Tenant) -> dict[str, str]:
+    """Extra transport headers for one queued notification."""
+    if row.kind != "RESTOCK_AVAILABLE":
+        return {}
+    url = unsubscribe_url(row, tenant, one_click=True)
+    if not url:
+        return {}
+    return {
+        "List-Unsubscribe": f"<{url}>",
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    }
 
 
 def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
@@ -176,12 +217,16 @@ def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
 
     if kind == "RESTOCK_AVAILABLE":
         subject = f"Back in stock at {shop}: {payload.get('name', 'a card')}"
+        link = app_card_url(tenant, payload)
+        unsubscribe = unsubscribe_url(row, tenant)
         body = (
             f"{payload.get('name', 'A card')} ({payload.get('finish', 'nonfoil')}, "
             f"{payload.get('condition', 'NM')}, {payload.get('language', 'en')}) is available again.\n\n"
             f"Price: {_money(payload.get('price_minor'), payload.get('currency'))}\n"
-            f"Reserve it in the {shop} app before it sells out."
+            f"Reserve it in the {shop} app: {link}\n"
         )
+        if unsubscribe:
+            body += f"\nYou asked {shop} to tell you when this card returned.\nUnsubscribe: {unsubscribe}\n"
         return subject, body
 
     return f"{shop}: {kind}", str(payload)

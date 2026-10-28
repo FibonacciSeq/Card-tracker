@@ -10,6 +10,11 @@ export type StockList = Schemas["StockListOut"];
 export type Reservation = Schemas["ReservationOut"];
 export type ReservationCreate = Schemas["ReservationCreate"];
 export type ReservationLine = Schemas["ReservationLineOut"];
+export type RestockAlert = Schemas["RestockAlertOut"];
+export type RestockAlertCreate = Schemas["RestockAlertCreateIn"];
+export type CardRequest = Schemas["CardRequestOut"];
+export type CardRequestCreate = Schemas["CardRequestCreateIn"];
+export type Customer = Schemas["CustomerIn"];
 
 export type StockSort = "relevance" | "name" | "price_asc" | "price_desc" | "newest";
 

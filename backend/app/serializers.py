@@ -181,7 +181,12 @@ def staff_card_request_out(row: models.CardRequest, tenant: models.Tenant) -> sc
     )
 
 
-def restock_alert_out(row: models.RestockAlert, *, already_subscribed: bool = False) -> schemas.RestockAlertOut:
+def restock_alert_out(
+    row: models.RestockAlert,
+    *,
+    already_subscribed: bool = False,
+    manage_token: str | None = None,
+) -> schemas.RestockAlertOut:
     return schemas.RestockAlertOut(
         id=row.id,
         card_id=row.card_id,
@@ -190,5 +195,6 @@ def restock_alert_out(row: models.RestockAlert, *, already_subscribed: bool = Fa
         condition=row.condition,
         language=row.language,
         already_subscribed=already_subscribed,
+        manage_token=manage_token,
         created_at=row.created_at,
     )

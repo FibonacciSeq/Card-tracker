@@ -47,17 +47,29 @@ The SQL Server schema in `database/` stores the same kind of data in a
 multi-user deployment. Apply the same access control, backup, and retention
 rules there.
 
-The platform backend stores shop, customer, reservation, and special-order data
-in PostgreSQL in production (SQLite locally). Treat database dumps, API logs,
-and notification payloads as sensitive. The mobile app keeps only a local cart
-and the guest reservation metadata needed to reopen a hold.
+The platform backend stores shop, customer, reservation, restock-alert, and
+special-order data in PostgreSQL in production (SQLite locally). Treat database
+dumps, API logs, and notification payloads as sensitive. The mobile app keeps
+only a local cart, guest token material, and the guest metadata needed to
+reopen a hold, manage a restock alert, or track a special order.
 
 ## Mobile app tokens
 
-- A guest reservation access token is a credential. Native builds store it in
-  Expo SecureStore; the web preview falls back to AsyncStorage because
-  SecureStore has no web implementation. Do not use the web preview as a
-  production customer channel.
+- Guest reservation, restock-alert manage, and special-order tokens are
+  credentials. Native builds store them in Expo SecureStore; the web preview
+  falls back to AsyncStorage because SecureStore has no web implementation. Do
+  not use the web preview as a production customer channel.
+- Restock unsubscribe links use a stateless HMAC token scoped to one tenant and
+  one alert. The token is deterministic, returned as `manage_token`, and grants
+  only the ability to unsubscribe that alert. The confirmation page sends
+  `Referrer-Policy: no-referrer` and `Cache-Control: no-store`; the token may
+  still appear in API access logs, so keep log retention short.
+- Restock emails include `List-Unsubscribe` and `List-Unsubscribe-Post`
+  headers for RFC 8058 one-click unsubscribe, plus a human-facing confirmation
+  link. The one-click endpoint is idempotent and returns HTML.
+- Set `CARDTRACKER_PUBLIC_API_URL` to the public HTTPS API origin so email
+  links do not point at localhost. Set `CARDTRACKER_UNSUBSCRIBE_SECRET` to a
+  dedicated random key in production; when unset, the JWT secret is used.
 - The app sends an idempotency key when creating a reservation and reuses it
   while a submission is retried, preventing duplicate holds after a lost
   response.
