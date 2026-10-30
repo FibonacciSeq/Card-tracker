@@ -43,6 +43,25 @@ def get_me(customer: models.User = Depends(get_current_customer)):
     return schemas.CustomerOut.model_validate(customer)
 
 
+@router.post("/me/push-tokens", response_model=schemas.PushTokenOut, status_code=status.HTTP_201_CREATED)
+def register_push_token(
+    payload: schemas.PushTokenIn,
+    customer: models.User = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+):
+    return accounts.register_push_token(db, customer, payload)
+
+
+@router.delete("/me/push-tokens/{token}", status_code=status.HTTP_204_NO_CONTENT)
+def unregister_push_token(
+    token: str,
+    customer: models.User = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+):
+    accounts.unregister_push_token(db, customer, token)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/me/reservations", response_model=schemas.MeReservationListOut)
 def list_my_reservations(
     customer: models.User = Depends(get_current_customer),

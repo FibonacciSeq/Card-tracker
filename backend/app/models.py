@@ -127,6 +127,31 @@ class CustomerOtpChallenge(Base):
     )
 
 
+class PushToken(Base):
+    """A native APNs or FCM registration owned by one customer."""
+
+    __tablename__ = "push_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    token: Mapped[str] = mapped_column(Text)
+    # Index the digest instead of the token: platform token lengths vary and
+    # SQL Server cannot index a long text column.
+    token_hash: Mapped[str] = mapped_column(String(64))
+    platform: Mapped[str] = mapped_column(String(20))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        UniqueConstraint("token_hash", name="uq_push_tokens_hash"),
+        CheckConstraint("platform IN ('ios','android')", name="ck_push_tokens_platform"),
+        Index("ix_push_tokens_user_active", "user_id", "revoked_at"),
+    )
+
+
 class Card(Base):
     __tablename__ = "cards"
 

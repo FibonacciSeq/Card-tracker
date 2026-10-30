@@ -195,6 +195,20 @@ class CustomerTokenOut(BaseModel):
     claimed: ClaimedOut
 
 
+class PushTokenIn(BaseModel):
+    token: str = Field(min_length=16, max_length=4096)
+    platform: Literal["ios", "android"]
+
+
+class PushTokenOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    platform: str
+    created_at: datetime
+    last_seen_at: datetime
+
+
 class MeReservationSummaryOut(ReservationSummaryOut):
     shop: dict
 

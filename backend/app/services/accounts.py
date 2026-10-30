@@ -281,3 +281,57 @@ def verify_otp(
         customer=schemas.CustomerOut.model_validate(customer),
         claimed=claimed,
     )
+
+
+def _push_token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def register_push_token(
+    db: Session,
+    customer: models.User,
+    payload: schemas.PushTokenIn,
+) -> schemas.PushTokenOut:
+    """Register or refresh one native APNs/FCM token for the signed-in customer."""
+    token = payload.token.strip()
+    token_hash = _push_token_hash(token)
+    now = _now()
+    row = db.scalar(select(models.PushToken).where(models.PushToken.token_hash == token_hash))
+    if row is not None:
+        if row.user_id != customer.id:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="This device token is registered to another account.",
+            )
+        row.token = token
+        row.platform = payload.platform
+        row.last_seen_at = now
+        row.revoked_at = None
+    else:
+        row = models.PushToken(
+            user_id=customer.id,
+            token=token,
+            token_hash=token_hash,
+            platform=payload.platform,
+            created_at=now,
+            last_seen_at=now,
+        )
+        db.add(row)
+    db.commit()
+    db.refresh(row)
+    return schemas.PushTokenOut.model_validate(row)
+
+
+def unregister_push_token(db: Session, customer: models.User, token: str) -> None:
+    """Idempotently revoke a token; unknown or foreign tokens are ignored."""
+    token_hash = _push_token_hash(token.strip())
+    row = db.scalar(
+        select(models.PushToken).where(
+            models.PushToken.user_id == customer.id,
+            models.PushToken.token_hash == token_hash,
+        )
+    )
+    if row is None or row.revoked_at is not None:
+        return
+    row.revoked_at = _now()
+    db.commit()
