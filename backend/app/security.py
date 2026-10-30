@@ -43,6 +43,20 @@ def create_access_token(user_id: uuid.UUID, tenant_id: uuid.UUID, role: str) -> 
     return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
 
+def create_customer_access_token(customer_id: uuid.UUID) -> str:
+    """Issue a global customer session token (no tenant claim)."""
+    now = datetime.now(UTC)
+    payload = {
+        "sub": str(customer_id),
+        "role": "customer",
+        "scope": "customer",
+        "iat": now,
+        "exp": now + timedelta(minutes=settings.customer_access_token_minutes),
+        "iss": settings.jwt_issuer,
+    }
+    return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
+
+
 def decode_access_token(token: str) -> dict:
     return jwt.decode(
         token,
@@ -50,6 +64,26 @@ def decode_access_token(token: str) -> dict:
         algorithms=["HS256"],
         issuer=settings.jwt_issuer,
     )
+
+
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
+
+
+def derive_otp_code(challenge_id: uuid.UUID | str, email: str) -> str:
+    """Derive a six-digit OTP without storing the code at rest.
+
+    The challenge id is random and the server secret is not in the database, so
+    a leaked challenge row is not enough to sign in.
+    """
+    secret = settings.otp_secret or settings.jwt_secret
+    normalized = normalize_email(email)
+    digest = hmac.new(
+        secret.encode("utf-8"),
+        f"otp:{challenge_id}:{normalized}".encode(),
+        hashlib.sha256,
+    ).digest()
+    return f"{int.from_bytes(digest[:8], 'big') % 1_000_000:06d}"
 
 
 def new_public_ref() -> str:

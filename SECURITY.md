@@ -49,12 +49,19 @@ rules there.
 
 The platform backend stores shop, customer, reservation, restock-alert, and
 special-order data in PostgreSQL in production (SQLite locally). Treat database
-dumps, API logs, and notification payloads as sensitive. The mobile app keeps
-only a local cart, guest token material, and the guest metadata needed to
-reopen a hold, manage a restock alert, or track a special order.
+dumps, API logs, and notification payloads as sensitive. The mobile app keeps a
+local cart, guest token material, and the guest metadata needed to reopen a
+hold, manage a restock alert, or track a special order. When a customer signs
+in, `/v1/me` data lives only in the in-memory React Query cache for that app
+process; it is not written to device storage.
 
 ## Mobile app tokens
 
+- Customer account tokens are 12-hour JWTs held only in memory. They are never
+  written to SecureStore or AsyncStorage, and a cold app launch starts signed
+  out. The app clears the token and account query cache on `401` or sign-out.
+  There is no refresh token or server-side revocation yet; the server checks
+  token expiry and `is_active` on each request.
 - Guest reservation, restock-alert manage, and special-order tokens are
   credentials. Native builds store them in Expo SecureStore; the web preview
   falls back to AsyncStorage because SecureStore has no web implementation. Do
@@ -70,6 +77,22 @@ reopen a hold, manage a restock alert, or track a special order.
 - Set `CARDTRACKER_PUBLIC_API_URL` to the public HTTPS API origin so email
   links do not point at localhost. Set `CARDTRACKER_UNSUBSCRIBE_SECRET` to a
   dedicated random key in production; when unset, the JWT secret is used.
+- Email OTP codes are six digits, expire after 10 minutes, allow five attempts,
+  and are rate-limited per client IP and per hashed email. The code is derived
+  with HMAC from the challenge id and `CARDTRACKER_OTP_SECRET` (or the JWT
+  secret when unset); no plaintext code is stored in the database or written
+  to logs. The notification worker renders it only at delivery time.
+- `CARDTRACKER_OTP_DEBUG_CODE` returns the code in the request response only in
+  `development` or `test`. Keep it `false` in production. `/v1/auth` and
+  `/v1/me` responses are sent with `Cache-Control: no-store`.
+- Anyone who controls an email can claim unowned guest reservations, restock
+  alerts, and special orders that use that email. This is the intended
+  cross-device recovery rule and the reason the OTP is required. Rows already
+  linked to another customer are never reassigned.
+- Disabling a customer account blocks new OTP verification and takes effect on
+  the next account request because `is_active` is checked while resolving the
+  token. There is no explicit session revocation list, so a token that is not
+  presented again simply remains valid until its expiry.
 - The app sends an idempotency key when creating a reservation and reuses it
   while a submission is retried, preventing duplicate holds after a lost
   response.
@@ -134,12 +157,14 @@ ruff format --check .
 mypy .
 pytest --cov --cov-report=term-missing
 bandit -q -c pyproject.toml -r .
-pip-audit -r requirements.txt --progress-spinner off
+./scripts/audit_requirements.sh
 ```
 
-The platform workflows run backend Ruff/mypy/pytest (SQLite and PostgreSQL),
-admin ESLint/typecheck/build/Playwright, and mobile ESLint/typecheck/web export.
-See [`STATUS.md`](STATUS.md) and the component READMEs for the exact commands.
+The platform workflows run backend Ruff/mypy/pytest with coverage (SQLite and
+PostgreSQL), admin and mobile `npm audit`, admin
+ESLint/typecheck/coverage/build/Playwright, and mobile
+ESLint/typecheck/coverage/web export. See [`STATUS.md`](STATUS.md) and the
+component READMEs for the exact commands.
 
 Dependabot checks Python dependencies and GitHub Actions monthly. If you add a
 dependency, pin a lower bound that contains the current security fixes and

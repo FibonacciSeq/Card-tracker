@@ -1,8 +1,9 @@
 # Card Tracker platform — status
 
-Last updated: **2026-10-28**
-Latest feature commit: **`a0c0b8a` — Add guest customer app and platform audit fixes**
-Working tree: Step 5 QR/deep-link entry, card detail, restock alerts, special orders, and the admin shop QR (uncommitted at the time of writing)
+Last updated: **2026-10-29**
+Latest commit: **`b05107c` — Add restock alerts and special-order customer flows**
+Working tree: Step 5 optional customer accounts/OTP, `/v1/me`, automatic guest
+claiming, and the 100% coverage/CI hardening (uncommitted at the time of writing)
 
 This file is the quick, human-readable status of the multi-vendor platform.
 The full product/technical specification lives outside the repository in the
@@ -19,9 +20,9 @@ client/server stack side by side:
 | Part | Location | Status |
 | --- | --- | --- |
 | Legacy Tkinter desktop shop (customer + owner + collection tool) | root `*.py`, `ui/`, `services/`, `database/` | Working; kept unchanged as a fallback |
-| Multi-vendor platform API | `backend/` | Implemented through Step 4 + audit hardening |
+| Multi-vendor platform API | `backend/` | Implemented through Step 4 + audit hardening, plus Step 5 accounts |
 | Vendor web admin | `admin/` | Implemented through Step 4 + audit hardening |
-| Customer mobile app | `mobile/` | Guest vertical slice implemented (Step 5 in progress) |
+| Customer mobile app | `mobile/` | Guest vertical slice plus optional OTP accounts (Step 5 in progress) |
 
 The platform is the forward path: one cloud API and one admin codebase serving
 many shops, with a native customer app on top. The legacy desktop app remains
@@ -39,8 +40,8 @@ for the original single-shop workflow until the new stack replaces it.
 - **Admin:** Vite + React 19 + TypeScript + TanStack Query, no SSR and no
   second backend. Types are generated from a committed OpenAPI snapshot.
 - **Mobile:** Expo SDK 58 + React Native + TypeScript + Expo Router +
-  TanStack Query. The customer app is a guest-first slice; types come from the
-  same OpenAPI snapshot.
+  TanStack Query. The customer app is guest-first with an optional
+  memory-only account session; types come from the same OpenAPI snapshot.
 - **Workers:** expiry worker (holds and quotes) and notification outbox worker.
 - **Notifications:** transactional outbox with console or SMTP delivery,
   retry/backoff, and per-tenant iteration so RLS stays enforced. The `none`
@@ -190,9 +191,10 @@ bundle has no source maps; `admin/public/_headers` supplies CSP and browser
 security headers. Client logging is development-only and records sanitized
 error metadata (type/status), never request bodies or tokens.
 
-### Step 5 — customer mobile guest slice (2026-10-28)
+### Step 5 — customer mobile app and optional accounts (2026-10-29)
 
-The customer app now exists as a working guest vertical slice:
+The customer app now exists as a working guest vertical slice, with optional
+email-OTP accounts on top:
 
 - Expo SDK 58 + React Native + TypeScript + Expo Router, with a generated API
   types snapshot and TanStack Query hooks.
@@ -221,15 +223,31 @@ The customer app now exists as a working guest vertical slice:
   the app, an HTML confirmation page, or a one-click POST.
 - Special-order request form, local request list, live status detail, quote
   accept, and cancel. The guest request token is stored in SecureStore.
-- Mobile checks: TypeScript, ESLint, production web export, and a local browser
-  smoke test through QR/manual entry, card detail, add-to-hold, restock
-  subscribe/unsubscribe, special-order create, staff quote, and quote accept.
+- Optional global customer account per verified email, with 6-digit email OTP
+  sign-in. The API stores only an HMAC-derived code/challenge, not plaintext,
+  and the notification worker delivers the code through the existing outbox.
+- `/v1/me` profile, reservations, card requests, and restock alerts, including
+  account-side cancel, quote accept, and alert deletion. Signing in claims
+  unowned guest rows with the same email across shops; rows owned by another
+  customer are never reassigned.
+- Account token is 12 hours and memory-only in the app: cold launch starts
+  signed out, while background resume keeps the session until expiry. There is
+  no refresh or revocation yet.
+- The app combines `/v1/me` rows with device-local guest rows, preferring the
+  account copy on duplicate IDs. Signed-in create forms lock the account email
+  and still return a guest token for local detail.
+- Mobile checks: TypeScript, ESLint, Vitest logic coverage, production web
+  export, and a local browser smoke test through QR/manual entry, card detail,
+  add-to-hold, restock subscribe/unsubscribe, special-order create, staff
+  quote, and quote accept. Account/OTP/claim behavior is covered by backend
+  SQLite and PostgreSQL tests.
 
-Still missing from Step 5: customer accounts/OTP, `/v1/me`, push notifications,
-offline caching, localization, and device E2E. Restock alerts and special
-orders are currently tied to the device that created them. Printed codes use
-the custom scheme; universal links on a public HTTPS domain are not configured
-yet.
+Still missing from Step 5: push notifications, offline caching, localization,
+device E2E, and account profile editing/email change/deletion or
+refresh/revocation. Unowned guest rows stay device-local until that email is
+verified; a signed-in multi-device browser smoke is still a release check.
+Printed codes use the custom scheme; universal links on a public HTTPS domain
+are not configured yet.
 
 ---
 
@@ -237,36 +255,53 @@ yet.
 
 | Check | Result |
 | --- | --- |
-| Backend SQLite suite | **102 passed, 7 skipped** |
-| Backend with PostgreSQL test URLs | **109 passed** |
-| Backend PostgreSQL-only suite (RLS, locking) | **7 passed** |
+| Root Python suite (`pytest --cov --cov-branch`) | **351 passed, 100% line/branch** |
+| Backend SQLite suite | **209 passed, 10 PostgreSQL tests skipped, 100%** |
+| Backend with PostgreSQL test URLs | **219 passed, 100%** |
+| Backend PostgreSQL-only suite (RLS, customer claiming, locking) | **10 passed** |
 | Backend Ruff / format / mypy | Clean |
+| Alembic `0004_customer_accounts` downgrade → upgrade | Verified on PostgreSQL; indexes and RLS policies recreated |
 | Admin ESLint / TypeScript / production build | Clean |
+| Admin Vitest logic/API-client coverage | **23 passed, 100% statements/branches/functions/lines** |
 | Admin production source maps | **0** `.map` files in `dist/` |
 | Admin Playwright suite | **8 passed** |
 | Mobile TypeScript / ESLint | Clean |
+| Mobile Vitest `src/lib/**` coverage | **26 passed, 100% statements/branches/functions/lines** |
 | Mobile `expo-doctor` | **20/20** |
 | Mobile production web export | Passed |
 | Mobile browser smoke test (local API) | Passed: scan entry → storefront → card detail → add to hold; restock subscribe/unsubscribe; special-order create → staff quote → customer accept |
 | Mobile deep-link parser cases | Passed: custom scheme, https, Expo Go, path, slug, bad UUID, traversal, foreign scheme |
-| Root legacy `make check` | **268 passed** |
+| SQL Server Docker schema/E2E | Wired in CI/Makefile; 21/21 assertions pass locally; skips cleanly without Docker |
 | Alembic downgrade base → upgrade head | Verified on PostgreSQL |
 | RLS enabled + forced | All 10 tenant tables, including `card_requests` and `restock_alerts` |
+
+The Python coverage floors are 100% line and branch for both the root and
+backend suites. Admin and mobile keep their explicitly included logic/API
+client modules at 100%; admin screens are covered by Playwright rather than
+line instrumentation. SQLite and PostgreSQL both reach the backend gate.
 
 Useful commands:
 
 ```bash
+# Root legacy desktop app + coverage
+make check
+make cov
+make test-all           # full matrix (root/backend/admin/mobile/Postgres/SQL Server)
+make test-matrix        # tox over installed Python interpreters (uv can install them)
+
 # Backend
 cd backend
 ../.venv/bin/ruff check .
 ../.venv/bin/ruff format --check .
 ../.venv/bin/mypy app tests
-../.venv/bin/python -m pytest
+../.venv/bin/python -m pytest --cov=app --cov-branch --cov-report=term-missing
+./scripts/test_backend_postgres.sh  # from the repository root
 
 # Admin
 cd admin
 npm run lint
 npm run typecheck
+npm run test:coverage
 npm run build
 find dist -name '*.map'      # must print nothing
 npm run test:e2e
@@ -275,21 +310,24 @@ npm run test:e2e
 cd mobile
 npm run lint
 npm run typecheck
+npm run test:coverage
 npm run export:web
-
-# Legacy desktop
-make check
+npm run doctor
 ```
 
 PostgreSQL verification uses `backend/scripts/local_postgres.sh`; export the
-admin and non-owner app URLs as described in `backend/README.md`. Without
-those variables the SQLite run reports 7 skips; with the local server and both
-URLs exported it reports 109 passed. CI supplies a real non-owner role.
+admin and non-owner app URLs as described in `backend/README.md`, or use
+`./scripts/test_backend_postgres.sh`, which starts the portable server and
+applies the URLs. Without those variables the SQLite run reports 10
+PostgreSQL-test skips; with the local server and both URLs exported it reports
+219 passed. CI supplies a real non-owner role.
 
-CI already runs four workflows: legacy (`ci.yml`), backend (`backend.yml`),
-admin (`admin.yml`), and mobile (`mobile.yml`). The backend workflow includes
-the PostgreSQL suite, migration round trip, and a per-table RLS assertion. The
-mobile workflow runs lint, typecheck, and the production web export.
+CI runs four workflows: legacy (`ci.yml`), backend (`backend.yml`), admin
+(`admin.yml`), and mobile (`mobile.yml`). The legacy workflow now includes the
+root 100% branch-coverage gate and a disposable SQL Server job; the backend
+workflow runs SQLite and PostgreSQL coverage, migration round trip, and a
+per-table RLS assertion. Admin runs unit coverage, build, and Playwright; mobile
+runs unit coverage, lint, typecheck, and the production web export.
 
 ---
 
@@ -297,14 +335,15 @@ mobile workflow runs lint, typecheck, and the production web export.
 
 ### Step 5 — customer mobile app (in progress)
 
-The guest vertical slice is working, including QR/deep-link entry, card detail,
-restock alerts, and special orders. The remaining app work, in order:
+The guest flow and optional OTP accounts are working, including QR/deep-link
+entry, card detail, restock alerts, special orders, `/v1/me`, and guest-row
+claiming. The remaining app work, in order:
 
-1. Add customer OTP accounts and `/v1/me` endpoints; claim guest reservations,
-   restock alerts, and special orders when an account is created.
-2. Add push notifications (FCM/APNs) on top of the existing outbox.
-3. Add offline caching, localization, and device E2E (Maestro/Detox), then
+1. Add push notifications (FCM/APNs) on top of the existing outbox.
+2. Add offline caching, localization, and device E2E (Maestro/Detox), then
    pilot-shop onboarding.
+3. Run a signed-in multi-device smoke on a development build and decide on
+   account refresh/revocation and optional profile management.
 
 ### Pilot readiness (after the app)
 
@@ -337,24 +376,27 @@ restock alerts, and special orders. The remaining app work, in order:
 
 ## 5. Current limitations
 
-- Customer app is a guest-only vertical slice; there is no account screen,
-  push delivery, offline cache, or device E2E yet. Restock alerts and special
-  orders are stored per device and cannot be recovered on another device.
+- Customer accounts are optional and OTP-only; there is no password, refresh
+  token, revocation/session list, profile editing, email change, or deletion
+  yet. The account token is memory-only in the app, so a cold launch requires
+  a new code.
+- Guest rows are still device-local until a customer verifies the same email.
+  There is no push delivery, offline cache, or device E2E yet.
 - Printed QR codes use the `cardtracker://` custom scheme. Universal/app links
   on a public HTTPS domain are not configured, and app-store fallback for
   customers without the app is not implemented yet.
-- Guests only: no customer OTP accounts or `/v1/me` endpoints.
 - Email notifications only; no push delivery and no staff notification inbox.
-- Restock alerts are one-shot and email-based; they are not yet tied to
-  customer accounts. The card link in those emails uses the custom scheme
-  until universal links are configured.
+- Restock alerts are one-shot and email-based. They can be linked to a customer
+  account or claimed later, but the card link in those emails uses the custom
+  scheme until universal links are configured.
+- OTP and guest-create rate limiting is in-process, so it assumes a single API
+  worker; the per-email challenge cooldown is also database-backed.
 - The PostgreSQL-only tests skip locally unless the two test URLs are set;
   SQLite cannot exercise RLS, row locking, or the last-copy race.
 - The admin static host must serve the CSP/security headers from
   `admin/public/_headers`; Vite only applies them in dev/preview.
 - On web, the mobile preview stores guest tokens in AsyncStorage because
   SecureStore has no web implementation; native builds use SecureStore.
-- Rate limiting is in-process, so it assumes a single API worker.
 - Special-order quotes are informational; conversion holds stock at the current
   shelf price.
 - Not in v1: online payments, shipping, tax, refunds, white-label apps,

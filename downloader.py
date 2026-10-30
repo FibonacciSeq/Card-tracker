@@ -120,7 +120,7 @@ def download_and_extract_scryfall(output_filename: str = "scryfall_default_cards
     return downloader.download_and_extract(output_filename)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - CLI entry point
     logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
     target_file = sys.argv[1] if len(sys.argv) > 1 else "scryfall_default_cards.jsonl"
 

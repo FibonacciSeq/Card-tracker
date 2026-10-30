@@ -1,17 +1,27 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { RefreshControl, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { API_BASE_URL, shopPath } from "../lib/config";
-import { useDebouncedValue, useShops } from "../api/queries";
+import {
+  accountKeys,
+  useDebouncedValue,
+  useMyCardRequests,
+  useMyReservations,
+  useMyRestockAlerts,
+  useShops,
+} from "../api/queries";
 import { EmptyState } from "../components/EmptyState";
 import { HoldCard } from "../components/HoldCard";
 import { ErrorState, LoadingState } from "../components/LoadingState";
 import { RequestCard } from "../components/RequestCard";
 import { SearchField } from "../components/SearchField";
 import { ShopCard } from "../components/ShopCard";
+import { mergeCardRequests, mergeReservations, mergeRestockAlerts } from "../lib/accountMerge";
+import { API_BASE_URL, shopPath } from "../lib/config";
+import { useAuth } from "../state/auth";
 import { useReservations } from "../state/reservations";
 import { useRestockAlerts } from "../state/restockAlerts";
 import { useSpecialOrders } from "../state/specialOrders";
@@ -20,14 +30,38 @@ import { colors, radii, spacing, type } from "../theme";
 export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const shops = useShops(debouncedSearch);
+  const { customer, isAuthenticated, token } = useAuth();
   const { hydrated, reservations } = useReservations();
   const { hydrated: alertsHydrated, alerts } = useRestockAlerts();
   const { hydrated: requestsHydrated, requests } = useSpecialOrders();
+  const accountReservations = useMyReservations(token);
+  const accountRequests = useMyCardRequests(token);
+  const accountAlerts = useMyRestockAlerts(token);
+
+  const allReservations = mergeReservations(
+    accountReservations.data?.items ?? [],
+    reservations,
+  );
+  const allRequests = mergeCardRequests(accountRequests.data?.items ?? [], requests);
+  const allAlerts = mergeRestockAlerts(accountAlerts.data?.items ?? [], alerts);
+  const accountRefreshing =
+    accountReservations.isRefetching ||
+    accountRequests.isRefetching ||
+    accountAlerts.isRefetching;
+  const listsHydrated = hydrated && requestsHydrated && alertsHydrated;
 
   const hasNoShops = shops.isSuccess && shops.data.length === 0;
+
+  async function refresh() {
+    await Promise.all([
+      shops.refetch(),
+      queryClient.invalidateQueries({ queryKey: accountKeys.all }),
+    ]);
+  }
 
   return (
     <View style={styles.screen}>
@@ -36,8 +70,8 @@ export default function HomeScreen() {
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
-            refreshing={shops.isRefetching}
-            onRefresh={() => void shops.refetch()}
+            refreshing={shops.isRefetching || accountRefreshing}
+            onRefresh={() => void refresh()}
             tintColor={colors.primary}
           />
         }
@@ -53,6 +87,30 @@ export default function HomeScreen() {
           <Text style={styles.subtitle}>
             Browse local card shops, put a card on hold, and collect it in store.
           </Text>
+          <Pressable
+            accessibilityHint="Opens your account and sign-in options"
+            accessibilityLabel={isAuthenticated ? "Your account" : "Sign in to sync your list"}
+            accessibilityRole="button"
+            onPress={() => router.push("/account")}
+            style={({ pressed }) => [styles.accountBar, pressed && styles.scanPressed]}
+          >
+            <Ionicons
+              name={isAuthenticated ? "person-circle" : "person-circle-outline"}
+              size={22}
+              color={colors.white}
+            />
+            <View style={styles.accountText}>
+              <Text numberOfLines={1} style={styles.accountTitle}>
+                {isAuthenticated ? customer?.email : "Sign in to sync your list"}
+              </Text>
+              <Text style={styles.accountSubtitle}>
+                {isAuthenticated
+                  ? "Holds, alerts, and requests across devices"
+                  : "Optional — guest checkout still works"}
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={16} color="#D8E8E1" />
+          </Pressable>
           <Pressable
             accessibilityHint="Opens the camera to scan a QR code at a shop"
             accessibilityLabel="Scan a shop code"
@@ -74,27 +132,27 @@ export default function HomeScreen() {
 
           <View style={styles.quickRow}>
             <QuickAction
-              count={requestsHydrated ? requests.length : 0}
+              count={listsHydrated ? allRequests.length : 0}
               icon="sparkles-outline"
               label="Special orders"
               onPress={() => router.push("/requests")}
             />
             <QuickAction
-              count={alertsHydrated ? alerts.length : 0}
+              count={listsHydrated ? allAlerts.length : 0}
               icon="notifications-outline"
               label="Restock alerts"
               onPress={() => router.push("/alerts")}
             />
           </View>
 
-          {hydrated && reservations.length > 0 ? (
+          {listsHydrated && allReservations.length > 0 ? (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Your holds</Text>
-                <Text style={styles.sectionCount}>{reservations.length}</Text>
+                <Text style={styles.sectionCount}>{allReservations.length}</Text>
               </View>
               <View style={styles.holdList}>
-                {reservations.map((reservation) => (
+                {allReservations.map((reservation) => (
                   <HoldCard
                     key={reservation.id}
                     reservation={reservation}
@@ -105,14 +163,14 @@ export default function HomeScreen() {
             </View>
           ) : null}
 
-          {requestsHydrated && requests.length > 0 ? (
+          {listsHydrated && allRequests.length > 0 ? (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
                 <Text style={styles.sectionTitle}>Your special orders</Text>
-                <Text style={styles.sectionCount}>{requests.length}</Text>
+                <Text style={styles.sectionCount}>{allRequests.length}</Text>
               </View>
               <View style={styles.holdList}>
-                {requests.slice(0, 3).map((request) => (
+                {allRequests.slice(0, 3).map((request) => (
                   <RequestCard
                     key={request.id}
                     request={request}
@@ -120,13 +178,13 @@ export default function HomeScreen() {
                   />
                 ))}
               </View>
-              {requests.length > 3 ? (
+              {allRequests.length > 3 ? (
                 <Pressable
                   accessibilityRole="button"
                   onPress={() => router.push("/requests")}
                   style={({ pressed }) => [styles.seeAll, pressed && styles.scanPressed]}
                 >
-                  <Text style={styles.seeAllLabel}>See all {requests.length} requests</Text>
+                  <Text style={styles.seeAllLabel}>See all {allRequests.length} requests</Text>
                   <Ionicons name="arrow-forward" size={16} color={colors.primary} />
                 </Pressable>
               ) : null}
@@ -285,8 +343,23 @@ const styles = StyleSheet.create({
     marginTop: spacing.sm,
     maxWidth: 330,
   },
-  scanButton: {
+  accountBar: {
     marginTop: spacing.lg,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    backgroundColor: "rgba(255,255,255,0.12)",
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.2)",
+    borderRadius: radii.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  accountText: { flex: 1, gap: 1 },
+  accountTitle: { color: colors.white, fontSize: type.small, fontWeight: "800" },
+  accountSubtitle: { color: "#D8E8E1", fontSize: type.tiny },
+  scanButton: {
+    marginTop: spacing.sm,
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",

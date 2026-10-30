@@ -34,6 +34,10 @@ env/
 .coverage
 .coverage.*
 htmlcov/
+coverage/
+admin/coverage/
+mobile/coverage/
+.tox/
 
 # --- Editori / OS ---
 .vscode/

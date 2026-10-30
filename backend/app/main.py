@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app import models  # noqa: F401  (registers models with Base)
-from app.api import public, staff
+from app.api import account, public, staff
 from app.config import settings
 from app.db import SessionLocal, engine
 from app.models import Base
@@ -43,7 +43,16 @@ app.add_middleware(
 )
 
 app.include_router(public.router)
+app.include_router(account.router)
 app.include_router(staff.router)
+
+
+@app.middleware("http")
+async def account_no_store(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith(("/v1/auth", "/v1/me")):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @app.exception_handler(RequestValidationError)

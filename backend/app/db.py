@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config import settings
 
 connect_args: dict = {}
-if settings.database_url.startswith("sqlite"):
+if settings.database_url.startswith("sqlite"):  # pragma: no cover - dialect selected at import
     connect_args["check_same_thread"] = False
 
 engine = create_engine(
@@ -19,26 +19,48 @@ engine = create_engine(
 )
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
-if settings.database_url.startswith("sqlite"):
+if settings.database_url.startswith("sqlite"):  # pragma: no cover - dialect selected at import
 
     @event.listens_for(engine, "connect")
     def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
         dbapi_connection.execute("PRAGMA foreign_keys=ON")
 
 
+def set_customer_context(db: Session, customer_id: UUID) -> None:
+    """Set the RLS customer for the current Postgres transaction.
+
+    Customer-owned rows are visible across tenants, but only when their
+    ``customer_id`` matches this setting.
+    """
+    db.info["customer_id"] = str(customer_id)
+    bind = db.get_bind()
+    if bind.dialect.name == "postgresql":
+        db.execute(
+            text("SELECT set_config('app.customer_id', :customer_id, true)"),
+            {"customer_id": str(customer_id)},
+        )
+
+
 @event.listens_for(Session, "after_begin")
-def _restore_tenant_context(session: Session, _transaction, connection) -> None:
-    """Re-apply a transaction-local RLS setting after a commit/rollback.
+def _restore_rls_context(session: Session, _transaction, connection) -> None:
+    """Re-apply transaction-local RLS settings after a commit/rollback.
 
     `set_config(..., true)` is transaction-local. Endpoints often commit and
     then refresh an ORM object, which starts a new transaction; without this
-    hook that refresh would run with no tenant context and be blocked by RLS.
+    hook that refresh would run with no tenant/customer context and be blocked
+    by RLS.
     """
     tenant_id = session.info.get("tenant_id")
     if tenant_id is not None and connection.dialect.name == "postgresql":
         connection.execute(
             text("SELECT set_config('app.tenant_id', :tenant_id, true)"),
             {"tenant_id": str(tenant_id)},
+        )
+    customer_id = session.info.get("customer_id")
+    if customer_id is not None and connection.dialect.name == "postgresql":
+        connection.execute(
+            text("SELECT set_config('app.customer_id', :customer_id, true)"),
+            {"customer_id": str(customer_id)},
         )
 
 

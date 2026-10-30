@@ -12,10 +12,13 @@ Built with Python + Tkinter (legacy desktop apps).
 > **Platform rewrite in progress.** The `backend/` FastAPI service and the
 > `admin/` vendor web app are the new multi-vendor platform. Both are
 > implemented through Step 4 plus the 2026-10-28 audit hardening. The customer
-> app in `mobile/` now has a working guest slice: shop discovery, storefront,
-> cart, reservations, and cancellation. See [`STATUS.md`](STATUS.md) for the
-> roadmap and [`mobile/README.md`](mobile/README.md) for the app. The Tkinter
-> apps described below remain the legacy single-shop desktop version.
+> app in `mobile/` has a working guest slice (shop discovery, storefront, cart,
+> reservations, restock alerts, and special orders) plus optional email-OTP
+> accounts and cross-device `/v1/me` data. See [`STATUS.md`](STATUS.md) for the
+> roadmap, [`mobile/README.md`](mobile/README.md) for the app, and
+> [`docs/customer-accounts.md`](docs/customer-accounts.md) for the account
+> design. The Tkinter apps described below remain the legacy single-shop
+> desktop version.
 >
 > The legacy and platform stacks have separate checks: root `make check` covers
 > the Tkinter apps, while `backend/`, `admin/`, and `mobile/` have their own
@@ -197,12 +200,14 @@ automatically on every add or remove. See
 ```bash
 make dev        # install dev dependencies + pre-commit hooks
 make test       # run the test suite
-make cov        # tests with branch coverage (fails below 80%)
+make cov        # tests with branch coverage (100% line+branch gate)
 make lint       # ruff check + format check
 make typecheck  # mypy
 make security   # bandit + pip-audit
 make format     # apply ruff autofixes + formatting
-make check      # lint + typecheck + tests (the main CI gate)
+make check       # lint + typecheck + tests (fast local gate)
+make test-matrix # tox over installed Python interpreters
+make test-all    # root, backend, admin, mobile, PostgreSQL, SQL Server
 make help       # list all targets
 ```
 
@@ -213,9 +218,9 @@ pip install -r requirements-dev.txt
 ruff check .
 ruff format --check .
 mypy .
-pytest --cov --cov-report=term-missing
+pytest --cov --cov-branch --cov-report=term-missing
 bandit -q -c pyproject.toml -r .
-pip-audit -r requirements.txt
+./scripts/audit_requirements.sh
 ```
 
 The pre-commit configuration runs Ruff, formatting, mypy, Bandit, and the
@@ -223,8 +228,15 @@ standard file hygiene hooks. Install it once with `pre-commit install`.
 
 Tests pin exchange rates and assert that nothing touches the network, so the
 suite is fast, offline, and deterministic. UI code is excluded from the
-coverage denominator; the service, model, and importer layers must stay above
-the 80% threshold configured in `pyproject.toml`.
+coverage denominator; the service, model, CLI, and importer layers must stay at
+the 100% line and branch threshold configured in `pyproject.toml`.
+
+The platform checks use the same rule: backend Python has a 100% line/branch
+gate, while admin and mobile Vitest cover the pure logic and API-client modules
+at 100%. Admin screens remain covered by Playwright E2E. `make test-all` runs
+all of them; the per-component commands are in
+[`backend/README.md`](backend/README.md), [`admin/README.md`](admin/README.md),
+and [`mobile/README.md`](mobile/README.md).
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the workflow and
 [`SECURITY.md`](SECURITY.md) for vulnerability reporting and data-handling
@@ -235,7 +247,7 @@ notes.
 ```
 backend/             Multi-vendor FastAPI API, Alembic migrations, workers, tests
 admin/               Vendor web admin (Vite/React/TypeScript)
-mobile/              Customer app (Expo/React Native; guest slice implemented)
+mobile/              Customer app (Expo/React Native; guest flow + optional accounts)
 customer_app.py       Entry point: customer shop window (market, cart, checkout)
 owner_app.py          Entry point: owner window (stock and orders)
 main.py               Entry point: original combined collection app

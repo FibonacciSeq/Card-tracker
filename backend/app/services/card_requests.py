@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.db import set_tenant_context
-from app.security import hash_guest_token, new_guest_token, new_request_ref
+from app.security import hash_guest_token, new_guest_token, new_request_ref, normalize_email
 from app.services import notifications
 from app.services import reservations as reservation_service
 
@@ -65,6 +65,7 @@ def create(
     db: Session,
     tenant: models.Tenant,
     payload: schemas.CardRequestCreateIn,
+    customer: models.User | None = None,
 ) -> tuple[models.CardRequest, str]:
     card = None
     if payload.card_id is not None:
@@ -80,8 +81,9 @@ def create(
     row = models.CardRequest(
         tenant_id=tenant.id,
         public_ref=_unique_ref(db, tenant.id),
+        customer_id=customer.id if customer is not None else None,
         customer_name=payload.customer.name.strip(),
-        email=str(payload.customer.email).lower().strip(),
+        email=normalize_email(customer.email) if customer is not None else normalize_email(str(payload.customer.email)),
         phone=payload.customer.phone.strip(),
         card_id=card.id if card else None,
         requested_name=name,
@@ -299,6 +301,7 @@ def convert(
         phone=row.phone,
         note=f"Special order {row.public_ref}",
         source="staff",
+        customer_id=row.customer_id,
     )
 
     row.status = "CONVERTED"

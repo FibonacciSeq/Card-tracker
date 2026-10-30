@@ -1,8 +1,14 @@
 import { API_BASE_URL } from "../lib/config";
 import type {
+  AccountCardRequest,
+  AccountReservation,
+  AccountRestockAlert,
   CardRequest,
   CardRequestCreate,
+  CustomerAccount,
+  CustomerToken,
   Facets,
+  OtpRequestResult,
   Reservation,
   ReservationCreate,
   RestockAlert,
@@ -30,7 +36,19 @@ type RequestOptions = {
   body?: unknown;
   headers?: Record<string, string>;
   signal?: AbortSignal;
+  auth?: boolean;
 };
+
+let unauthorizedHandler: (() => void) | null = null;
+
+/** Lets AuthProvider clear an expired memory-only token on any account call. */
+export function setAccountUnauthorizedHandler(handler: (() => void) | null): void {
+  unauthorizedHandler = handler;
+}
+
+function bearer(token: string | null | undefined): Record<string, string> {
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
 
 function detailFrom(payload: unknown, status: number): string {
   if (typeof payload === "object" && payload !== null && "detail" in payload) {
@@ -83,6 +101,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const payload: unknown = text ? safeJson(text) : null;
 
   if (!response.ok) {
+    if (options.auth && response.status === 401) unauthorizedHandler?.();
     throw new ApiError(response.status, detailFrom(payload, response.status), payload);
   }
   return payload as T;
@@ -132,11 +151,13 @@ export function createReservation(
   slug: string,
   payload: ReservationCreate,
   idempotencyKey: string,
+  token?: string | null,
 ): Promise<Reservation> {
   return request<Reservation>(`/v1/shops/${encodeURIComponent(slug)}/reservations`, {
     method: "POST",
     body: payload,
-    headers: { "Idempotency-Key": idempotencyKey },
+    headers: { "Idempotency-Key": idempotencyKey, ...bearer(token) },
+    auth: Boolean(token),
   });
 }
 
@@ -172,10 +193,13 @@ export function cancelReservation(
 export function createRestockAlert(
   slug: string,
   payload: RestockAlertCreate,
+  token?: string | null,
 ): Promise<RestockAlert> {
   return request<RestockAlert>(`/v1/shops/${encodeURIComponent(slug)}/restock-alerts`, {
     method: "POST",
     body: payload,
+    headers: bearer(token),
+    auth: Boolean(token),
   });
 }
 
@@ -193,10 +217,13 @@ export function unsubscribeRestockAlert(
 export function createCardRequest(
   slug: string,
   payload: CardRequestCreate,
+  token?: string | null,
 ): Promise<CardRequest> {
   return request<CardRequest>(`/v1/shops/${encodeURIComponent(slug)}/card-requests`, {
     method: "POST",
     body: payload,
+    headers: bearer(token),
+    auth: Boolean(token),
   });
 }
 
@@ -240,5 +267,102 @@ export function cancelCardRequest(
       "X-Shop-Slug": slug,
       "X-Card-Request-Token": token,
     },
+  });
+}
+
+export function requestOtp(email: string): Promise<OtpRequestResult> {
+  return request<OtpRequestResult>("/v1/auth/otp/request", {
+    method: "POST",
+    body: { email },
+  });
+}
+
+export function verifyOtp(email: string, code: string): Promise<CustomerToken> {
+  return request<CustomerToken>("/v1/auth/otp/verify", {
+    method: "POST",
+    body: { email, code },
+  });
+}
+
+export function getMe(token: string): Promise<CustomerAccount> {
+  return request<CustomerAccount>("/v1/me", {
+    headers: bearer(token),
+    auth: true,
+  });
+}
+
+export function getMyReservations(token: string): Promise<{ items: AccountReservation[] }> {
+  return request<{ items: AccountReservation[] }>("/v1/me/reservations", {
+    headers: bearer(token),
+    auth: true,
+  });
+}
+
+export function getMyReservation(id: string, token: string): Promise<Reservation> {
+  return request<Reservation>(`/v1/me/reservations/${encodeURIComponent(id)}`, {
+    headers: bearer(token),
+    auth: true,
+  });
+}
+
+export function cancelMyReservation(id: string, token: string): Promise<Reservation> {
+  return request<Reservation>(
+    `/v1/me/reservations/${encodeURIComponent(id)}/cancel`,
+    {
+      method: "POST",
+      headers: bearer(token),
+      auth: true,
+    },
+  );
+}
+
+export function getMyCardRequests(token: string): Promise<{ items: AccountCardRequest[] }> {
+  return request<{ items: AccountCardRequest[] }>("/v1/me/card-requests", {
+    headers: bearer(token),
+    auth: true,
+  });
+}
+
+export function getMyCardRequest(id: string, token: string): Promise<AccountCardRequest> {
+  return request<AccountCardRequest>(`/v1/me/card-requests/${encodeURIComponent(id)}`, {
+    headers: bearer(token),
+    auth: true,
+  });
+}
+
+export function acceptMyCardRequest(id: string, token: string): Promise<AccountCardRequest> {
+  return request<AccountCardRequest>(
+    `/v1/me/card-requests/${encodeURIComponent(id)}/accept`,
+    {
+      method: "POST",
+      headers: bearer(token),
+      auth: true,
+    },
+  );
+}
+
+export function cancelMyCardRequest(id: string, token: string): Promise<AccountCardRequest> {
+  return request<AccountCardRequest>(
+    `/v1/me/card-requests/${encodeURIComponent(id)}/cancel`,
+    {
+      method: "POST",
+      headers: bearer(token),
+      auth: true,
+    },
+  );
+}
+
+export function getMyRestockAlerts(token: string): Promise<{ items: AccountRestockAlert[] }> {
+  return request<{ items: AccountRestockAlert[] }>("/v1/me/restock-alerts", {
+    headers: bearer(token),
+    auth: true,
+  });
+}
+
+export function deleteMyRestockAlert(id: string, token: string): Promise<void> {
+  return request<void>(`/v1/me/restock-alerts/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: bearer(token),
+    auth: true,
   });
 }

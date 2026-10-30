@@ -12,7 +12,13 @@ from sqlalchemy.orm import Session
 from app import models, schemas
 from app.config import settings
 from app.db import set_tenant_context
-from app.security import derive_guest_token, hash_guest_token, new_guest_token, new_public_ref
+from app.security import (
+    derive_guest_token,
+    hash_guest_token,
+    new_guest_token,
+    new_public_ref,
+    normalize_email,
+)
 from app.services import notifications
 
 ACTIVE_STATUSES = ("REQUESTED", "CONFIRMED", "READY")
@@ -38,11 +44,12 @@ def _now() -> datetime:
     return datetime.now(UTC)
 
 
-def _request_hash(payload: schemas.ReservationCreate) -> str:
+def _request_hash(payload: schemas.ReservationCreate, customer_id: uuid.UUID | None) -> str:
     import hashlib
     import json
 
     raw = payload.model_dump(mode="json")
+    raw["_customer_id"] = str(customer_id) if customer_id else None
     return hashlib.sha256(json.dumps(raw, sort_keys=True).encode("utf-8")).hexdigest()
 
 
@@ -91,8 +98,10 @@ def create_reservation(
     tenant: models.Tenant,
     payload: schemas.ReservationCreate,
     idempotency_key: str | None = None,
+    customer: models.User | None = None,
 ) -> tuple[models.Reservation, str | None]:
-    request_hash = _request_hash(payload)
+    customer_id = customer.id if customer is not None else None
+    request_hash = _request_hash(payload, customer_id)
     now = _now()
 
     if idempotency_key:
@@ -171,8 +180,11 @@ def create_reservation(
         reservation = models.Reservation(
             tenant_id=tenant.id,
             public_ref=public_ref,
+            customer_id=customer_id,
             customer_name=payload.customer.name.strip(),
-            email=str(payload.customer.email).lower().strip(),
+            email=normalize_email(customer.email)
+            if customer is not None
+            else normalize_email(str(payload.customer.email)),
             phone=payload.customer.phone.strip(),
             note=payload.note.strip(),
             status="REQUESTED",
@@ -305,6 +317,7 @@ def create_staff_hold(
     phone: str,
     note: str = "",
     source: str = "staff",
+    customer_id: uuid.UUID | None = None,
 ) -> tuple[models.Reservation, str]:
     """Create a confirmed hold for a walk-in or special-order customer.
 
@@ -338,8 +351,9 @@ def create_staff_hold(
     reservation = models.Reservation(
         tenant_id=tenant.id,
         public_ref=_unique_public_ref(db, tenant.id),
+        customer_id=customer_id,
         customer_name=customer_name.strip(),
-        email=email.strip().lower(),
+        email=normalize_email(email),
         phone=phone.strip(),
         note=note.strip(),
         status="CONFIRMED",

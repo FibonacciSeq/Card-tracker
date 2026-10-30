@@ -126,5 +126,5 @@ def main() -> None:
         print("Run the API and open /docs to try the endpoints.")
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - process entry point
     main()

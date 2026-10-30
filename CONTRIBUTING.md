@@ -21,6 +21,10 @@ pip install -r requirements-dev.txt
 pre-commit install
 ```
 
+Make targets automatically use `.venv/bin/python` when the virtualenv exists,
+so they work even if the shell has not activated it. Activating the virtualenv
+is still recommended for direct `python`, `pytest`, and `tox` commands.
+
 Run the legacy apps:
 
 ```bash
@@ -56,20 +60,32 @@ cd backend
 ../.venv/bin/ruff check .
 ../.venv/bin/ruff format --check .
 ../.venv/bin/mypy app tests
-../.venv/bin/python -m pytest
+../.venv/bin/python -m pytest --cov=app --cov-branch --cov-report=term-missing
 
 cd ../admin
+npm audit --audit-level=high
 npm run lint
 npm run typecheck
+npm run test:coverage
 npm run build
 npm run test:e2e
 
 cd ../mobile
+npm audit --audit-level=high
 npm run lint
 npm run typecheck
+npm run test:coverage
 npm run export:web
 npm run doctor
 ```
+
+`make test-all` runs the full matrix from the repository root, including the
+portable PostgreSQL runner and the SQL Server Docker check. CI sets
+`CARDTRACKER_REQUIRE_SQLSERVER=1`, so a missing Docker runtime fails the job
+instead of silently skipping it. To exercise the Python matrix locally, install
+any missing interpreters first (for example,
+`uv python install 3.10 3.11 3.12 3.13`) and run `make test-matrix`; tox skips
+interpreters that are not installed.
 
 The individual legacy commands are:
 
@@ -77,14 +93,16 @@ The individual legacy commands are:
 ruff check .
 ruff format --check .
 mypy .
-pytest --cov --cov-report=term-missing
+pytest --cov --cov-branch --cov-report=term-missing
 bandit -q -c pyproject.toml -r .
-pip-audit -r requirements.txt
+./scripts/audit_requirements.sh
 ```
 
-Coverage is branch-aware and has an 80% minimum for the non-UI modules. Add
-tests for behaviour changes, especially order-state transitions, stock
-reservations, contact validation, and database migrations.
+Coverage is branch-aware with a 100% minimum for the root Python modules and
+the backend. Admin and mobile keep their pure logic/API-client coverage at
+100%; screen flows are exercised by Playwright. Add tests for behaviour
+changes, especially order-state transitions, stock reservations, contact
+validation, and database migrations.
 
 ## Code guidelines
 
@@ -121,8 +139,9 @@ These paths are already in `.gitignore`. If you need sample data, use
 - Update the relevant README, `STATUS.md`, or mobile app docs when behaviour,
   setup, or commands change.
 - Make sure CI is green. The required jobs cover the legacy desktop checks,
-  backend SQLite/PostgreSQL tests, admin build and Playwright, and mobile
-  lint/typecheck/web export.
+  backend SQLite/PostgreSQL coverage, admin unit coverage/build/Playwright,
+  mobile unit coverage/lint/typecheck/web export, and the SQL Server Docker
+  schema/E2E check.
 
 For security issues, follow [`SECURITY.md`](SECURITY.md) instead of opening a
 public issue.

@@ -12,7 +12,9 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "api:types": "npx -y openapi-typescript@7.13.0 ../admin/openapi.json -o src/api/schema.d.ts",
-    "doctor": "npx expo-doctor"
+    "doctor": "npx expo-doctor",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@expo/metro-runtime": "~58.0.15",
@@ -38,8 +40,14 @@
   },
   "devDependencies": {
     "@types/react": "~19.3.0",
+    "@vitest/coverage-v8": "^5.0.5",
     "eslint": "^9.39.5",
     "eslint-config-expo": "~58.0.4",
-    "typescript": "~6.0.3"
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  },
+  "overrides": {
+    "deepmerge": "npm:@stackline/deepmerge@1.1.0",
+    "zod": "^4.6.7"
   }
 }

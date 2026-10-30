@@ -11,15 +11,17 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { createReservation } from "../../../api/client";
-import { useShop } from "../../../api/queries";
+import { accountKeys, useShop } from "../../../api/queries";
 import type { ReservationCreate } from "../../../api/types";
 import { EmptyState } from "../../../components/EmptyState";
 import { Field } from "../../../components/Field";
 import { PrimaryButton } from "../../../components/PrimaryButton";
 import { formatMoney, titleCase } from "../../../lib/format";
 import { newIdempotencyKey } from "../../../lib/idempotency";
+import { useAuth } from "../../../state/auth";
 import { useCart } from "../../../state/cart";
 import { useReservations } from "../../../state/reservations";
 import { colors, radii, spacing, type } from "../../../theme";
@@ -35,6 +37,8 @@ export default function CartScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+  const { customer, token } = useAuth();
   const shopQuery = useShop(slug);
   const cart = useCart();
   const { save } = useReservations();
@@ -53,9 +57,13 @@ export default function CartScreen() {
   const shop = shopQuery.data;
 
   async function submit() {
+    const accountEmail = customer?.email ?? "";
+    const contactEmail = token ? accountEmail : email.trim();
     const nextErrors: Errors = {};
     if (!name.trim()) nextErrors.name = "Enter the name for the hold.";
-    if (!EMAIL.test(email.trim())) nextErrors.email = "Enter a valid email address.";
+    if (!token && !EMAIL.test(contactEmail)) {
+      nextErrors.email = "Enter a valid email address.";
+    }
     setErrors(nextErrors);
     setApiError(null);
     if (Object.keys(nextErrors).length > 0) return;
@@ -63,7 +71,7 @@ export default function CartScreen() {
     const payload: ReservationCreate = {
       customer: {
         name: name.trim(),
-        email: email.trim(),
+        email: contactEmail,
         phone: phone.trim(),
       },
       note: note.trim(),
@@ -75,8 +83,16 @@ export default function CartScreen() {
 
     setSubmitting(true);
     try {
-      const reservation = await createReservation(slug, payload, idempotencyKey.current);
+      const reservation = await createReservation(
+        slug,
+        payload,
+        idempotencyKey.current,
+        token,
+      );
       await save(reservation, reservation.access_token ?? "");
+      if (token) {
+        await queryClient.invalidateQueries({ queryKey: accountKeys.reservations });
+      }
       cart.clear(slug);
       idempotencyKey.current = newIdempotencyKey();
       router.replace(`/reservation/${reservation.id}`);
@@ -193,14 +209,15 @@ export default function CartScreen() {
           <Field
             autoCapitalize="none"
             autoComplete="email"
-            error={errors.email}
+            editable={!token}
+            error={token ? null : errors.email}
             keyboardType="email-address"
             label="Email"
             onChangeText={setEmail}
             placeholder="you@example.com"
             returnKeyType="next"
             textContentType="emailAddress"
-            value={email}
+            value={token ? (customer?.email ?? "") : email}
           />
           <Field
             autoCapitalize="none"

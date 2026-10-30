@@ -118,7 +118,11 @@ def staff_reservation_out(reservation: models.Reservation, tenant: models.Tenant
     )
 
 
-def reservation_summary_out(reservation: models.Reservation) -> schemas.ReservationSummaryOut:
+def reservation_summary_out(
+    reservation: models.Reservation,
+    *,
+    line_count: int | None = None,
+) -> schemas.ReservationSummaryOut:
     return schemas.ReservationSummaryOut(
         id=reservation.id,
         public_ref=reservation.public_ref,
@@ -127,7 +131,7 @@ def reservation_summary_out(reservation: models.Reservation) -> schemas.Reservat
         expires_at=reservation.expires_at,
         created_at=reservation.created_at,
         total=schemas.Money(amount_minor=reservation.total_minor, currency=reservation.currency),
-        line_count=len(reservation.lines),
+        line_count=len(reservation.lines) if line_count is None else line_count,
     )
 
 

@@ -504,8 +504,6 @@ def create_stock(
     if card is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
     tenant = _tenant(db, user)
-    if tenant is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shop not found")
 
     stock = models.Stock(
         tenant_id=_staff_tenant(user),
@@ -1044,8 +1042,6 @@ def get_settings(
     db: Session = Depends(get_db),
 ):
     tenant = _tenant(db, user)
-    if tenant is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shop not found")
     return serializers.staff_shop_out(tenant)
 
 
@@ -1056,8 +1052,6 @@ def update_settings(
     db: Session = Depends(get_db),
 ):
     tenant = _tenant(db, user)
-    if tenant is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shop not found")
     settings_row = tenant.settings
     if settings_row is None:
         settings_row = models.TenantSettings(tenant_id=tenant.id)

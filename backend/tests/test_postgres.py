@@ -21,6 +21,7 @@ import sys
 import threading
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -29,8 +30,8 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app import models, schemas
-from app.db import set_tenant_context
-from app.services import reservations
+from app.db import set_customer_context, set_tenant_context
+from app.services import accounts, reservations
 
 ADMIN_URL = os.environ.get("CARDTRACKER_TEST_POSTGRES_ADMIN_URL")
 APP_URL = os.environ.get("CARDTRACKER_TEST_POSTGRES_URL")
@@ -154,6 +155,46 @@ def _make_shop(admin: Session, *, quantity: int = 1, reserved: int = 0) -> dict[
     admin.add(stock)
     admin.commit()
     return {"tenant_id": tenant.id, "card_id": card.id, "stock_id": stock.id}
+
+
+def _make_customer(admin: Session, email: str) -> models.User:
+    row = models.User(
+        id=uuid.uuid4(),
+        tenant_id=None,
+        email=email,
+        role="customer",
+        is_active=True,
+    )
+    admin.add(row)
+    admin.commit()
+    return row
+
+
+def _make_reservation(
+    admin: Session,
+    *,
+    tenant_id: uuid.UUID,
+    customer_id: uuid.UUID | None,
+    email: str,
+    public_ref: str,
+) -> models.Reservation:
+    row = models.Reservation(
+        tenant_id=tenant_id,
+        public_ref=public_ref,
+        customer_id=customer_id,
+        customer_name="Customer",
+        email=email,
+        phone="",
+        note="",
+        status="REQUESTED",
+        total_minor=0,
+        currency="RSD",
+        expires_at=datetime.now(UTC) + timedelta(days=1),
+        source="app",
+    )
+    admin.add(row)
+    admin.commit()
+    return row
 
 
 def _payload(stock_id: uuid.UUID, quantity: int = 1) -> schemas.ReservationCreate:
@@ -310,6 +351,122 @@ def test_tenant_context_survives_commit(app_session: Session, admin: Session) ->
     assert app_session.scalar(select(func.count()).select_from(models.Stock)) == 1
     visible = app_session.scalars(select(models.Stock.id)).all()
     assert visible == [shop_a["stock_id"]]
+
+
+def test_customer_context_sees_only_own_rows_across_tenants(app_session: Session, admin: Session) -> None:
+    shop_a = _make_shop(admin)
+    shop_b = _make_shop(admin)
+    suffix = uuid.uuid4().hex[:8]
+    email_a = f"ana-{suffix}@example.com"
+    email_b = f"marko-{suffix}@example.com"
+    customer_a = _make_customer(admin, email_a)
+    customer_b = _make_customer(admin, email_b)
+
+    own_a = _make_reservation(
+        admin,
+        tenant_id=shop_a["tenant_id"],
+        customer_id=customer_a.id,
+        email=email_a,
+        public_ref="R-AAAAA1",
+    )
+    own_b = _make_reservation(
+        admin,
+        tenant_id=shop_b["tenant_id"],
+        customer_id=customer_a.id,
+        email=email_a,
+        public_ref="R-AAAAA2",
+    )
+    other = _make_reservation(
+        admin,
+        tenant_id=shop_a["tenant_id"],
+        customer_id=customer_b.id,
+        email=email_b,
+        public_ref="R-BBBBB1",
+    )
+    guest = _make_reservation(
+        admin,
+        tenant_id=shop_a["tenant_id"],
+        customer_id=None,
+        email="guest@example.com",
+        public_ref="R-CCCCC1",
+    )
+
+    set_customer_context(app_session, customer_a.id)
+    visible = app_session.scalars(select(models.Reservation)).all()
+    assert {row.id for row in visible} == {own_a.id, own_b.id}
+    assert other.id not in {row.id for row in visible}
+    assert guest.id not in {row.id for row in visible}
+
+    # A global account is readable during login, before app.customer_id exists.
+    app_session.rollback()
+    assert app_session.scalar(select(models.User.id).where(models.User.email == email_a)) == customer_a.id
+
+
+def test_app_role_can_create_a_global_customer_without_tenant_context(app_session: Session) -> None:
+    email = f"new-{uuid.uuid4().hex[:8]}@example.com"
+    customer = models.User(
+        id=uuid.uuid4(),
+        tenant_id=None,
+        email=email,
+        role="customer",
+        is_active=True,
+    )
+    app_session.add(customer)
+    app_session.commit()
+
+    assert app_session.scalar(select(models.User.id).where(models.User.email == email)) == customer.id
+
+
+def test_claim_updates_only_unowned_matching_email(app_session: Session, admin: Session) -> None:
+    shop_a = _make_shop(admin)
+    shop_b = _make_shop(admin)
+    suffix = uuid.uuid4().hex[:8]
+    email = f"ana-{suffix}@example.com"
+    customer = _make_customer(admin, email)
+    other = _make_customer(admin, f"marko-{suffix}@example.com")
+
+    guest_a = _make_reservation(
+        admin,
+        tenant_id=shop_a["tenant_id"],
+        customer_id=None,
+        email=email.upper(),
+        public_ref=f"R-GUEST{suffix[:2]}",
+    )
+    guest_b = _make_reservation(
+        admin,
+        tenant_id=shop_b["tenant_id"],
+        customer_id=None,
+        email=email,
+        public_ref=f"R-GUEST{suffix[2:4]}",
+    )
+    _make_reservation(
+        admin,
+        tenant_id=shop_a["tenant_id"],
+        customer_id=other.id,
+        email=email,
+        public_ref=f"R-OWNED{suffix[:2]}",
+    )
+    different_email = _make_reservation(
+        admin,
+        tenant_id=shop_b["tenant_id"],
+        customer_id=None,
+        email=f"someone-{suffix}@example.com",
+        public_ref=f"R-OTHER{suffix[:2]}",
+    )
+
+    set_customer_context(app_session, customer.id)
+    loaded = app_session.get(models.User, customer.id)
+    assert loaded is not None
+    claimed = accounts._claim_guest_rows(app_session, loaded)
+    app_session.commit()
+    assert claimed.reservations == 2
+
+    admin.expire_all()
+    rows = {row.public_ref: row.customer_id for row in admin.scalars(select(models.Reservation)).all()}
+    assert rows[guest_a.public_ref] == customer.id
+    assert rows[guest_b.public_ref] == customer.id
+    assert rows[f"R-OWNED{suffix[:2]}"] == other.id
+    assert rows[different_email.public_ref] is None
 
 
 def test_last_copy_race_has_exactly_one_winner(app_engine: Engine, admin_engine: Engine, admin: Session) -> None:

@@ -12,8 +12,14 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { cancelReservation } from "../../api/client";
-import { queryKeys, useGuestReservation, useShop } from "../../api/queries";
+import { cancelMyReservation, cancelReservation } from "../../api/client";
+import {
+  accountKeys,
+  queryKeys,
+  useGuestReservation,
+  useMyReservation,
+  useShop,
+} from "../../api/queries";
 import type { Reservation, SavedReservation } from "../../api/types";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
@@ -21,6 +27,7 @@ import { PrimaryButton } from "../../components/PrimaryButton";
 import { StatusPill } from "../../components/StatusPill";
 import { formatDateTime, formatMoney, formatRemaining, titleCase } from "../../lib/format";
 import { useNow } from "../../lib/useNow";
+import { useAuth } from "../../state/auth";
 import { useReservations } from "../../state/reservations";
 import { colors, radii, spacing, type } from "../../theme";
 
@@ -43,6 +50,7 @@ export default function ReservationScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { get, getToken, hydrated, update } = useReservations();
+  const { token: accountToken } = useAuth();
   const saved = get(id);
   const [token, setToken] = useState<string | null>(null);
   const [tokenLoaded, setTokenLoaded] = useState(false);
@@ -51,7 +59,13 @@ export default function ReservationScreen() {
   const [cancelError, setCancelError] = useState<string | null>(null);
   const now = useNow();
 
-  const info = saved ? shopInfo(saved) : null;
+  const accountQuery = useMyReservation(id, accountToken);
+  const accountReservation = accountQuery.data;
+  const info = accountReservation
+    ? shopInfo(accountReservation)
+    : saved
+      ? shopInfo(saved)
+      : null;
   const shopQuery = useShop(info?.slug ?? "");
   const reservationQuery = useGuestReservation(id, info?.slug ?? "", token);
 
@@ -76,23 +90,23 @@ export default function ReservationScreen() {
     update(id, rest);
   }, [id, reservationQuery.data, update]);
 
-  if (!hydrated || !tokenLoaded) {
+  if (!hydrated || !tokenLoaded || (accountToken && accountQuery.isLoading)) {
     return <LoadingState label="Loading reservation…" />;
   }
 
-  if (!saved) {
+  if (!saved && !accountReservation) {
     return (
       <EmptyState
         icon="receipt-outline"
         title="Reservation not found"
-        body="This hold is not stored on this device. Guest holds are tied to the app that created them."
+        body="This hold is not stored on this device or linked to your signed-in email."
         actionLabel="Browse shops"
         onAction={() => router.replace("/")}
       />
     );
   }
 
-  const reservation = reservationQuery.data ?? saved;
+  const reservation = (accountReservation ?? reservationQuery.data ?? saved)!;
   const shop = shopQuery.data;
   const expiresAt = new Date(reservation.expires_at).getTime();
   const expired = Number.isFinite(expiresAt) && expiresAt <= now;
@@ -122,21 +136,30 @@ export default function ReservationScreen() {
         : colors.primary;
 
   async function cancel() {
-    if (!token || !info) return;
     setCancelling(true);
     setCancelError(null);
     try {
-      const updated = await cancelReservation(id, info.slug, token);
-      const { access_token: _token, ...rest } = updated;
-      update(id, rest);
-      queryClient.setQueryData([...queryKeys.reservation(id), token], updated);
+      if (accountReservation && accountToken) {
+        const updated = await cancelMyReservation(id, accountToken);
+        queryClient.setQueryData(accountKeys.reservation(id), updated);
+        await queryClient.invalidateQueries({ queryKey: accountKeys.reservations });
+        if (saved) {
+          const { access_token: _token, ...rest } = updated;
+          update(id, rest);
+        }
+      } else {
+        if (!token || !info) return;
+        const updated = await cancelReservation(id, info.slug, token);
+        const { access_token: _token, ...rest } = updated;
+        update(id, rest);
+        queryClient.setQueryData([...queryKeys.reservation(id), token], updated);
+      }
     } catch (error) {
       setCancelError(error instanceof Error ? error.message : "Could not cancel this hold.");
     } finally {
       setCancelling(false);
     }
   }
-
 
   async function share() {
     try {
@@ -174,7 +197,9 @@ export default function ReservationScreen() {
               {expiryText}
             </Text>
           </View>
-          {reservationQuery.isError ? (
+          {!accountReservation &&
+          (reservationQuery.isError || (accountToken && accountQuery.isError)) &&
+          saved ? (
             <Text style={styles.syncNote}>Showing the copy saved on this device.</Text>
           ) : null}
         </View>
@@ -268,7 +293,7 @@ export default function ReservationScreen() {
           )}
         </View>
 
-        {!token && !reservationQuery.isError ? (
+        {!accountReservation && !token && !reservationQuery.isError ? (
           <Text style={styles.disclaimer}>
             This hold was saved without a guest token, so live updates are unavailable.
           </Text>

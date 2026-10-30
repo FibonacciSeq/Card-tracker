@@ -5,15 +5,27 @@ import { Modal, RefreshControl, ScrollView, Share, StyleSheet, Text, View } from
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { acceptCardRequest, cancelCardRequest } from "../../api/client";
-import { queryKeys, useGuestCardRequest } from "../../api/queries";
-import type { CardRequest } from "../../api/types";
+import {
+  acceptCardRequest,
+  acceptMyCardRequest,
+  cancelCardRequest,
+  cancelMyCardRequest,
+} from "../../api/client";
+import {
+  accountKeys,
+  queryKeys,
+  useGuestCardRequest,
+  useMyCardRequest,
+} from "../../api/queries";
+import type { AccountCardRequest, CardRequest } from "../../api/types";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
 import { PrimaryButton } from "../../components/PrimaryButton";
 import { StatusPill } from "../../components/StatusPill";
+import { readShop } from "../../lib/accountMerge";
 import { formatDateTime, formatMoney, formatRemaining, titleCase } from "../../lib/format";
 import { useNow } from "../../lib/useNow";
+import { useAuth } from "../../state/auth";
 import { useSpecialOrders } from "../../state/specialOrders";
 import { colors, radii, spacing, type } from "../../theme";
 
@@ -25,6 +37,7 @@ export default function RequestScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { get, getToken, hydrated, update } = useSpecialOrders();
+  const { token: accountToken } = useAuth();
   const saved = get(id);
   const [token, setToken] = useState<string | null>(null);
   const [tokenLoaded, setTokenLoaded] = useState(false);
@@ -33,7 +46,12 @@ export default function RequestScreen() {
   const [actionError, setActionError] = useState<string | null>(null);
   const now = useNow();
 
+  const accountQuery = useMyCardRequest(id, accountToken);
+  const accountRequest = accountQuery.data;
   const requestQuery = useGuestCardRequest(id, saved?.shopSlug ?? "", token);
+  const accountShop = accountRequest ? readShop(accountRequest.shop) : null;
+  const shopName = accountShop?.name ?? saved?.shopName ?? "Shop";
+  const shopSlug = accountShop?.slug ?? saved?.shopSlug ?? "";
 
   useEffect(() => {
     let active = true;
@@ -56,21 +74,24 @@ export default function RequestScreen() {
     update(id, rest);
   }, [id, requestQuery.data, update]);
 
-  if (!hydrated || !tokenLoaded) return <LoadingState label="Loading special order…" />;
+  if (!hydrated || !tokenLoaded || (accountToken && accountQuery.isLoading)) {
+    return <LoadingState label="Loading special order…" />;
+  }
 
-  if (!saved) {
+  if (!saved && !accountRequest) {
     return (
       <EmptyState
         icon="sparkles-outline"
         title="Request not found"
-        body="This special order is not stored on this device. Guest requests are tied to the app that created them."
+        body="This special order is not stored on this device or linked to your signed-in email."
         actionLabel="My requests"
         onAction={() => router.replace("/requests")}
       />
     );
   }
 
-  const request: CardRequest = requestQuery.data ?? saved;
+  const request: CardRequest | AccountCardRequest =
+    accountRequest ?? requestQuery.data ?? saved!;
   const quoteExpiresAt = request.quote_expires_at
     ? new Date(request.quote_expires_at).getTime()
     : null;
@@ -79,35 +100,55 @@ export default function RequestScreen() {
   const canCancel = ACTIVE.has(request.status);
 
   async function accept() {
-    if (!token) return;
     setActing(true);
     setActionError(null);
     try {
-      const updated = await acceptCardRequest(id, saved!.shopSlug, token);
-      const { access_token: _accessToken, ...rest } = updated;
-      update(id, rest);
-      queryClient.setQueryData([...queryKeys.cardRequest(id), token], updated);
+      if (accountRequest && accountToken) {
+        const updated = await acceptMyCardRequest(id, accountToken);
+        queryClient.setQueryData(accountKeys.cardRequest(id), updated);
+        await queryClient.invalidateQueries({ queryKey: accountKeys.cardRequests });
+        if (saved) {
+          const { access_token: _accessToken, ...rest } = updated;
+          update(id, rest);
+        }
+      } else {
+        if (!token || !saved) return;
+        const updated = await acceptCardRequest(id, saved.shopSlug, token);
+        const { access_token: _accessToken, ...rest } = updated;
+        update(id, rest);
+        queryClient.setQueryData([...queryKeys.cardRequest(id), token], updated);
+      }
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Could not accept this quote.");
-      void requestQuery.refetch();
+      void (accountRequest ? accountQuery.refetch() : requestQuery.refetch());
     } finally {
       setActing(false);
     }
   }
 
   async function cancel() {
-    if (!token) return;
     setActing(true);
     setActionError(null);
     try {
-      const updated = await cancelCardRequest(id, saved!.shopSlug, token);
-      const { access_token: _accessToken, ...rest } = updated;
-      update(id, rest);
-      queryClient.setQueryData([...queryKeys.cardRequest(id), token], updated);
+      if (accountRequest && accountToken) {
+        const updated = await cancelMyCardRequest(id, accountToken);
+        queryClient.setQueryData(accountKeys.cardRequest(id), updated);
+        await queryClient.invalidateQueries({ queryKey: accountKeys.cardRequests });
+        if (saved) {
+          const { access_token: _accessToken, ...rest } = updated;
+          update(id, rest);
+        }
+      } else {
+        if (!token || !saved) return;
+        const updated = await cancelCardRequest(id, saved.shopSlug, token);
+        const { access_token: _accessToken, ...rest } = updated;
+        update(id, rest);
+        queryClient.setQueryData([...queryKeys.cardRequest(id), token], updated);
+      }
       setConfirmingCancel(false);
     } catch (error) {
       setActionError(error instanceof Error ? error.message : "Could not cancel this request.");
-      void requestQuery.refetch();
+      void (accountRequest ? accountQuery.refetch() : requestQuery.refetch());
     } finally {
       setActing(false);
     }
@@ -116,7 +157,7 @@ export default function RequestScreen() {
   async function share() {
     try {
       await Share.share({
-        message: `My Card Tracker special order at ${saved!.shopName}: #${request.public_ref}`,
+        message: `My Card Tracker special order at ${shopName}: #${request.public_ref}`,
       });
     } catch {
       // A dismissed or unsupported share sheet is not an error.
@@ -134,8 +175,12 @@ export default function RequestScreen() {
         }}
         refreshControl={
           <RefreshControl
-            onRefresh={() => void requestQuery.refetch()}
-            refreshing={requestQuery.isRefetching}
+            onRefresh={() =>
+              void (accountRequest ? accountQuery.refetch() : requestQuery.refetch())
+            }
+            refreshing={
+              accountRequest ? accountQuery.isRefetching : requestQuery.isRefetching
+            }
             tintColor={colors.primary}
           />
         }
@@ -145,13 +190,15 @@ export default function RequestScreen() {
           <View style={styles.statusTop}>
             <View style={styles.statusTitle}>
               <Text style={styles.eyebrow}>SPECIAL ORDER</Text>
-              <Text style={styles.shopName}>{saved.shopName}</Text>
+              <Text style={styles.shopName}>{shopName}</Text>
             </View>
             <StatusPill status={request.status} />
           </View>
           <Text style={styles.reference}>#{request.public_ref}</Text>
           <Text style={styles.statusLine}>{statusMessage(request.status, quoteExpired)}</Text>
-          {requestQuery.isError ? (
+          {!accountRequest &&
+          (requestQuery.isError || (accountToken && accountQuery.isError)) &&
+          saved ? (
             <Text style={styles.syncNote}>Showing the copy saved on this device.</Text>
           ) : null}
         </View>
@@ -248,14 +295,14 @@ export default function RequestScreen() {
 
         <View style={styles.actions}>
           <PrimaryButton label="Share reference" onPress={() => void share()} variant="secondary" />
-          {canAccept && token ? (
+          {canAccept && (token || accountRequest) ? (
             <PrimaryButton
               label="Accept this quote"
               loading={acting}
               onPress={() => void accept()}
             />
           ) : null}
-          {canCancel && token ? (
+          {canCancel && (token || accountRequest) ? (
             <PrimaryButton
               label="Cancel this request"
               onPress={() => {
@@ -268,13 +315,13 @@ export default function RequestScreen() {
           {!ACTIVE.has(request.status) ? (
             <PrimaryButton
               label="Browse this shop"
-              onPress={() => router.push(`/shop/${saved.shopSlug}`)}
+              onPress={() => router.push(`/shop/${shopSlug}`)}
               variant="secondary"
             />
           ) : null}
         </View>
 
-        {!token ? (
+        {!token && !accountRequest ? (
           <Text style={styles.disclaimer}>
             This request was saved without a guest token, so live updates are unavailable.
           </Text>

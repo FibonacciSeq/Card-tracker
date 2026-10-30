@@ -78,13 +78,22 @@ CARDTRACKER_AUTO_CREATE_TABLES=true ../.venv/bin/python -m app.cli.seed_demo \
 
 ## Checks
 
+Requires Node 22 and npm. Install once with `npm ci` (or `npm install` for a
+local development tree).
+
 ```bash
-npm run lint         # eslint, including no-console
-npm run typecheck    # tsc --noEmit
-npm run build        # typecheck + production bundle
+npm run lint          # eslint, including no-console
+npm run typecheck     # tsc --noEmit
+npm run test:coverage # Vitest + 100% line/branch/function gate
+npm run build         # typecheck + production bundle
 find dist -name '*.map'   # must print nothing
-npm run test:e2e     # Playwright, starts its own API and dev server
+npm run test:e2e      # Playwright, starts its own API and dev server
 ```
+
+The Vitest gate currently covers **23 tests** across `src/api/client.ts`,
+`src/auth/session.ts`, and `src/lib/**` at **100% statements, branches,
+functions, and lines**. UI screens are intentionally outside the line-coverage
+set; the Playwright suite exercises them end to end.
 
 The Playwright suite starts a throwaway API (`e2e/api-server.sh`) with a seeded
 SQLite database and runs the real UI against it (8 tests):
@@ -122,8 +131,8 @@ npm run api:types    # regenerate src/api/schema.d.ts
 - Push delivery (email only; the API outbox worker supports console, SMTP, and
   a pending-only `none` mode).
 - Push notifications are not implemented; restock and special-order updates
-  are email-based, and the mobile screens keep guest metadata locally until
-  customer accounts exist.
+  are email-based. The mobile app supports optional memory-only customer
+  accounts and keeps guest metadata locally for signed-out use.
 - Opening-hours editor: the API stores them, the form does not edit them yet.
 - Reports and per-shop subscription billing.
 - No production client telemetry/error reporting endpoint; the logger is

@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   checks:
-    name: Lint, types, web bundle
+    name: Lint, types, unit coverage, web bundle
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -31,6 +31,8 @@ jobs:
           cache: npm
           cache-dependency-path: mobile/package-lock.json
       - run: npm ci
+      - run: npm audit --audit-level=high
       - run: npm run lint
       - run: npm run typecheck
+      - run: npm run test:coverage
       - run: npm run export:web

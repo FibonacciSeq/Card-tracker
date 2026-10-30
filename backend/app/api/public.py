@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import models, schemas, serializers
 from app.config import settings
 from app.db import get_db
-from app.deps import get_tenant_by_slug
+from app.deps import get_optional_customer, get_tenant_by_slug
 from app.security import hash_guest_token, restock_unsubscribe_token, verify_restock_unsubscribe_token
 from app.services import card_requests as card_request_service
 from app.services import ratelimit
@@ -137,7 +137,7 @@ def list_stock(
         stmt = stmt.order_by(models.Stock.price_minor.desc(), models.Stock.id)
     elif sort == "newest":
         stmt = stmt.order_by(models.Stock.created_at.desc(), models.Stock.id)
-    elif sort == "name" or sort == "relevance":
+    elif sort == "name" or sort == "relevance":  # pragma: no branch - enum rejects other values
         stmt = stmt.order_by(func.lower(models.Card.name), models.Stock.id)
 
     if cursor:
@@ -158,7 +158,7 @@ def list_stock(
                         and_(models.Stock.price_minor == price, models.Stock.id > last_id),
                     )
                 )
-            elif sort == "newest":
+            elif sort == "newest":  # pragma: no branch - enum rejects other values
                 created_at = datetime.fromisoformat(str(data["t"]))
                 stmt = stmt.where(
                     or_(
@@ -183,7 +183,7 @@ def list_stock(
             next_cursor = _encode_cursor(p=last_stock.price_minor, i=str(last_stock.id))
         elif sort == "newest":
             next_cursor = _encode_cursor(t=last_stock.created_at.isoformat(), i=str(last_stock.id))
-        else:
+        else:  # pragma: no cover - enum rejects other values
             next_cursor = _encode_cursor(i=str(last_stock.id))
 
     return schemas.StockListOut(items=items, next_cursor=next_cursor)
@@ -239,6 +239,7 @@ def create_reservation(
     payload: schemas.ReservationCreate,
     request: Request,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    customer: models.User | None = Depends(get_optional_customer),
     db: Session = Depends(get_db),
 ):
     ratelimit.enforce(
@@ -249,7 +250,11 @@ def create_reservation(
     )
     tenant = get_tenant_by_slug(slug, db)
     reservation, access_token = reservation_service.create_reservation(
-        db, tenant, payload, idempotency_key=idempotency_key
+        db,
+        tenant,
+        payload,
+        idempotency_key=idempotency_key,
+        customer=customer,
     )
     return serializers.reservation_out(reservation, tenant, access_token=access_token)
 
@@ -333,6 +338,7 @@ def subscribe_restock_alert(
     slug: str,
     payload: schemas.RestockAlertCreateIn,
     request: Request,
+    customer: models.User | None = Depends(get_optional_customer),
     db: Session = Depends(get_db),
 ):
     ratelimit.enforce(
@@ -346,7 +352,7 @@ def subscribe_restock_alert(
     if card is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
 
-    email = str(payload.email).lower().strip()
+    email = customer.email if customer is not None else str(payload.email).lower().strip()
     language = payload.language.lower()
     filters = (
         models.RestockAlert.tenant_id == tenant.id,
@@ -358,10 +364,15 @@ def subscribe_restock_alert(
     )
     existing = db.scalar(select(models.RestockAlert).where(*filters))
     if existing is not None:
+        if customer is not None and existing.customer_id is None:
+            existing.customer_id = customer.id
+            db.commit()
+            db.refresh(existing)
         return _restock_alert_out(existing, already_subscribed=True)
 
     alert = models.RestockAlert(
         tenant_id=tenant.id,
+        customer_id=customer.id if customer is not None else None,
         email=email,
         customer_name=payload.name.strip() if payload.name else None,
         card_id=card.id,
@@ -573,6 +584,7 @@ def create_card_request(
     slug: str,
     payload: schemas.CardRequestCreateIn,
     request: Request,
+    customer: models.User | None = Depends(get_optional_customer),
     db: Session = Depends(get_db),
 ):
     ratelimit.enforce(
@@ -582,7 +594,7 @@ def create_card_request(
         window_seconds=settings.card_request_rate_window_seconds,
     )
     tenant = get_tenant_by_slug(slug, db)
-    row, access_token = card_request_service.create(db, tenant, payload)
+    row, access_token = card_request_service.create(db, tenant, payload, customer=customer)
     return serializers.card_request_out(row, tenant, access_token=access_token)
 
 

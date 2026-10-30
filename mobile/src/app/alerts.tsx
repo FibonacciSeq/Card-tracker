@@ -1,34 +1,48 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useState } from "react";
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { unsubscribeRestockAlert } from "../api/client";
+import { deleteMyRestockAlert, unsubscribeRestockAlert } from "../api/client";
+import { accountKeys, useMyRestockAlerts } from "../api/queries";
 import { EmptyState } from "../components/EmptyState";
 import { LoadingState } from "../components/LoadingState";
 import { PrimaryButton } from "../components/PrimaryButton";
+import { mergeRestockAlerts, type AlertListItem } from "../lib/accountMerge";
 import { formatDateTime, titleCase } from "../lib/format";
-import { useRestockAlerts, type SavedRestockAlert } from "../state/restockAlerts";
+import { useAuth } from "../state/auth";
+import { useRestockAlerts } from "../state/restockAlerts";
 import { colors, radii, spacing, type } from "../theme";
 
 export default function AlertsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+  const { token } = useAuth();
   const { alerts, getToken, hydrated, remove } = useRestockAlerts();
-  const [confirming, setConfirming] = useState<SavedRestockAlert | null>(null);
+  const accountAlerts = useMyRestockAlerts(token);
+  const allAlerts = mergeRestockAlerts(accountAlerts.data?.items ?? [], alerts);
+  const [confirming, setConfirming] = useState<AlertListItem | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  async function unsubscribe(alert: SavedRestockAlert) {
+  async function unsubscribe(alert: AlertListItem) {
     setError(null);
     setBusyId(alert.id);
     try {
-      const token = await getToken(alert.id);
-      if (!token) {
-        throw new Error("This alert is missing its guest token. Add it again from a card page.");
+      if (alert.source === "account") {
+        if (!token) throw new Error("Sign in again to remove this alert.");
+        await deleteMyRestockAlert(alert.id, token);
+        await queryClient.invalidateQueries({ queryKey: accountKeys.restockAlerts });
+      } else {
+        const guestToken = await getToken(alert.id);
+        if (!guestToken) {
+          throw new Error("This alert is missing its guest token. Add it again from a card page.");
+        }
+        await unsubscribeRestockAlert(alert.shopSlug, alert.id, guestToken);
       }
-      await unsubscribeRestockAlert(alert.shopSlug, alert.id, token);
       await remove(alert.id);
       setConfirming(null);
     } catch (caught) {
@@ -38,7 +52,9 @@ export default function AlertsScreen() {
     }
   }
 
-  if (!hydrated) return <LoadingState label="Loading alerts…" />;
+  if (!hydrated || (token && accountAlerts.isLoading)) {
+    return <LoadingState label="Loading alerts…" />;
+  }
 
   return (
     <View style={styles.screen}>
@@ -65,7 +81,7 @@ export default function AlertsScreen() {
           </View>
         ) : null}
 
-        {alerts.length === 0 ? (
+        {allAlerts.length === 0 ? (
           <EmptyState
             icon="notifications-outline"
             title="No restock alerts"
@@ -75,13 +91,17 @@ export default function AlertsScreen() {
           />
         ) : (
           <View style={styles.list}>
-            {alerts.map((alert) => (
+            {allAlerts.map((alert) => (
               <View key={alert.id} style={styles.card}>
                 <Pressable
                   accessibilityHint="Opens the card in the shop"
                   accessibilityRole="button"
                   onPress={() =>
-                    router.push(`/shop/${alert.shopSlug}/card/${alert.stockId}`)
+                    router.push(
+                      alert.stockId
+                        ? `/shop/${alert.shopSlug}/card/${alert.stockId}`
+                        : `/shop/${alert.shopSlug}`,
+                    )
                   }
                   style={({ pressed }) => [styles.cardMain, pressed && styles.pressed]}
                 >
@@ -99,7 +119,7 @@ export default function AlertsScreen() {
                     {alert.language.toUpperCase()}
                   </Text>
                   <Text style={styles.email}>{alert.email}</Text>
-                  <Text style={styles.created}>Added {formatDateTime(alert.created_at)}</Text>
+                  <Text style={styles.created}>Added {formatDateTime(alert.createdAt)}</Text>
                 </Pressable>
 
                 <Pressable

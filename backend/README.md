@@ -12,6 +12,10 @@ desktop app is unchanged and still uses its own SQLite database.
 - Public storefront: shop directory, shop profile, stock search/filters/facets,
   reservation create, reservation lookup, reservation cancel, restock-alert
   subscribe/unsubscribe, special-order request create/track/accept/cancel.
+- Optional global customer accounts: email OTP sign-in, `/v1/me` reservations,
+  special orders, and restock alerts, plus automatic claiming of unowned guest
+  rows that match the verified email. Guest tokens and guest flows remain
+  valid and unchanged.
 - Staff API: login, stock list/create/update/adjust/sell, reservation queue,
   status transitions, completion with partial quantities, dashboard, settings,
   audit trail, staff management, special-order quote/decline/convert, and
@@ -27,7 +31,9 @@ desktop app is unchanged and still uses its own SQLite database.
   release).
 - Notification outbox delivery worker with retry/backoff, console and SMTP
   backends, per-tenant RLS iteration, and quote-expiry handling in the expiry
-  worker. The `none` backend leaves queued mail untouched.
+  worker. The same worker drains global OTP challenges; OTP codes are derived
+  with HMAC and never stored or logged in plaintext. The `none` backend leaves
+  queued mail untouched.
 - Validation errors are redacted (no `input`/`ctx`) and guest idempotency
   tokens are derived with HMAC rather than stored. Restock alerts return a
   signed, stateless manage token; unsubscribe works with the token in the app,
@@ -139,6 +145,16 @@ backend deliberately does not log recipients or message bodies, and a failed
 delivery stores only the exception type and SMTP status code (never the
 recipient or full error text) in the outbox row and worker log.
 
+Customer OTP behavior is configured with the `CARDTRACKER_OTP_*` variables and
+`CARDTRACKER_CUSTOMER_ACCESS_TOKEN_MINUTES` (default 720, or 12 hours). Set
+`CARDTRACKER_OTP_SECRET` to a dedicated random HMAC key; it falls back to the
+JWT secret when unset. `CARDTRACKER_OTP_DEBUG_CODE=true` returns the code in
+the request response only in `development` or `test`, and must stay off in
+production. The OTP email is delivered by the notifications worker, so that
+worker must be running for sign-in to work when using `smtp`. With the
+`console` backend the worker logs only the subject, so use the debug code
+locally or configure SMTP.
+
 For a manual migration, use the owner/migration URL:
 
 ```bash
@@ -163,8 +179,23 @@ a dedicated non-owner application role. The migrations use
 `FORCE ROW LEVEL SECURITY`, so an owner role is also constrained once the
 policy exists, but migrations still run as the owner because DDL needs it.
 
+Customer account requests additionally set:
+
+```sql
+SELECT set_config('app.customer_id', '<customer uuid>', true);
+```
+
+A customer token is global (no tenant claim). Permissive `*_customer_own`
+policies let `/v1/me` read reservations, special orders, and restock alerts
+across shops without weakening the existing tenant-isolation policies.
+Reservation lines stay tenant-only: account detail resolves the owned
+reservation first, then sets the tenant context before loading lines. Global
+customer rows in `users` are allowed by a separate permissive policy. Claiming
+iterates shops and sets the tenant context for each update.
+
 `tenant_settings` is intentionally not RLS-protected because the public shop
 directory reads branding across tenants. It contains no customer data.
+`customer_otp_challenges` is global like `cards` and contains no plaintext OTP.
 
 ## Verify against PostgreSQL
 
@@ -207,6 +238,9 @@ What the suite proves:
 | `test_rls_blocks_cross_tenant_write` | `WITH CHECK` stops cross-tenant inserts |
 | `test_tenant_settings_are_readable_without_tenant_context` | The directory exception stays intentional |
 | `test_tenant_context_survives_commit` | The `after_begin` hook re-applies context after a commit |
+| `test_customer_context_sees_only_own_rows_across_tenants` | A global customer sees its linked rows but not another customer's |
+| `test_claim_updates_only_unowned_matching_email` | Email claiming is case-insensitive, idempotent, and never reassigns an owner |
+| `test_app_role_can_create_a_global_customer_without_tenant_context` | Customer creation works with the global `users` policy |
 | `test_last_copy_race_has_exactly_one_winner` | Two simultaneous holds on the last copy: exactly one wins |
 
 The race test is a real regression test: removing `.with_for_update()` from
@@ -214,18 +248,38 @@ The race test is a real regression test: removing `.with_for_update()` from
 
 ## Tests and checks
 
+The backend package must be installed editable so `app` is importable:
+
+```bash
+.venv/bin/pip install -e "backend[dev]"
+```
+
+Then run the SQLite gate:
+
 ```bash
 cd backend
-../.venv/bin/python -m pytest        # SQLite: 102 passed, 7 Postgres tests skipped
 ../.venv/bin/ruff check .
 ../.venv/bin/ruff format --check .
 ../.venv/bin/mypy app tests
+../.venv/bin/python -m pytest --cov=app --cov-branch --cov-report=term-missing
 ```
 
-With the Postgres URLs exported, the same `pytest` run includes the isolation
-and locking tests (109 passed). CI runs both, plus `alembic downgrade base &&
-alembic upgrade head` and an assertion that RLS is enabled on every tenant
-table.
+The current local result is **209 passed, 10 PostgreSQL tests skipped, 100%
+line and branch coverage**. The coverage floor is 100% in `pyproject.toml`, so
+any new uncovered line or branch fails the command.
+
+With the Postgres URLs exported, the same run includes the isolation,
+customer-account, and locking tests and reports **219 passed, 100% coverage**.
+The repository helper starts the portable server and applies the URLs for you:
+
+```bash
+./scripts/test_backend_postgres.sh
+```
+
+CI runs both SQLite and PostgreSQL coverage, plus
+`alembic downgrade base && alembic upgrade head` and an assertion that RLS is
+enabled on every tenant table. The root `tox.ini` runs the legacy Python matrix;
+`make test-matrix` skips interpreters that are not installed.
 
 ## Error responses
 
@@ -259,6 +313,21 @@ Public:
 - `POST /v1/card-requests/{id}/accept` with the same headers
 - `POST /v1/card-requests/{id}/cancel` with the same headers
 
+Customer account (Bearer customer token; auth endpoints are public):
+
+- `POST /v1/auth/otp/request`
+- `POST /v1/auth/otp/verify`
+- `GET /v1/me`
+- `GET /v1/me/reservations`
+- `GET /v1/me/reservations/{id}`
+- `POST /v1/me/reservations/{id}/cancel`
+- `GET /v1/me/card-requests`
+- `GET /v1/me/card-requests/{id}`
+- `POST /v1/me/card-requests/{id}/accept`
+- `POST /v1/me/card-requests/{id}/cancel`
+- `GET /v1/me/restock-alerts`
+- `DELETE /v1/me/restock-alerts/{id}`
+
 Staff:
 
 - `POST /v1/staff/auth/login`
@@ -281,28 +350,31 @@ Staff:
 
 ## Customer mobile app
 
-The Expo customer app lives in [`../mobile`](../mobile). It is a guest-first
-vertical slice over the public API: shop directory, storefront search and
-pagination, local cart, reservation create/lookup/cancel, hold history,
-restock alerts, and special-order request/quote/cancel flows. Guest tokens are
-stored in SecureStore on native platforms and in AsyncStorage for the web
-preview. See [`mobile/README.md`](../mobile/README.md) for setup and current
-scope.
+The Expo customer app lives in [`../mobile`](../mobile). It is guest-first
+with an optional account: shop directory, storefront search and pagination,
+local cart, guest or signed-in reservation create/lookup/cancel, hold history,
+restock alerts, special-order request/quote/cancel flows, and email OTP
+sign-in. Account data is fetched from `/v1/me` and combined with device-local
+guest rows; the account token is memory-only and is never persisted. Guest
+tokens are stored in SecureStore on native platforms and in AsyncStorage for
+the web preview. See [`mobile/README.md`](../mobile/README.md) for setup and
+current scope.
 
 ## Phase 0 gaps / before pilot
 
-- Customer OTP auth and customer accounts are not implemented yet; guest
-  reservations use a per-reservation access token.
+- Customer accounts are optional and use email OTP only; there is no password,
+  refresh token, revocation/session list, profile editing, or account deletion
+  yet. Account numbers are global per verified email across shops.
 - Push notifications (FCM/APNs) are not implemented; email is the only
   delivery channel. Staff in-app notifications exist in the outbox but are not
   surfaced in the admin yet.
-- Restock alerts and special orders are guest-local: the app stores their
-  metadata and tokens on the device. OTP accounts in the mobile app will later
-  attach them to a customer and sync them across devices.
-- The mobile app is a guest-only slice: it has no OTP accounts, push handling,
-  offline cache, localization, or device E2E suite yet. It does support
-  QR/deep-link entry, card detail, restock alerts, and special orders. The API
-  and vendor web admin are otherwise implemented.
+- Restock alerts and special orders created while signed out stay device-local
+  until a customer verifies the same email and claims them. Account data is not
+  cached offline.
+- The mobile app has no push handling, offline cache, localization, or device
+  E2E suite yet. It does support QR/deep-link entry, card detail, restock
+  alerts, special orders, and optional OTP accounts. The API and vendor web
+  admin are otherwise implemented.
 - PostgreSQL-only tests skip unless `CARDTRACKER_TEST_POSTGRES_ADMIN_URL` and
   `CARDTRACKER_TEST_POSTGRES_URL` are set; SQLite cannot prove RLS or locking.
 - Rate limiting is in-process, so it assumes a single API worker.

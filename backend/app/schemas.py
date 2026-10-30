@@ -156,6 +156,73 @@ class StaffMeOut(BaseModel):
     display_name: str | None = None
 
 
+class OtpRequestIn(BaseModel):
+    email: EmailStr
+
+
+class OtpRequestOut(BaseModel):
+    expires_in: int
+    resend_after: int
+    debug_code: str | None = None
+
+
+class OtpVerifyIn(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
+class CustomerOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    email: EmailStr
+    email_verified_at: datetime | None = None
+    created_at: datetime
+
+
+class ClaimedOut(BaseModel):
+    reservations: int = 0
+    restock_alerts: int = 0
+    card_requests: int = 0
+
+
+class CustomerTokenOut(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    is_new_account: bool
+    customer: CustomerOut
+    claimed: ClaimedOut
+
+
+class MeReservationSummaryOut(ReservationSummaryOut):
+    shop: dict
+
+
+class MeReservationListOut(BaseModel):
+    items: list[MeReservationSummaryOut]
+
+
+class MeRestockAlertOut(BaseModel):
+    id: uuid.UUID
+    card_id: uuid.UUID
+    stock_id: uuid.UUID | None = None
+    card_name: str
+    set_code: str
+    collector_number: str
+    finish: str
+    condition: str
+    language: str
+    email: EmailStr
+    shop: dict
+    created_at: datetime
+    notified_at: datetime | None = None
+
+
+class MeRestockAlertListOut(BaseModel):
+    items: list[MeRestockAlertOut]
+
+
 class StaffStockOut(BaseModel):
     stock_id: uuid.UUID
     card: CardOut
@@ -280,6 +347,14 @@ class CardRequestOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     access_token: str | None = None
+
+
+class MeCardRequestOut(CardRequestOut):
+    shop: dict
+
+
+class MeCardRequestListOut(BaseModel):
+    items: list[MeCardRequestOut]
 
 
 class StaffCardRequestOut(CardRequestOut):

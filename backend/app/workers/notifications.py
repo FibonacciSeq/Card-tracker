@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app import models
 from app.config import settings
 from app.db import SessionLocal, set_tenant_context
+from app.security import derive_otp_code
 from app.services import notifications
 
 logger = logging.getLogger(__name__)
@@ -93,6 +94,69 @@ def default_sender() -> Sender | None:
     if backend == "none":
         return None
     raise RuntimeError(f"Unknown CARDTRACKER_NOTIFICATION_BACKEND: {backend!r}")
+
+
+def deliver_otp_challenges(
+    db: Session,
+    sender: Sender,
+    *,
+    now: datetime,
+    limit: int = 50,
+) -> int:
+    """Drain the global OTP outbox.
+
+    OTP challenges are not tenant-owned, so this runs once per worker pass,
+    outside any tenant context.
+    """
+    pending = list(
+        db.scalars(
+            select(models.CustomerOtpChallenge)
+            .where(
+                models.CustomerOtpChallenge.consumed_at.is_(None),
+                models.CustomerOtpChallenge.expires_at > now,
+                models.CustomerOtpChallenge.email_sent_at.is_(None),
+                models.CustomerOtpChallenge.email_attempts < settings.otp_email_max_attempts,
+                or_(
+                    models.CustomerOtpChallenge.next_email_attempt_at.is_(None),
+                    models.CustomerOtpChallenge.next_email_attempt_at <= now,
+                ),
+            )
+            .order_by(models.CustomerOtpChallenge.created_at)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        ).all()
+    )
+
+    delivered = 0
+    for challenge in pending:
+        try:
+            code = derive_otp_code(challenge.id, challenge.email)
+            subject, body = notifications.render_otp(code, settings.otp_expiry_seconds)
+            sender.send(recipient=challenge.email, subject=subject, body=body)
+        except Exception as exc:
+            challenge.email_attempts += 1
+            error_type = type(exc).__name__
+            smtp_code = getattr(exc, "smtp_code", None)
+            if isinstance(smtp_code, int):
+                error_type = f"{error_type} ({smtp_code})"
+            challenge.email_error = f"{error_type}: delivery failed"[:1000]
+            if challenge.email_attempts < settings.otp_email_max_attempts:
+                delay = min(BACKOFF_MAX_SECONDS, BACKOFF_BASE_SECONDS * 2 ** (challenge.email_attempts - 1))
+                challenge.next_email_attempt_at = now + timedelta(seconds=delay)
+            logger.warning(
+                "OTP challenge %s failed (attempt %s): %s",
+                challenge.id,
+                challenge.email_attempts,
+                error_type,
+            )
+        else:
+            challenge.email_sent_at = now
+            challenge.email_error = None
+            delivered += 1
+
+    if pending:
+        db.commit()
+    return delivered
 
 
 def deliver_tenant(
@@ -184,6 +248,7 @@ def run_once(
     now = now or datetime.now(UTC)
     delivered = 0
     with SessionLocal() as db:
+        delivered += deliver_otp_challenges(db, sender, now=now, limit=limit_per_tenant)
         tenants = list(db.scalars(select(models.Tenant)).all())
         for tenant in tenants:
             # RLS is transaction-scoped; enter each tenant before reading.
@@ -205,5 +270,5 @@ def main() -> None:
         time.sleep(INTERVAL_SECONDS)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - process entry point
     main()

@@ -15,6 +15,13 @@ export type RestockAlertCreate = Schemas["RestockAlertCreateIn"];
 export type CardRequest = Schemas["CardRequestOut"];
 export type CardRequestCreate = Schemas["CardRequestCreateIn"];
 export type Customer = Schemas["CustomerIn"];
+export type CustomerAccount = Schemas["CustomerOut"];
+export type ClaimedCounts = Schemas["ClaimedOut"];
+export type OtpRequestResult = Schemas["OtpRequestOut"];
+export type CustomerToken = Schemas["CustomerTokenOut"];
+export type AccountReservation = Schemas["MeReservationSummaryOut"];
+export type AccountCardRequest = Schemas["MeCardRequestOut"];
+export type AccountRestockAlert = Schemas["MeRestockAlertOut"];
 
 export type StockSort = "relevance" | "name" | "price_asc" | "price_desc" | "newest";
 

@@ -226,23 +226,27 @@ test("quotes a special order and converts it into a reservation", async ({ page,
   await page.getByTestId("quote-price").fill("1250.00");
   await page.getByTestId("quote-submit").click();
 
-  await expect(row.getByText("Quoted")).toBeVisible();
+  await expect(row.getByText("Quoted", { exact: true })).toBeVisible();
 
-  const accepted = await request.post(`${E2E.apiUrl}/v1/card-requests/${special.id}/accept`, {
-    headers: {
-      "X-Shop-Slug": E2E.slug,
-      "X-Card-Request-Token": special.access_token,
-    },
-  });
-  expect(accepted.ok()).toBeTruthy();
+  const headers = {
+    "X-Shop-Slug": E2E.slug,
+    "X-Card-Request-Token": special.access_token,
+  };
+  const quoted = await request.get(`${E2E.apiUrl}/v1/card-requests/${special.id}`, { headers });
+  expect(quoted.ok()).toBeTruthy();
+  expect((await quoted.json()) as { status: string }).toMatchObject({ status: "QUOTED" });
+
+  const accepted = await request.post(`${E2E.apiUrl}/v1/card-requests/${special.id}/accept`, { headers });
+  const failure = accepted.ok() ? "" : `${accepted.status()} ${await accepted.text()}`;
+  expect(accepted.ok(), `accept failed: ${failure}`).toBeTruthy();
 
   await page.getByRole("button", { name: "Refresh" }).click();
-  await expect(row.getByText("Accepted")).toBeVisible();
+  await expect(row.getByText("Accepted", { exact: true })).toBeVisible();
 
   await page.getByTestId(`convert-btn-${special.public_ref}`).click();
   await page.getByTestId("convert-submit").click();
 
-  await expect(row.getByText("Converted")).toBeVisible();
+  await expect(row.getByText("Converted", { exact: true })).toBeVisible();
   await expect(row).toContainText(/Reservation R-/);
 
   const after = await publicStock(request);

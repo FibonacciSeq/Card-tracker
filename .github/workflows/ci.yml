@@ -58,7 +58,7 @@ jobs:
       - name: bandit
         run: bandit -q -c pyproject.toml -r .
       - name: pip-audit
-        run: pip-audit -r requirements.txt --progress-spinner off
+        run: ./scripts/audit_requirements.sh
 
   test:
     name: Tests (py${{ matrix.python-version }})
@@ -78,7 +78,18 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y python3-tk
       - run: pip install -r requirements-dev.txt
       - name: Run tests
-        run: pytest --cov --cov-report=term-missing
+        run: pytest --cov --cov-branch --cov-report=term-missing
+
+  sqlserver:
+    name: SQL Server schema and E2E
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run disposable SQL Server checks
+        env:
+          CARDTRACKER_REQUIRE_SQLSERVER: "1"
+        run: ./scripts/test_sqlserver.sh
 
   smoke:
     name: Import smoke test

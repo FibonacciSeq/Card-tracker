@@ -22,6 +22,24 @@ class Settings(BaseSettings):
     jwt_secret: str = "dev-only-change-me"
     jwt_issuer: str = "cardtracker-platform"
     access_token_minutes: int = 60
+    # Customer accounts are memory-only in the app. The server expiry still
+    # bounds a session that stays open in the background.
+    customer_access_token_minutes: int = 720
+    otp_expiry_seconds: int = 600
+    otp_resend_seconds: int = 60
+    otp_max_attempts: int = 5
+    otp_request_ip_limit: int = 10
+    otp_request_ip_window_seconds: int = 3600
+    otp_request_email_limit: int = 5
+    otp_request_email_window_seconds: int = 900
+    otp_verify_ip_limit: int = 20
+    otp_verify_ip_window_seconds: int = 900
+    otp_verify_email_limit: int = 10
+    otp_verify_email_window_seconds: int = 900
+    otp_email_max_attempts: int = 5
+    # Empty falls back to jwt_secret, so existing deployments need no new secret.
+    otp_secret: str = ""
+    otp_debug_code: bool = False
     default_hold_hours: int = 24
     # Production must use `alembic upgrade head`; only local SQLite runs enable
     # auto-create explicitly.

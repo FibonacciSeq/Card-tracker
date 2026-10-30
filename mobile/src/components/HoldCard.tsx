@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import type { SavedReservation } from "../api/types";
+import type { ReservationListItem } from "../lib/accountMerge";
 import { formatMoney, formatRemaining } from "../lib/format";
 import { colors, radii, spacing, type } from "../theme";
 import { StatusPill } from "./StatusPill";
@@ -10,7 +10,7 @@ export function HoldCard({
   reservation,
   onPress,
 }: {
-  reservation: SavedReservation;
+  reservation: ReservationListItem;
   onPress: () => void;
 }) {
   const shop = reservation.shop as { name?: string; slug?: string };

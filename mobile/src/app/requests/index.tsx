@@ -3,18 +3,26 @@ import { useRouter } from "expo-router";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
+import { useMyCardRequests } from "../../api/queries";
 import { EmptyState } from "../../components/EmptyState";
 import { LoadingState } from "../../components/LoadingState";
 import { RequestCard } from "../../components/RequestCard";
+import { mergeCardRequests } from "../../lib/accountMerge";
+import { useAuth } from "../../state/auth";
 import { useSpecialOrders } from "../../state/specialOrders";
 import { colors, radii, spacing, type } from "../../theme";
 
 export default function RequestsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { token } = useAuth();
   const { hydrated, requests } = useSpecialOrders();
+  const accountRequests = useMyCardRequests(token);
+  const allRequests = mergeCardRequests(accountRequests.data?.items ?? [], requests);
 
-  if (!hydrated) return <LoadingState label="Loading special orders…" />;
+  if (!hydrated || (token && accountRequests.isLoading)) {
+    return <LoadingState label="Loading special orders…" />;
+  }
 
   return (
     <View style={styles.screen}>
@@ -44,7 +52,7 @@ export default function RequestsScreen() {
           </Pressable>
         </View>
 
-        {requests.length === 0 ? (
+        {allRequests.length === 0 ? (
           <EmptyState
             icon="sparkles-outline"
             title="No special orders yet"
@@ -54,7 +62,7 @@ export default function RequestsScreen() {
           />
         ) : (
           <View style={styles.list}>
-            {requests.map((request) => (
+            {allRequests.map((request) => (
               <RequestCard
                 key={request.id}
                 request={request}

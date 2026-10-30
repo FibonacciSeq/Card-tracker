@@ -17,6 +17,8 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     Uuid,
+    func,
+    text,
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
@@ -88,6 +90,40 @@ class User(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),
         CheckConstraint("role IN ('platform_admin','owner','staff','customer')", name="ck_users_role"),
+        Index(
+            "uq_users_customer_global_email",
+            func.lower(email),
+            unique=True,
+            postgresql_where=text("role = 'customer' AND tenant_id IS NULL"),
+            sqlite_where=text("role = 'customer' AND tenant_id IS NULL"),
+        ),
+    )
+
+
+class CustomerOtpChallenge(Base):
+    """A short-lived email login code.
+
+    The challenge row doubles as the email job. The six-digit code is derived
+    from the challenge id and server secret, so no plaintext code is stored.
+    """
+
+    __tablename__ = "customer_otp_challenges"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    email: Mapped[str] = mapped_column(String(320), index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    email_attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    next_email_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    email_error: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (
+        Index("ix_otp_email_created", "email", "created_at"),
+        Index("ix_otp_pending_email", "email_sent_at", "next_email_attempt_at"),
+        Index("ix_otp_expires", "expires_at"),
     )
 
 
@@ -186,6 +222,7 @@ class Reservation(Base):
         ),
         Index("ix_reservations_due", "status", "expires_at"),
         Index("ix_reservations_tenant_status", "tenant_id", "status", "created_at"),
+        Index("ix_reservations_customer", "customer_id", "created_at"),
     )
 
 
@@ -316,6 +353,7 @@ class CardRequest(Base):
             name="ck_card_requests_status",
         ),
         Index("ix_card_requests_queue", "tenant_id", "status", "created_at"),
+        Index("ix_card_requests_customer", "customer_id", "created_at"),
     )
 
 
@@ -348,6 +386,7 @@ class RestockAlert(Base):
             name="uq_restock_alerts_subscription",
         ),
         Index("ix_restock_alerts_variant", "tenant_id", "card_id", "finish", "condition", "language"),
+        Index("ix_restock_alerts_customer", "customer_id", "created_at"),
     )
 
 

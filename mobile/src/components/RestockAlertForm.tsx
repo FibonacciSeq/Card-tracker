@@ -1,12 +1,25 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
-import { createRestockAlert, unsubscribeRestockAlert } from "../api/client";
+import {
+  createRestockAlert,
+  deleteMyRestockAlert,
+  unsubscribeRestockAlert,
+} from "../api/client";
+import { accountKeys, useMyRestockAlerts } from "../api/queries";
 import type { RestockAlertCreate, StockItem } from "../api/types";
+import {
+  accountAlertToItem,
+  guestAlertToItem,
+  readShop,
+  type AlertListItem,
+} from "../lib/accountMerge";
+import { useAuth } from "../state/auth";
+import { useRestockAlerts } from "../state/restockAlerts";
 import { Field } from "./Field";
 import { PrimaryButton } from "./PrimaryButton";
-import { useRestockAlerts } from "../state/restockAlerts";
 import { colors, radii, spacing, type } from "../theme";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -18,14 +31,32 @@ type Props = {
 };
 
 export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
+  const queryClient = useQueryClient();
+  const { customer, token } = useAuth();
   const { findForVariant, getToken, hydrated, remove, save } = useRestockAlerts();
-  const saved = findForVariant(
+  const accountAlerts = useMyRestockAlerts(token);
+  const accountSaved = accountAlerts.data?.items.find((row) => {
+    const shop = readShop(row.shop);
+    return (
+      shop.slug === shopSlug &&
+      row.card_id === item.card.id &&
+      row.finish === item.finish &&
+      row.condition === item.condition &&
+      row.language === item.language
+    );
+  });
+  const guestSaved = findForVariant(
     shopSlug,
     item.card.id,
     item.finish,
     item.condition,
     item.language,
   );
+  const saved: AlertListItem | null = accountSaved
+    ? accountAlertToItem(accountSaved)
+    : guestSaved
+      ? guestAlertToItem(guestSaved)
+      : null;
 
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -36,7 +67,7 @@ export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
 
   async function subscribe() {
     if (!hydrated) return;
-    const value = email.trim();
+    const value = (token ? (customer?.email ?? "") : email).trim();
     if (!EMAIL.test(value)) {
       setEmailError("Enter a valid email address.");
       return;
@@ -53,13 +84,16 @@ export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
         condition: item.condition as RestockAlertCreate["condition"],
         language: item.language,
       };
-      const alert = await createRestockAlert(shopSlug, payload);
+      const alert = await createRestockAlert(shopSlug, payload, token);
       await save(alert, {
         shopSlug,
         shopName,
         cardName: item.card.name,
         stockId: item.stock_id,
       });
+      if (token) {
+        await queryClient.invalidateQueries({ queryKey: accountKeys.restockAlerts });
+      }
       setEmail("");
       setName("");
     } catch (error) {
@@ -74,11 +108,17 @@ export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
     setSubmitError(null);
     setUnsubscribing(true);
     try {
-      const token = await getToken(saved.id);
-      if (!token) {
-        throw new Error("This alert is missing its guest token. Add it again from this device.");
+      if (saved.source === "account") {
+        if (!token) throw new Error("Sign in again to remove this alert.");
+        await deleteMyRestockAlert(saved.id, token);
+        await queryClient.invalidateQueries({ queryKey: accountKeys.restockAlerts });
+      } else {
+        const guestToken = await getToken(saved.id);
+        if (!guestToken) {
+          throw new Error("This alert is missing its guest token. Add it again from this device.");
+        }
+        await unsubscribeRestockAlert(shopSlug, saved.id, guestToken);
       }
-      await unsubscribeRestockAlert(shopSlug, saved.id, token);
       await remove(saved.id);
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : "Could not remove this alert.");
@@ -87,7 +127,7 @@ export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
     }
   }
 
-  if (!hydrated) {
+  if (!hydrated || (token && accountAlerts.isLoading)) {
     return (
       <View style={styles.panel}>
         <Text style={styles.body}>Loading your alerts…</Text>
@@ -114,21 +154,34 @@ export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
       {saved ? (
         <View style={styles.savedBox}>
           <Ionicons name="checkmark-circle-outline" size={18} color={colors.success} />
-          <Text style={styles.savedText}>Your alert is saved on this device.</Text>
+          <Text style={styles.savedText}>
+            {saved.source === "account"
+              ? "Your alert is saved to your account."
+              : "Your alert is saved on this device."}
+          </Text>
         </View>
       ) : (
         <View style={styles.form}>
-          <Field
-            autoCapitalize="none"
-            autoComplete="email"
-            error={emailError}
-            keyboardType="email-address"
-            label="Email"
-            onChangeText={setEmail}
-            placeholder="you@example.com"
-            textContentType="emailAddress"
-            value={email}
-          />
+          {token ? (
+            <Field
+              editable={false}
+              label="Email"
+              onChangeText={() => undefined}
+              value={customer?.email ?? ""}
+            />
+          ) : (
+            <Field
+              autoCapitalize="none"
+              autoComplete="email"
+              error={emailError}
+              keyboardType="email-address"
+              label="Email"
+              onChangeText={setEmail}
+              placeholder="you@example.com"
+              textContentType="emailAddress"
+              value={email}
+            />
+          )}
           <Field
             autoCapitalize="words"
             autoComplete="name"

@@ -12,6 +12,7 @@ type FieldProps = {
   TextInputProps,
   | "autoCapitalize"
   | "autoComplete"
+  | "editable"
   | "keyboardType"
   | "maxLength"
   | "multiline"

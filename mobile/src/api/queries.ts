@@ -1,7 +1,19 @@
 import { useEffect, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
-import { getCardRequest, getReservation, getShop, getShops, getStock, getStockItem } from "./client";
+import {
+  getCardRequest,
+  getMyCardRequest,
+  getMyCardRequests,
+  getMyReservation,
+  getMyReservations,
+  getMyRestockAlerts,
+  getReservation,
+  getShop,
+  getShops,
+  getStock,
+  getStockItem,
+} from "./client";
 import type { StockSort } from "./types";
 
 export const queryKeys = {
@@ -12,6 +24,15 @@ export const queryKeys = {
   stockItem: (slug: string, stockId: string) => ["stock-item", slug, stockId] as const,
   reservation: (id: string) => ["reservation", id] as const,
   cardRequest: (id: string) => ["card-request", id] as const,
+};
+
+export const accountKeys = {
+  all: ["account"] as const,
+  reservations: ["account", "reservations"] as const,
+  reservation: (id: string) => ["account", "reservation", id] as const,
+  cardRequests: ["account", "card-requests"] as const,
+  cardRequest: (id: string) => ["account", "card-request", id] as const,
+  restockAlerts: ["account", "restock-alerts"] as const,
 };
 
 export function useShops(search: string) {
@@ -90,6 +111,51 @@ export function useGuestCardRequest(
       const status = (error as { status?: number }).status;
       return status !== 403 && status !== 404 && count < 1;
     },
+  });
+}
+
+export function useMyReservations(token: string | null) {
+  return useQuery({
+    queryKey: accountKeys.reservations,
+    queryFn: () => getMyReservations(token ?? ""),
+    enabled: Boolean(token),
+    retry: false,
+  });
+}
+
+export function useMyReservation(id: string, token: string | null) {
+  return useQuery({
+    queryKey: accountKeys.reservation(id),
+    queryFn: () => getMyReservation(id, token ?? ""),
+    enabled: Boolean(id && token),
+    retry: false,
+  });
+}
+
+export function useMyCardRequests(token: string | null) {
+  return useQuery({
+    queryKey: accountKeys.cardRequests,
+    queryFn: () => getMyCardRequests(token ?? ""),
+    enabled: Boolean(token),
+    retry: false,
+  });
+}
+
+export function useMyCardRequest(id: string, token: string | null) {
+  return useQuery({
+    queryKey: accountKeys.cardRequest(id),
+    queryFn: () => getMyCardRequest(id, token ?? ""),
+    enabled: Boolean(id && token),
+    retry: false,
+  });
+}
+
+export function useMyRestockAlerts(token: string | null) {
+  return useQuery({
+    queryKey: accountKeys.restockAlerts,
+    queryFn: () => getMyRestockAlerts(token ?? ""),
+    enabled: Boolean(token),
+    retry: false,
   });
 }
 

@@ -35,5 +35,5 @@ def main() -> None:
         time.sleep(INTERVAL_SECONDS)
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover - process entry point
     main()

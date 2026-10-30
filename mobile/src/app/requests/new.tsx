@@ -11,13 +11,15 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { createCardRequest } from "../../api/client";
-import { useShops } from "../../api/queries";
+import { accountKeys, useShops } from "../../api/queries";
 import type { CardRequestCreate } from "../../api/types";
 import { Field } from "../../components/Field";
 import { LoadingState } from "../../components/LoadingState";
 import { PrimaryButton } from "../../components/PrimaryButton";
+import { useAuth } from "../../state/auth";
 import { useSpecialOrders } from "../../state/specialOrders";
 import { colors, radii, spacing, type } from "../../theme";
 
@@ -61,6 +63,8 @@ export default function NewRequestScreen() {
   }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const queryClient = useQueryClient();
+  const { customer, token } = useAuth();
   const shopsQuery = useShops("");
   const { hydrated, save } = useSpecialOrders();
 
@@ -97,10 +101,11 @@ export default function NewRequestScreen() {
 
   async function submit() {
     if (!hydrated) return;
+    const contactEmail = token ? (customer?.email ?? "") : email.trim();
     const next: Errors = {};
     if (!activeShopSlug) next.shop = "Choose a shop.";
     if (!customerName.trim()) next.customerName = "Enter your name.";
-    if (!EMAIL.test(email.trim())) next.email = "Enter a valid email address.";
+    if (!token && !EMAIL.test(contactEmail)) next.email = "Enter a valid email address.";
     if (!cardName.trim()) next.cardName = "Which card are you looking for?";
     const parsedQuantity = Number.parseInt(quantity, 10);
     if (!Number.isFinite(parsedQuantity) || parsedQuantity < 1 || parsedQuantity > 999) {
@@ -122,7 +127,7 @@ export default function NewRequestScreen() {
     const payload: CardRequestCreate = {
       customer: {
         name: customerName.trim(),
-        email: email.trim(),
+        email: contactEmail,
         phone: phone.trim(),
       },
       card_id: params.cardId ?? null,
@@ -139,8 +144,11 @@ export default function NewRequestScreen() {
 
     setSubmitting(true);
     try {
-      const request = await createCardRequest(activeShopSlug, payload);
+      const request = await createCardRequest(activeShopSlug, payload, token);
       await save(request, { shopSlug: activeShopSlug, shopName });
+      if (token) {
+        await queryClient.invalidateQueries({ queryKey: accountKeys.cardRequests });
+      }
       router.replace(`/requests/${request.id}`);
     } catch (error) {
       setApiError(error instanceof Error ? error.message : "Could not send this request.");
@@ -297,13 +305,14 @@ export default function NewRequestScreen() {
           <Field
             autoCapitalize="none"
             autoComplete="email"
-            error={errors.email}
+            editable={!token}
+            error={token ? null : errors.email}
             keyboardType="email-address"
             label="Email"
             onChangeText={setEmail}
             placeholder="you@example.com"
             textContentType="emailAddress"
-            value={email}
+            value={token ? (customer?.email ?? "") : email}
           />
           <Field
             autoCapitalize="none"
