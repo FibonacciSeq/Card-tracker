@@ -22,6 +22,8 @@ export type CustomerToken = Schemas["CustomerTokenOut"];
 export type AccountReservation = Schemas["MeReservationSummaryOut"];
 export type AccountCardRequest = Schemas["MeCardRequestOut"];
 export type AccountRestockAlert = Schemas["MeRestockAlertOut"];
+export type PushToken = Schemas["PushTokenOut"];
+export type PushTokenCreate = Schemas["PushTokenIn"];
 
 export type StockSort = "relevance" | "name" | "price_asc" | "price_desc" | "newest";
 

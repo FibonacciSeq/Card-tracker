@@ -478,6 +478,8 @@ def _release(
             "reason": reason,
         },
         recipient=reservation.email,
+        user_id=reservation.customer_id,
+        push=True,
     )
 
     # Releasing a hold can make a sold-out variant available again. The alert
@@ -653,6 +655,8 @@ def complete_reservation(
                 "status": locked.status,
             },
             recipient=locked.email if resolved else None,
+            user_id=locked.customer_id,
+            push=resolved,
         )
 
         if released_stocks:

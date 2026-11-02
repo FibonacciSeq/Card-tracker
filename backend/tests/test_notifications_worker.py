@@ -146,6 +146,7 @@ def test_in_app_notifications_are_not_emailed(db, tenant):
 
 def test_none_backend_disables_delivery(monkeypatch):
     monkeypatch.setattr(settings, "notification_backend", "none")
+    monkeypatch.setattr(settings, "push_backend", "none")
     assert worker.default_sender() is None
     assert worker.run_once() == 0
 
@@ -157,6 +158,7 @@ def test_run_once_drains_each_tenant(db, tenant, other_tenant, monkeypatch):
 
     maker = sessionmaker(bind=db.get_bind(), autoflush=False, expire_on_commit=False)
     monkeypatch.setattr(worker, "SessionLocal", maker)
+    monkeypatch.setattr(worker.push, "default_sender", lambda: None)
 
     sender = RecordingSender()
     assert worker.run_once(sender=sender) == 2

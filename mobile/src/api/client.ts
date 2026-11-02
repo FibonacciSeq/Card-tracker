@@ -9,6 +9,8 @@ import type {
   CustomerToken,
   Facets,
   OtpRequestResult,
+  PushToken,
+  PushTokenCreate,
   Reservation,
   ReservationCreate,
   RestockAlert,
@@ -286,6 +288,26 @@ export function verifyOtp(email: string, code: string): Promise<CustomerToken> {
 
 export function getMe(token: string): Promise<CustomerAccount> {
   return request<CustomerAccount>("/v1/me", {
+    headers: bearer(token),
+    auth: true,
+  });
+}
+
+export function registerPushToken(
+  token: string,
+  payload: PushTokenCreate,
+): Promise<PushToken> {
+  return request<PushToken>("/v1/me/push-tokens", {
+    method: "POST",
+    body: payload,
+    headers: bearer(token),
+    auth: true,
+  });
+}
+
+export function unregisterPushToken(token: string, deviceToken: string): Promise<void> {
+  return request<void>(`/v1/me/push-tokens/${encodeURIComponent(deviceToken)}`, {
+    method: "DELETE",
     headers: bearer(token),
     auth: true,
   });

@@ -20,9 +20,9 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.config import settings
-from app.db import SessionLocal, set_tenant_context
+from app.db import SessionLocal, set_push_worker_context, set_tenant_context
 from app.security import derive_otp_code
-from app.services import notifications
+from app.services import notifications, push
 
 logger = logging.getLogger(__name__)
 
@@ -234,35 +234,137 @@ def deliver_tenant(
     return delivered
 
 
+def deliver_push(
+    db: Session,
+    tenant: models.Tenant,
+    sender: push.PushSender,
+    *,
+    now: datetime,
+    limit: int = 50,
+) -> int:
+    set_push_worker_context(db)
+    pending = list(
+        db.scalars(
+            select(models.Notification)
+            .where(
+                models.Notification.tenant_id == tenant.id,
+                models.Notification.channel == "push",
+                models.Notification.user_id.is_not(None),
+                models.Notification.sent_at.is_(None),
+                models.Notification.attempts < settings.notification_max_attempts,
+                or_(
+                    models.Notification.next_attempt_at.is_(None),
+                    models.Notification.next_attempt_at <= now,
+                ),
+            )
+            .order_by(models.Notification.id)
+            .limit(limit)
+            .with_for_update(skip_locked=True)
+        ).all()
+    )
+    if not pending:
+        return 0
+
+    delivered = 0
+    for row in pending:
+        tokens = list(
+            db.scalars(
+                select(models.PushToken).where(
+                    models.PushToken.user_id == row.user_id,
+                    models.PushToken.revoked_at.is_(None),
+                )
+            ).all()
+        )
+        if not tokens:
+            row.sent_at = now
+            row.error = "No active push token"
+            continue
+
+        subject, body = notifications.render(row, tenant)
+        url = notifications.app_card_url(tenant, row.payload or {})
+        successes = 0
+        invalid = 0
+        errors: list[str] = []
+        for token in tokens:
+            try:
+                sender.send(
+                    token=token.token,
+                    platform=token.platform,
+                    title=subject,
+                    body=body,
+                    url=url,
+                )
+            except push.PushTokenInvalid as exc:
+                invalid += 1
+                token.revoked_at = now
+                errors.append(f"{type(exc).__name__}: {exc}")
+            except push.PushTransientError as exc:
+                errors.append(f"{type(exc).__name__}: {exc}")
+            else:
+                successes += 1
+
+        if successes:
+            row.sent_at = now
+            row.error = None
+            delivered += 1
+            continue
+
+        row.attempts += 1
+        row.error = ("; ".join(errors) or "Push delivery failed")[:1000]
+        if invalid == len(tokens):
+            # The device is gone; do not retry until it registers a new token.
+            row.sent_at = now
+        elif row.attempts < settings.notification_max_attempts:
+            delay = min(BACKOFF_MAX_SECONDS, BACKOFF_BASE_SECONDS * 2 ** (row.attempts - 1))
+            row.next_attempt_at = now + timedelta(seconds=delay)
+        else:
+            row.sent_at = now
+
+    db.commit()
+    return delivered
+
+
 def run_once(
     *,
     sender: Sender | None = None,
+    push_sender: push.PushSender | None = None,
     now: datetime | None = None,
     limit_per_tenant: int = 50,
 ) -> int:
-    sender = sender or default_sender()
-    if sender is None:
+    sender = sender if sender is not None else default_sender()
+    push_sender = push_sender if push_sender is not None else push.default_sender()
+    if sender is None and push_sender is None:
         # `none` is a supported deployment mode: leave the outbox untouched so
-        # enabling SMTP later drains it instead of losing messages.
+        # enabling a provider later drains it instead of losing messages.
         return 0
     now = now or datetime.now(UTC)
     delivered = 0
     with SessionLocal() as db:
-        delivered += deliver_otp_challenges(db, sender, now=now, limit=limit_per_tenant)
+        if sender is not None:
+            delivered += deliver_otp_challenges(db, sender, now=now, limit=limit_per_tenant)
         tenants = list(db.scalars(select(models.Tenant)).all())
         for tenant in tenants:
             # RLS is transaction-scoped; enter each tenant before reading.
             set_tenant_context(db, tenant.id)
-            delivered += deliver_tenant(db, tenant, sender, now=now, limit=limit_per_tenant)
+            if sender is not None:
+                delivered += deliver_tenant(db, tenant, sender, now=now, limit=limit_per_tenant)
+            if push_sender is not None:
+                delivered += deliver_push(db, tenant, push_sender, now=now, limit=limit_per_tenant)
     return delivered
 
 
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    logger.info("Notification worker started (backend=%s)", settings.notification_backend)
+    logger.info(
+        "Notification worker started (email=%s push=%s)",
+        settings.notification_backend,
+        settings.push_backend,
+    )
+    sender = default_sender()
+    push_sender = push.default_sender()
     while True:
         try:
-            delivered = run_once()
+            delivered = run_once(sender=sender, push_sender=push_sender)
             if delivered:
                 logger.info("Delivered %s notification(s)", delivered)
         except Exception:

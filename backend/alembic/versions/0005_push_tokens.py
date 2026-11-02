@@ -38,6 +38,8 @@ def upgrade() -> None:
 
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
+        op.execute('ALTER TABLE "push_tokens" ENABLE ROW LEVEL SECURITY')
+        op.execute('ALTER TABLE "push_tokens" FORCE ROW LEVEL SECURITY')
         op.execute(
             """
             CREATE POLICY "push_tokens_customer_own"
@@ -50,11 +52,20 @@ def upgrade() -> None:
             )
             """
         )
+        op.execute(
+            """
+            CREATE POLICY "push_tokens_worker"
+            ON push_tokens
+            USING (current_setting('app.push_worker', true) = 'on')
+            WITH CHECK (current_setting('app.push_worker', true) = 'on')
+            """
+        )
 
 
 def downgrade() -> None:
     bind = op.get_bind()
     if bind.dialect.name == "postgresql":
+        op.execute('DROP POLICY IF EXISTS "push_tokens_worker" ON push_tokens')
         op.execute('DROP POLICY IF EXISTS "push_tokens_customer_own" ON push_tokens')
 
     op.drop_index("ix_push_tokens_user_active", table_name="push_tokens")

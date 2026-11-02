@@ -816,6 +816,8 @@ def update_reservation_status(
                 "expires_at": reservation.expires_at.isoformat(),
             },
             recipient=reservation.email,
+            user_id=reservation.customer_id,
+            push=True,
         )
         db.commit()
         db.refresh(reservation)

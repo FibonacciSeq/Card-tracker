@@ -174,6 +174,8 @@ def quote(
             "vendor_note": row.vendor_note,
         },
         recipient=row.email,
+        user_id=row.customer_id,
+        push=True,
     )
     db.commit()
     db.refresh(row)
@@ -197,6 +199,8 @@ def decline(db: Session, tenant: models.Tenant, row: models.CardRequest, note: s
             "vendor_note": row.vendor_note,
         },
         recipient=row.email,
+        user_id=row.customer_id,
+        push=True,
     )
     db.commit()
     db.refresh(row)
@@ -215,6 +219,8 @@ def accept(db: Session, tenant: models.Tenant, row: models.CardRequest) -> model
             "CARD_REQUEST_EXPIRED",
             {"public_ref": row.public_ref, "requested_name": row.requested_name},
             recipient=row.email,
+            user_id=row.customer_id,
+            push=True,
         )
         db.commit()
         raise CardRequestError("quote_expired", "This quote has expired. Ask the shop for a new one.", 409)
@@ -317,6 +323,8 @@ def convert(
             "expires_at": reservation.expires_at.isoformat(),
         },
         recipient=row.email,
+        user_id=row.customer_id,
+        push=True,
     )
     db.commit()
     db.refresh(row)
@@ -360,6 +368,8 @@ def expire_due_quotes(db: Session, now: datetime | None = None) -> int:
                 "CARD_REQUEST_EXPIRED",
                 {"public_ref": row.public_ref, "requested_name": row.requested_name},
                 recipient=row.email,
+                user_id=row.customer_id,
+                push=True,
             )
             expired += 1
         if due:

@@ -6,6 +6,7 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { colors, type } from "../theme";
 import { AuthProvider } from "../state/auth";
 import { CartProvider } from "../state/cart";
+import { PushProvider } from "../state/push";
 import { ReservationsProvider } from "../state/reservations";
 import { RestockAlertsProvider } from "../state/restockAlerts";
 import { SpecialOrdersProvider } from "../state/specialOrders";
@@ -25,7 +26,8 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <AuthProvider>
-          <CartProvider>
+          <PushProvider>
+            <CartProvider>
             <ReservationsProvider>
               <RestockAlertsProvider>
                 <SpecialOrdersProvider>
@@ -60,7 +62,8 @@ export default function RootLayout() {
                 </SpecialOrdersProvider>
               </RestockAlertsProvider>
             </ReservationsProvider>
-          </CartProvider>
+            </CartProvider>
+          </PushProvider>
         </AuthProvider>
       </QueryClientProvider>
     </SafeAreaProvider>

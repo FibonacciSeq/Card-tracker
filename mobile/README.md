@@ -3,8 +3,8 @@
 Expo + React Native + TypeScript customer app for the multi-vendor platform.
 The Step 5 slice covers shop discovery, storefront browsing, card detail,
 QR/deep-link entry, local cart, guest reservation, restock alerts,
-special-order requests, confirmation, history, cancellation, and optional
-email-OTP customer accounts with `/v1/me` data.
+special-order requests, confirmation, history, cancellation, optional
+email-OTP customer accounts with `/v1/me` data, and native push notifications.
 
 The API is the source of truth. Guest checkout works without an account; the
 app keeps a local cart and the guest tokens/metadata needed to reopen a hold,
@@ -31,6 +31,11 @@ in memory only and combines `/v1/me` rows with device-local guest rows.
 - Special-order detail refreshes from the API with an account or guest token.
   Customers can accept or cancel a quote, and see when the shop converts it
   into a hold.
+- Optional native push notifications for signed-in customers. The account
+  screen asks for permission in context, registers the raw FCM/APNs device
+  token with the API, refreshes rolled tokens, unregisters on sign-out, and
+  opens the relevant shop or card when a notification is tapped. The app never
+  uses the Expo Push Service.
 - Optional email OTP account. Signing in claims unowned guest reservations,
   restock alerts, and special orders with the same verified email, then shows
   account data across shops and devices. Signed-in create forms use the
@@ -48,9 +53,8 @@ in memory only and combines `/v1/me` rows with device-local guest rows.
   `cardtracker://shop/<slug>/card/<stock-id>` open the same routes on cold start
   or while the app is running.
 
-Not in this slice yet: push notifications, offline cache, localization,
-device E2E, and account profile editing, email change, deletion, or
-refresh/revocation.
+Not in this slice yet: offline cache, localization, device E2E, and account
+profile editing, email change, deletion, or refresh/revocation.
 
 ## Run it
 
@@ -157,6 +161,21 @@ Guest checkout remains available at every step. Signed-in create forms lock the
 email to the account address and still return the normal guest token for local
 detail access.
 
+### Push notifications
+
+Push needs a native build on a physical device; Expo Go, simulators, and the web
+preview cannot obtain a real FCM/APNs token. Tap **Enable push notifications**
+on the signed-in account screen to prompt for permission and register the
+device. Tapping a notification opens the shop or card carried in its `url` data
+field, including when the app was cold-started by the notification.
+
+Android production builds need a Firebase project and `google-services.json`
+wired into the EAS build (`android.googleServicesFile`). iOS builds need an APNs
+key and the Push Notifications capability in the EAS credentials. On the API,
+set `CARDTRACKER_PUSH_BACKEND=native` and the matching FCM/APNs variables from
+[`backend/.env.example`](../backend/.env.example). The API talks directly to
+FCM HTTP v1 and APNs HTTP/2; it does not use the Expo Push Service.
+
 To try the QR entry without a printed code, open `/scan` from the home screen
 and type `bolt-shop` into **Enter a code by hand**. The admin prints the matching
 shop QR code from **Settings → Shop QR code**.
@@ -230,7 +249,7 @@ src/
   api/                         generated schema, client, query hooks
   components/                  reusable UI
   lib/                         config, deeplink parser, formatting, account merge, timers
-  state/                       auth (memory-only), cart, reservations, alerts, requests
+  state/                       auth (memory-only), push, cart, reservations, alerts, requests
   theme.ts                     colours, spacing, type scale
 ```
 
@@ -240,7 +259,7 @@ Current local verification:
 
 - `npm run typecheck` — clean
 - `npm run lint` — clean
-- `npm run test:coverage` — **26 tests, 100% statements/branches/functions/lines**
+- `npm run test:coverage` — **31 tests, 100% statements/branches/functions/lines**
   for `src/lib/**` (excluding the `useNow` timer hook)
 - `npm run export:web` — production web bundle builds
 - `npm run doctor` — 20/20 checks
@@ -253,7 +272,8 @@ Current local verification:
 
 The Vitest set covers the pure logic modules: config/API-host resolution,
 deep-link parsing and link generation, money/date/time formatting,
-account/guest row merging, guest-token storage, and idempotency keys. Camera
+account/guest row merging, guest-token storage, push target parsing, and
+idempotency keys. Camera
 scanning itself needs a device camera; use Expo Go or a development build. The
 web preview has no camera in headless checks, so the same browser test
 exercises the manual-entry fallback. Device E2E is still not wired up.

@@ -290,13 +290,14 @@ def test_tenant_delivery_ignores_invalid_and_foreign_alert_ids(db, tenant):
 
 def test_notification_run_once_without_a_sender(monkeypatch):
     monkeypatch.setattr(worker, "default_sender", lambda: None)
+    monkeypatch.setattr(worker.push, "default_sender", lambda: None)
     assert worker.run_once() == 0
 
 
 def test_worker_main_runs_one_pass(monkeypatch):
     calls = []
 
-    def fake_run_once():
+    def fake_run_once(**_kwargs):
         calls.append(True)
         return 1
 
@@ -308,7 +309,7 @@ def test_worker_main_runs_one_pass(monkeypatch):
 
 
 def test_worker_main_handles_an_empty_pass(monkeypatch):
-    monkeypatch.setattr(worker, "run_once", lambda: 0)
+    monkeypatch.setattr(worker, "run_once", lambda **_kwargs: 0)
     monkeypatch.setattr(worker.time, "sleep", lambda _seconds: (_ for _ in ()).throw(KeyboardInterrupt))
     with pytest.raises(KeyboardInterrupt):
         worker.main()
@@ -475,8 +476,12 @@ def test_database_context_helpers_with_a_postgres_like_session():
     session: Any = FakeSession()
     db_module.set_customer_context(session, uuid.uuid4())
     db_module.set_tenant_context(session, uuid.uuid4())
-    assert len(executed) == 2
+    db_module.set_push_worker_context(session)
+    assert len(executed) == 3
     assert session.info["tenant_id"]
+    assert session.info["push_worker"] == "on"
+    db_module.set_push_worker_context(session, enabled=False)
+    assert session.info["push_worker"] is None
 
     class FakeConnection:
         dialect = SimpleNamespace(name="postgresql")
@@ -488,8 +493,12 @@ def test_database_context_helpers_with_a_postgres_like_session():
             self.executed.append((str(statement), params))
 
     connection = FakeConnection()
-    db_module._restore_rls_context(SimpleNamespace(info={"tenant_id": "t", "customer_id": "c"}), None, connection)
-    assert len(connection.executed) == 2
+    db_module._restore_rls_context(
+        SimpleNamespace(info={"tenant_id": "t", "customer_id": "c", "push_worker": "on"}),
+        None,
+        connection,
+    )
+    assert len(connection.executed) == 3
 
     connection = FakeConnection()
     db_module._restore_rls_context(SimpleNamespace(info={}), None, connection)

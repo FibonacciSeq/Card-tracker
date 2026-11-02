@@ -118,7 +118,8 @@ docker compose up --build
 
 The API container runs `alembic upgrade head` before starting. The `worker`
 container releases expired reservations and quotes every 60 seconds; the
-`notifications` container drains the email outbox every 10 seconds.
+`notifications` container drains the email and native-push outboxes every 10
+seconds.
 
 Compose separates database roles:
 
@@ -144,6 +145,17 @@ backoff (60s doubling, capped at one hour) for
 backend deliberately does not log recipients or message bodies, and a failed
 delivery stores only the exception type and SMTP status code (never the
 recipient or full error text) in the outbox row and worker log.
+
+Native push uses the industry-standard direct providers: FCM HTTP v1 for
+Android and APNs HTTP/2 token authentication for iOS. It does not use the Expo
+Push Service. Set `CARDTRACKER_PUSH_BACKEND=native` and provide either
+`CARDTRACKER_FCM_PROJECT_ID` plus `CARDTRACKER_FCM_CREDENTIALS_FILE`, or the
+`CARDTRACKER_APNS_*` team/key/bundle settings. The `console` default logs only
+the platform and never a device token or message body. Invalid provider tokens
+are revoked automatically; transient provider errors share the same exponential
+backoff as email. Signed-in customers can enable or disable push from the
+account screen, and the app deep-links notification taps back to the relevant
+shop or card.
 
 Customer OTP behavior is configured with the `CARDTRACKER_OTP_*` variables and
 `CARDTRACKER_CUSTOMER_ACCESS_TOKEN_MINUTES` (default 720, or 12 hours). Set
@@ -365,16 +377,17 @@ current scope.
 - Customer accounts are optional and use email OTP only; there is no password,
   refresh token, revocation/session list, profile editing, or account deletion
   yet. Account numbers are global per verified email across shops.
-- Push notifications (FCM/APNs) are not implemented; email is the only
-  delivery channel. Staff in-app notifications exist in the outbox but are not
-  surfaced in the admin yet.
+- Native FCM/APNs delivery is implemented, but a real end-to-end send needs a
+  Firebase service-account JSON, an APNs `.p8` key, provider project setup, and
+  a physical device. Staff in-app notifications still exist only in the outbox;
+  they are not surfaced in the admin yet.
 - Restock alerts and special orders created while signed out stay device-local
   until a customer verifies the same email and claims them. Account data is not
   cached offline.
-- The mobile app has no push handling, offline cache, localization, or device
-  E2E suite yet. It does support QR/deep-link entry, card detail, restock
-  alerts, special orders, and optional OTP accounts. The API and vendor web
-  admin are otherwise implemented.
+- The mobile app has native push registration/deep links, but still no offline
+  cache, localization, or device E2E suite. It supports QR/deep-link entry,
+  card detail, restock alerts, special orders, and optional OTP accounts. The
+  API and vendor web admin are otherwise implemented.
 - PostgreSQL-only tests skip unless `CARDTRACKER_TEST_POSTGRES_ADMIN_URL` and
   `CARDTRACKER_TEST_POSTGRES_URL` are set; SQLite cannot prove RLS or locking.
 - Rate limiting is in-process, so it assumes a single API worker.

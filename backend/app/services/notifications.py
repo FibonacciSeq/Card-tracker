@@ -22,6 +22,7 @@ def enqueue(
     *,
     recipient: str | None = None,
     user_id: uuid.UUID | None = None,
+    push: bool = False,
 ) -> models.Notification:
     row = models.Notification(
         tenant_id=tenant_id,
@@ -32,6 +33,16 @@ def enqueue(
         channel="email" if recipient else "in_app",
     )
     db.add(row)
+    if push and user_id is not None:
+        db.add(
+            models.Notification(
+                tenant_id=tenant_id,
+                kind=kind,
+                payload=payload,
+                user_id=user_id,
+                channel="push",
+            )
+        )
     return row
 
 

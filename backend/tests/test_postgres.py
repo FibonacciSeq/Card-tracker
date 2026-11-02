@@ -30,7 +30,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app import models, schemas
-from app.db import set_customer_context, set_tenant_context
+from app.db import set_customer_context, set_push_worker_context, set_tenant_context
 from app.services import accounts, reservations
 
 ADMIN_URL = os.environ.get("CARDTRACKER_TEST_POSTGRES_ADMIN_URL")
@@ -400,6 +400,38 @@ def test_customer_context_sees_only_own_rows_across_tenants(app_session: Session
     # A global account is readable during login, before app.customer_id exists.
     app_session.rollback()
     assert app_session.scalar(select(models.User.id).where(models.User.email == email_a)) == customer_a.id
+
+
+def test_push_tokens_are_customer_scoped_and_worker_visible(app_session: Session, admin: Session) -> None:
+    suffix = uuid.uuid4().hex[:8]
+    customer_a = _make_customer(admin, f"push-a-{suffix}@example.com")
+    customer_b = _make_customer(admin, f"push-b-{suffix}@example.com")
+    token_a = models.PushToken(
+        id=uuid.uuid4(),
+        user_id=customer_a.id,
+        token=f"token-a-{suffix}",
+        token_hash=uuid.uuid4().hex,
+        platform="android",
+    )
+    token_b = models.PushToken(
+        id=uuid.uuid4(),
+        user_id=customer_b.id,
+        token=f"token-b-{suffix}",
+        token_hash=uuid.uuid4().hex,
+        platform="ios",
+    )
+    admin.add_all([token_a, token_b])
+    admin.commit()
+
+    assert app_session.scalars(select(models.PushToken)).all() == []
+
+    set_customer_context(app_session, customer_a.id)
+    assert {row.id for row in app_session.scalars(select(models.PushToken)).all()} == {token_a.id}
+
+    app_session.rollback()
+    set_push_worker_context(app_session)
+    visible = {row.id for row in app_session.scalars(select(models.PushToken)).all()}
+    assert {token_a.id, token_b.id} <= visible
 
 
 def test_app_role_can_create_a_global_customer_without_tenant_context(app_session: Session) -> None:

@@ -67,6 +67,17 @@ class Settings(BaseSettings):
     # "smtp" sends real email; "none" disables delivery entirely.
     notification_backend: str = "console"
     notification_max_attempts: int = 8
+    # Push delivery: "console" logs only the platform, "native" uses FCM/APNs,
+    # and "none" leaves push rows queued for a later worker run.
+    push_backend: str = "console"
+    push_timeout_seconds: float = 10.0
+    fcm_project_id: str = ""
+    fcm_credentials_file: str = ""
+    apns_team_id: str = ""
+    apns_key_id: str = ""
+    apns_private_key_file: str = ""
+    apns_bundle_id: str = ""
+    apns_use_sandbox: bool = True
     smtp_host: str = ""
     smtp_port: int = 587
     smtp_username: str = ""

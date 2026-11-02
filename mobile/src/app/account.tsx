@@ -19,6 +19,7 @@ import { LoadingState } from "../components/LoadingState";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { formatDateTime } from "../lib/format";
 import { useAuth } from "../state/auth";
+import { usePush, type PushStatus } from "../state/push";
 import { colors, radii, spacing, type } from "../theme";
 
 type Step = "email" | "code";
@@ -37,6 +38,7 @@ export default function AccountScreen() {
     token,
     verifyCode,
   } = useAuth();
+  const push = usePush();
 
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
@@ -174,6 +176,29 @@ export default function AccountScreen() {
           <Row label="Session" value="Memory only" />
         </View>
 
+        <View style={styles.pushCard}>
+          <View style={styles.pushHeader}>
+            <Ionicons name="notifications-outline" size={18} color={colors.primary} />
+            <Text style={styles.pushTitle}>Push notifications</Text>
+          </View>
+          <Text style={styles.pushBody}>{pushMessage(push.status)}</Text>
+          {push.error ? <Text style={styles.pushError}>{push.error}</Text> : null}
+          {push.status === "enabled" ? (
+            <PrimaryButton
+              label="Turn off push notifications"
+              onPress={() => void push.disable()}
+              variant="secondary"
+            />
+          ) : push.status === "denied" || push.status === "unsupported" ? null : (
+            <PrimaryButton
+              disabled={push.status === "enabling"}
+              label="Enable push notifications"
+              loading={push.status === "enabling"}
+              onPress={() => void push.enable()}
+            />
+          )}
+        </View>
+
         <Text style={styles.note}>
           For privacy, this session is not saved on the device. Closing and reopening the app signs
           you out; guest holds on this device are always still available.
@@ -289,6 +314,21 @@ export default function AccountScreen() {
       </ScrollView>
     </KeyboardAvoidingView>
   );
+}
+
+function pushMessage(status: PushStatus): string {
+  if (status === "enabled") {
+    return "This device gets a notification when a hold is ready, a special order is quoted, or a card is back in stock.";
+  }
+  if (status === "denied") {
+    return "Notifications are blocked for Card Tracker. Allow them in your device settings, then try again.";
+  }
+  if (status === "unsupported") {
+    return "Push notifications need a physical iOS or Android device. The web preview and simulators cannot register a native token.";
+  }
+  if (status === "enabling") return "Requesting notification permission…";
+  if (status === "error") return "Notifications could not be enabled. Check your connection and try again.";
+  return "Get a notification when a hold is ready, a special order is quoted, or a card is back in stock.";
 }
 
 function totalClaimed(claimed: ClaimedCounts): number {
@@ -461,6 +501,18 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
+  pushCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
+  pushHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  pushTitle: { color: colors.ink, fontSize: type.heading, fontWeight: "800" },
+  pushBody: { color: colors.inkMuted, fontSize: type.small, lineHeight: 19 },
+  pushError: { color: colors.danger, fontSize: type.small, lineHeight: 19 },
   row: { flexDirection: "row", justifyContent: "space-between", gap: spacing.md },
   rowLabel: { color: colors.inkMuted, fontSize: type.small },
   rowValue: { flex: 1, color: colors.ink, fontSize: type.small, fontWeight: "800", textAlign: "right" },

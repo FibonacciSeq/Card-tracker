@@ -55,6 +55,8 @@ def notify_waiting(db, tenant: models.Tenant, stock: models.Stock) -> int:
                 "alert_id": str(alert.id),
             },
             recipient=alert.email,
+            user_id=alert.customer_id,
+            push=True,
         )
         alert.notified_at = now
     return len(alerts)

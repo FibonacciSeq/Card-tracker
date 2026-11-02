@@ -62,6 +62,24 @@ def _restore_rls_context(session: Session, _transaction, connection) -> None:
             text("SELECT set_config('app.customer_id', :customer_id, true)"),
             {"customer_id": str(customer_id)},
         )
+    push_worker = session.info.get("push_worker")
+    if push_worker is not None and connection.dialect.name == "postgresql":
+        connection.execute(
+            text("SELECT set_config('app.push_worker', :push_worker, true)"),
+            {"push_worker": push_worker},
+        )
+
+
+def set_push_worker_context(db: Session, enabled: bool = True) -> None:
+    """Allow the trusted notification worker to read push tokens across users."""
+    value = "on" if enabled else None
+    db.info["push_worker"] = value
+    bind = db.get_bind()
+    if bind.dialect.name == "postgresql":
+        db.execute(
+            text("SELECT set_config('app.push_worker', :push_worker, true)"),
+            {"push_worker": value},
+        )
 
 
 def set_tenant_context(db: Session, tenant_id: UUID) -> None:
