@@ -204,7 +204,7 @@ def test_restock_email_has_deep_link_and_one_click_unsubscribe(db, tenant, card,
     assert worker.deliver_tenant(db, tenant, sender, now=datetime.now(UTC)) == 1
 
     sent = sender.sent[0]
-    assert f"cardtracker://shop/{tenant.slug}/card/{stock.id}" in sent["body"]
+    assert f"https://app.cardtracker.local/shop/{tenant.slug}/card/{stock.id}" in sent["body"]
     assert "Unsubscribe:" in sent["body"]
     assert sent["headers"]["List-Unsubscribe"].startswith("<http")
     assert "/unsubscribe/one-click?token=" in sent["headers"]["List-Unsubscribe"]

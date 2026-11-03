@@ -38,9 +38,70 @@ def verify_otp(
     return accounts.verify_otp(db, str(payload.email), payload.code, request)
 
 
+@router.post("/auth/refresh", response_model=schemas.CustomerTokenOut)
+def refresh_customer_token(
+    payload: schemas.CustomerRefreshIn,
+    db: Session = Depends(get_db),
+):
+    return accounts.refresh_customer_session(db, payload.refresh_token)
+
+
+@router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
+def logout_customer(
+    customer: models.User = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+):
+    accounts.revoke_customer_refresh_tokens(db, customer.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/me/sessions/revoke-all", status_code=status.HTTP_204_NO_CONTENT)
+def revoke_all_customer_sessions(
+    customer: models.User = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+):
+    accounts.revoke_customer_refresh_tokens(db, customer.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @router.get("/me", response_model=schemas.CustomerOut)
 def get_me(customer: models.User = Depends(get_current_customer)):
     return schemas.CustomerOut.model_validate(customer)
+
+
+@router.patch("/me", response_model=schemas.CustomerOut)
+def update_me(
+    payload: schemas.CustomerProfileUpdateIn,
+    customer: models.User = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+):
+    if payload.display_name is not None:
+        customer.display_name = payload.display_name.strip() or None
+    if payload.phone is not None:
+        customer.phone = payload.phone.strip() or None
+    if payload.push_notifications_enabled is not None:
+        customer.push_notifications_enabled = payload.push_notifications_enabled
+    if payload.email_notifications_enabled is not None:
+        customer.email_notifications_enabled = payload.email_notifications_enabled
+    if payload.quiet_hours_enabled is not None:
+        customer.quiet_hours_enabled = payload.quiet_hours_enabled
+    if payload.notifications_opt_out is not None:
+        customer.notifications_opt_out = payload.notifications_opt_out
+    db.add(customer)
+    db.commit()
+    db.refresh(customer)
+    return schemas.CustomerOut.model_validate(customer)
+
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+def delete_me(
+    customer: models.User = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+):
+    customer.is_active = False
+    db.add(customer)
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/me/push-tokens", response_model=schemas.PushTokenOut, status_code=status.HTTP_201_CREATED)

@@ -29,9 +29,12 @@ row shows how many customers asked for a restock alert on that exact variant.
 Owner-only actions: saving settings uses `PATCH /v1/staff/settings`, which the
 API restricts to the `owner` role. Staff get a clear message instead of a crash.
 
-Settings also renders the shop QR code for `cardtracker://shop/<slug>` entirely
-in the browser (no external image service), with copy and download-PNG actions.
-The customer app scans that code from its home screen.
+Settings also renders the shop QR code for the canonical public app URL
+`https://app.cardtracker.local/shop/<slug>` (with a `cardtracker://shop/<slug>`
+app fallback shown underneath), entirely in the browser with copy and
+download-PNG actions. The customer app scans that code from its home screen,
+and the public HTTPS URL keeps a browser-only customer flow working even before
+an in-app install.
 
 The reservation queue only offers transitions the API accepts:
 `REQUESTED → CONFIRMED → READY → COMPLETED`, with cancellation from any active

@@ -14,7 +14,8 @@
     "api:types": "npx -y openapi-typescript@7.13.0 ../admin/openapi.json -o src/api/schema.d.ts",
     "doctor": "npx expo-doctor",
     "test": "vitest run",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@expo/metro-runtime": "~58.0.15",
@@ -41,6 +42,7 @@
     "react-native-web": "^0.21.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/react": "~19.3.0",
     "@vitest/coverage-v8": "^5.0.5",
     "eslint": "^9.39.5",

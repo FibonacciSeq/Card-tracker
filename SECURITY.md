@@ -57,11 +57,12 @@ process; it is not written to device storage.
 
 ## Mobile app tokens
 
-- Customer account tokens are 12-hour JWTs held only in memory. They are never
-  written to SecureStore or AsyncStorage, and a cold app launch starts signed
-  out. The app clears the token and account query cache on `401` or sign-out.
-  There is no refresh token or server-side revocation yet; the server checks
-  token expiry and `is_active` on each request.
+- Customer account access tokens are 12-hour JWTs. The backend also issues an
+  opaque refresh token and supports logout / revoke-all session actions; the app
+  is still in the process of wiring those refresh tokens into the mobile auth
+  state. Until that client integration lands, the live session remains in memory,
+  a cold app launch starts signed out, and the app clears the token and account
+  query cache on `401` or sign-out.
 - Guest reservation, restock-alert manage, and special-order tokens are
   credentials. Native builds store them in Expo SecureStore; the web preview
   falls back to AsyncStorage because SecureStore has no web implementation. Do
@@ -91,8 +92,9 @@ process; it is not written to device storage.
   linked to another customer are never reassigned.
 - Disabling a customer account blocks new OTP verification and takes effect on
   the next account request because `is_active` is checked while resolving the
-  token. There is no explicit session revocation list, so a token that is not
-  presented again simply remains valid until its expiry.
+  token. The backend now revokes refresh-token rows on logout and a full
+  revoke-all action; until the mobile client consumes those tokens, a still-
+  active access token continues to work until it expires.
 - The app sends an idempotency key when creating a reservation and reuses it
   while a submission is retried, preventing duplicate holds after a lost
   response.

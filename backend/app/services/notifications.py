@@ -78,12 +78,19 @@ def _when(value: str | None) -> str:
 
 
 def app_card_url(tenant: models.Tenant, payload: dict) -> str:
-    """Deep link that opens the card (or shop) in the customer app."""
+    """Canonical public URL that opens the card (or shop) in the customer app."""
     slug = str(payload.get("shop_slug") or tenant.slug)
     stock_id = payload.get("stock_id")
+    path = f"/shop/{slug}"
     if stock_id:
-        return f"cardtracker://shop/{slug}/card/{stock_id}"
-    return f"cardtracker://shop/{slug}"
+        path = f"{path}/card/{stock_id}"
+
+    base = (settings.public_app_url or "").rstrip("/")
+    if not base:
+        return f"cardtracker://shop/{slug}" if not stock_id else f"cardtracker://shop/{slug}/card/{stock_id}"
+    if "://" not in base:
+        base = f"https://{base}"
+    return f"{base}{path}"
 
 
 def unsubscribe_url(

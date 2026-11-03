@@ -364,6 +364,77 @@ def test_account_actions_and_token_boundaries(client, db, tenant, card, stock, a
     assert client.get("/v1/me/restock-alerts", headers=headers).json()["items"] == []
 
 
+def test_refresh_tokens_rotate_and_logout_revokes_all_sessions(client, db):
+    _request_code(client)
+    verified = _verify(client, db)
+    assert verified.status_code == 200, verified.text
+    first = verified.json()
+    old_access = first["access_token"]
+    old_refresh = first["refresh_token"]
+
+    rotated = client.post("/v1/auth/refresh", json={"refresh_token": old_refresh})
+    assert rotated.status_code == 200, rotated.text
+    rotated_body = rotated.json()
+    assert rotated_body["access_token"]
+    assert rotated_body["refresh_token"] != old_refresh
+    assert rotated_body["refresh_expires_in"] == 604800
+
+    logout = client.post("/v1/auth/logout", headers=_headers(old_access))
+    assert logout.status_code == 204, logout.text
+
+    revoked = client.post("/v1/auth/refresh", json={"refresh_token": old_refresh})
+    assert revoked.status_code == 401
+    assert revoked.json()["detail"] == "Refresh token expired"
+
+    newest = client.post("/v1/auth/refresh", json={"refresh_token": rotated_body["refresh_token"]})
+    assert newest.status_code == 401
+    assert newest.json()["detail"] == "Refresh token expired"
+
+
+def test_customer_notification_preferences_block_delivery(client, db, tenant):
+    _request_code(client)
+    verified = _verify(client, db)
+    body = verified.json()
+    customer = db.get(models.User, uuid.UUID(body["customer"]["id"]))
+    customer.email_notifications_enabled = False
+    customer.push_notifications_enabled = False
+    customer.quiet_hours_enabled = True
+    customer.notifications_opt_out = True
+    db.commit()
+
+    email_row = models.Notification(
+        tenant_id=tenant.id,
+        user_id=customer.id,
+        kind="RESERVATION_READY",
+        payload={"public_ref": "R-ABC123", "shop_slug": tenant.slug},
+        channel="email",
+        recipient=customer.email,
+    )
+    push_row = models.Notification(
+        tenant_id=tenant.id,
+        user_id=customer.id,
+        kind="RESERVATION_READY",
+        payload={"public_ref": "R-ABC123", "shop_slug": tenant.slug},
+        channel="push",
+    )
+    db.add_all([email_row, push_row])
+    db.commit()
+
+    delivered_email = worker.deliver_tenant(db, tenant, RecordingSender(), now=datetime.now(UTC))
+    assert delivered_email == 0
+    assert email_row.sent_at is not None
+    assert email_row.error == "Customer notification preferences disabled"
+
+    class FakePushSender:
+        def send(self, *, token, platform, title, body, url):
+            raise AssertionError("push should be skipped when preferences are disabled")
+
+    delivered_push = worker.deliver_push(db, tenant, FakePushSender(), now=datetime.now(UTC))
+    assert delivered_push == 0
+    assert push_row.sent_at is not None
+    assert push_row.error == "Customer notification preferences disabled"
+
+
 def test_inactive_account_is_rejected_after_a_valid_code(client, db):
     inactive = models.User(
         tenant_id=None,

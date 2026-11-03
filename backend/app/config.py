@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     # Customer accounts are memory-only in the app. The server expiry still
     # bounds a session that stays open in the background.
     customer_access_token_minutes: int = 720
+    customer_refresh_token_minutes: int = 10080
     otp_expiry_seconds: int = 600
     otp_resend_seconds: int = 60
     otp_max_attempts: int = 5
@@ -48,6 +49,9 @@ class Settings(BaseSettings):
     # Public base URL used in customer emails (unsubscribe pages). Set this to
     # the externally reachable API origin in production.
     public_api_url: str = "http://localhost:8000"
+    # Canonical app host used for public customer deep links and QR codes.
+    # The app still accepts the legacy custom-scheme fallback when needed.
+    public_app_url: str = "https://app.cardtracker.local"
     # Optional dedicated key for signed unsubscribe links. Falls back to the
     # JWT secret so existing deployments keep working without new config.
     unsubscribe_secret: str = ""

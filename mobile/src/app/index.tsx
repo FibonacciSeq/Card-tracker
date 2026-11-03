@@ -21,6 +21,7 @@ import { SearchField } from "../components/SearchField";
 import { ShopCard } from "../components/ShopCard";
 import { mergeCardRequests, mergeReservations, mergeRestockAlerts } from "../lib/accountMerge";
 import { API_BASE_URL, shopPath } from "../lib/config";
+import { useLocale } from "../state/locale";
 import { useAuth } from "../state/auth";
 import { useReservations } from "../state/reservations";
 import { useRestockAlerts } from "../state/restockAlerts";
@@ -31,6 +32,7 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { t } = useLocale();
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebouncedValue(search);
   const shops = useShops(debouncedSearch);
@@ -83,10 +85,8 @@ export default function HomeScreen() {
             </View>
             <Text style={styles.brandText}>CARD TRACKER</Text>
           </View>
-          <Text style={styles.title}>Find the card you need.</Text>
-          <Text style={styles.subtitle}>
-            Browse local card shops, put a card on hold, and collect it in store.
-          </Text>
+          <Text style={styles.title}>{t("homeTitle")}</Text>
+          <Text style={styles.subtitle}>{t("homeSubtitle")}</Text>
           <Pressable
             accessibilityHint="Opens your account and sign-in options"
             accessibilityLabel={isAuthenticated ? "Your account" : "Sign in to sync your list"}
@@ -101,7 +101,7 @@ export default function HomeScreen() {
             />
             <View style={styles.accountText}>
               <Text numberOfLines={1} style={styles.accountTitle}>
-                {isAuthenticated ? customer?.email : "Sign in to sync your list"}
+                {isAuthenticated ? customer?.email : t("signInToSync")}
               </Text>
               <Text style={styles.accountSubtitle}>
                 {isAuthenticated
@@ -119,7 +119,7 @@ export default function HomeScreen() {
             style={({ pressed }) => [styles.scanButton, pressed && styles.scanPressed]}
           >
             <Ionicons name="qr-code-outline" size={18} color={colors.primary} />
-            <Text style={styles.scanLabel}>Scan a shop code</Text>
+            <Text style={styles.scanLabel}>{t("scanShopCode")}</Text>
           </Pressable>
         </View>
 
@@ -134,13 +134,13 @@ export default function HomeScreen() {
             <QuickAction
               count={listsHydrated ? allRequests.length : 0}
               icon="sparkles-outline"
-              label="Special orders"
+              label={t("specialOrders")}
               onPress={() => router.push("/requests")}
             />
             <QuickAction
               count={listsHydrated ? allAlerts.length : 0}
               icon="notifications-outline"
-              label="Restock alerts"
+              label={t("restockAlerts")}
               onPress={() => router.push("/alerts")}
             />
           </View>
@@ -148,7 +148,7 @@ export default function HomeScreen() {
           {listsHydrated && allReservations.length > 0 ? (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Your holds</Text>
+                <Text style={styles.sectionTitle}>{t("yourHolds")}</Text>
                 <Text style={styles.sectionCount}>{allReservations.length}</Text>
               </View>
               <View style={styles.holdList}>
@@ -193,7 +193,7 @@ export default function HomeScreen() {
 
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>Shops on Card Tracker</Text>
+              <Text style={styles.sectionTitle}>{t("shopsOnCardTracker")}</Text>
               {shops.isFetching ? (
                 <Text style={styles.sectionCount}>Updating…</Text>
               ) : null}

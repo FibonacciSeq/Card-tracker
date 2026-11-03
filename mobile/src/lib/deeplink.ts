@@ -95,6 +95,25 @@ export function targetPath(target: ScanTarget): string {
     : base;
 }
 
+export function publicAppBaseUrl(): string {
+  const value = (
+    process.env.EXPO_PUBLIC_APP_BASE_URL ??
+    process.env.EXPO_PUBLIC_APP_HOST ??
+    "https://app.cardtracker.local"
+  )
+    .trim()
+    .replace(/\/+$/, "");
+  return value || "https://app.cardtracker.local";
+}
+
+export function shopPublicUrl(slug: string): string {
+  return `${publicAppBaseUrl()}/shop/${encodeURIComponent(slug)}`;
+}
+
+export function cardPublicUrl(slug: string, stockId: string): string {
+  return `${shopPublicUrl(slug)}/card/${encodeURIComponent(stockId)}`;
+}
+
 /** Link encoded into a shop's printed QR code. */
 export function shopDeepLink(slug: string): string {
   return `cardtracker://shop/${encodeURIComponent(slug)}`;

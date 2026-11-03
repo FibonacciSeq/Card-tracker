@@ -49,9 +49,11 @@ in memory only and combines `/v1/me` rows with device-local guest rows.
   is also how the web preview works.
 - Dedicated card-detail route with a large image, price, live availability,
   variant details, and add-to-hold controls.
-- Deep links `cardtracker://shop/<slug>` and
-  `cardtracker://shop/<slug>/card/<stock-id>` open the same routes on cold start
-  or while the app is running.
+- Canonical public app links `https://app.cardtracker.local/shop/<slug>` and
+  `https://app.cardtracker.local/shop/<slug>/card/<stock-id>` open the same routes
+  on cold start or while the app is running. The legacy custom-scheme fallback
+  `cardtracker://shop/<slug>` remains accepted for direct installs and older QR
+  codes.
 
 Not in this slice yet: offline cache, localization, device E2E, and account
 profile editing, email change, deletion, or refresh/revocation.

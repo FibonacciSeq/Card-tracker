@@ -72,7 +72,11 @@ export function SettingsPage() {
 }
 
 function ShopQrPanel({ slug }: { slug: string }) {
-  const link = `cardtracker://shop/${encodeURIComponent(slug)}`;
+  const publicBase = (import.meta.env.VITE_PUBLIC_APP_BASE_URL ?? import.meta.env.VITE_APP_BASE_URL ?? "https://app.cardtracker.local").replace(/\/+$/, "");
+  const publicLink = `${publicBase}/shop/${encodeURIComponent(slug)}`;
+  const fallbackLink = `cardtracker://shop/${encodeURIComponent(slug)}`;
+  const appStoreUrl = import.meta.env.VITE_APP_STORE_URL || "";
+  const playStoreUrl = import.meta.env.VITE_PLAY_STORE_URL || "";
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [copied, setCopied] = useState(false);
 
@@ -84,7 +88,7 @@ function ShopQrPanel({ slug }: { slug: string }) {
 
   async function copyLink() {
     try {
-      await navigator.clipboard.writeText(link);
+      await navigator.clipboard.writeText(publicLink);
       setCopied(true);
     } catch {
       setCopied(false);
@@ -110,7 +114,7 @@ function ShopQrPanel({ slug }: { slug: string }) {
       <div className="qr-panel__code">
         <QRCodeCanvas
           ref={canvasRef}
-          value={link}
+          value={publicLink}
           size={168}
           marginSize={4}
           level="M"
@@ -123,9 +127,25 @@ function ShopQrPanel({ slug }: { slug: string }) {
         <h2 id="shop-qr-title">Shop QR code</h2>
         <p className="muted">
           Print this and put it on the counter. Customers scan it in the Card Tracker app
-          to open your storefront and see live stock.
+          to open your storefront and see live stock. The QR points at the public HTTPS app link,
+          while the fallback custom-scheme URL remains available for direct app installs.
         </p>
-        <div className="mono small">{link}</div>
+        <div className="mono small">{publicLink}</div>
+        <div className="mono small muted">App fallback: {fallbackLink}</div>
+        {(appStoreUrl || playStoreUrl) && (
+          <div className="qr-panel__actions">
+            {appStoreUrl ? (
+              <a className="btn btn--small" href={appStoreUrl} target="_blank" rel="noreferrer">
+                App Store
+              </a>
+            ) : null}
+            {playStoreUrl ? (
+              <a className="btn btn--small" href={playStoreUrl} target="_blank" rel="noreferrer">
+                Google Play
+              </a>
+            ) : null}
+          </div>
+        )}
         <div className="qr-panel__actions">
           <button type="button" className="btn btn--small" onClick={() => void copyLink()}>
             {copied ? "Copied" : "Copy link"}

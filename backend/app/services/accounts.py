@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import secrets
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, Request, status
@@ -16,6 +17,7 @@ from app.config import settings
 from app.db import set_customer_context, set_tenant_context
 from app.security import (
     create_customer_access_token,
+    create_customer_refresh_token,
     derive_otp_code,
     normalize_email,
 )
@@ -274,12 +276,85 @@ def verify_otp(
 
     # Keep the response independent of any tenant context left by claiming.
     set_customer_context(db, customer.id)
+    refresh_token = _issue_refresh_token(db, customer.id)
+    db.commit()
     return schemas.CustomerTokenOut(
         access_token=create_customer_access_token(customer.id),
         expires_in=settings.customer_access_token_minutes * 60,
+        refresh_token=refresh_token,
+        refresh_expires_in=settings.customer_refresh_token_minutes * 60,
         is_new_account=created,
         customer=schemas.CustomerOut.model_validate(customer),
         claimed=claimed,
+    )
+
+
+def _refresh_token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _issue_refresh_token(db: Session, customer_id: uuid.UUID) -> str:
+    token = create_customer_refresh_token()
+    row = models.CustomerRefreshToken(
+        user_id=customer_id,
+        token_hash=_refresh_token_hash(token),
+        issued_at=_now(),
+        expires_at=_now() + timedelta(minutes=settings.customer_refresh_token_minutes),
+    )
+    db.add(row)
+    db.flush()
+    return token
+
+
+def revoke_customer_refresh_tokens(db: Session, customer_id: uuid.UUID, refresh_token: str | None = None) -> None:
+    stmt = select(models.CustomerRefreshToken).where(models.CustomerRefreshToken.user_id == customer_id)
+    if refresh_token is not None:
+        stmt = stmt.where(models.CustomerRefreshToken.token_hash == _refresh_token_hash(refresh_token))
+    rows = db.scalars(stmt).all()
+    for row in rows:
+        row.revoked_at = _now()
+    db.commit()
+
+
+def refresh_customer_session(db: Session, refresh_token: str) -> schemas.CustomerTokenOut:
+    token_hash = _refresh_token_hash(refresh_token)
+    row = db.scalar(
+        select(models.CustomerRefreshToken)
+        .where(models.CustomerRefreshToken.token_hash == token_hash)
+        .with_for_update()
+    )
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+    expires_at = _as_utc(row.expires_at)
+    if row.revoked_at is not None or expires_at is None or expires_at <= _now():
+        row.revoked_at = _now()
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token expired")
+
+    customer = db.get(models.User, row.user_id)
+    if customer is None or not customer.is_active or customer.role != "customer" or customer.tenant_id is not None:
+        row.revoked_at = _now()
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid customer session")
+
+    row.revoked_at = _now()
+    new_refresh = _issue_refresh_token(db, customer.id)
+    db.flush()
+    row.replaced_by = db.scalar(
+        select(models.CustomerRefreshToken.id).where(
+            models.CustomerRefreshToken.token_hash == _refresh_token_hash(new_refresh)
+        )
+    )
+    db.commit()
+    access_token = create_customer_access_token(customer.id)
+    return schemas.CustomerTokenOut(
+        access_token=access_token,
+        expires_in=settings.customer_access_token_minutes * 60,
+        refresh_token=new_refresh,
+        refresh_expires_in=settings.customer_refresh_token_minutes * 60,
+        is_new_account=False,
+        customer=schemas.CustomerOut.model_validate(customer),
+        claimed=schemas.ClaimedOut(),
     )
 
 

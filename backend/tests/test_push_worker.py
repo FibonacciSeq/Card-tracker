@@ -95,7 +95,7 @@ def test_deliver_push_sends_to_every_active_token(db, tenant, customer):
     assert row.sent_at == now.replace(tzinfo=None)
     assert row.error is None
     assert [item["platform"] for item in sender.sent] == ["android", "ios"]
-    assert sender.sent[0]["url"] == "cardtracker://shop/bolt-shop"
+    assert sender.sent[0]["url"] == "https://app.cardtracker.local/shop/bolt-shop"
     assert sender.sent[0]["title"] == "Your cards are ready — R-ABC123"
 
 

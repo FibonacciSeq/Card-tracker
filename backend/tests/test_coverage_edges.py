@@ -74,8 +74,8 @@ def test_notification_money_when_and_url_helpers():
     assert notifications._when("2026-01-02T03:04:05") == "2026-01-02 03:04 UTC"
 
     tenant: Any = SimpleNamespace(id=uuid.uuid4(), slug="bolt-shop")
-    assert notifications.app_card_url(tenant, {"stock_id": "s1"}) == "cardtracker://shop/bolt-shop/card/s1"
-    assert notifications.app_card_url(tenant, {"shop_slug": "other"}) == "cardtracker://shop/other"
+    assert notifications.app_card_url(tenant, {"stock_id": "s1"}) == "https://app.cardtracker.local/shop/bolt-shop/card/s1"
+    assert notifications.app_card_url(tenant, {"shop_slug": "other"}) == "https://app.cardtracker.local/shop/other"
 
     row: Any = SimpleNamespace(kind="OTHER", payload={})
     assert notifications.unsubscribe_url(row, tenant) is None

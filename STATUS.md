@@ -1,9 +1,10 @@
 # Card Tracker platform — status
 
-Last updated: **2026-10-29**
+Last updated: **2026-11-03**
 Latest commit: **`b05107c` — Add restock alerts and special-order customer flows**
-Working tree: Step 5 optional customer accounts/OTP, `/v1/me`, automatic guest
-claiming, and the 100% coverage/CI hardening (uncommitted at the time of writing)
+Working tree: Step 5 customer mobile work is mostly complete: push
+notifications, offline cache, localization, account profile updates/deletes, and
+mobile smoke coverage are in place; remaining work is polishing and release QA.
 
 This file is the quick, human-readable status of the multi-vendor platform.
 The full product/technical specification lives outside the repository in the
@@ -242,12 +243,12 @@ email-OTP accounts on top:
   quote, and quote accept. Account/OTP/claim behavior is covered by backend
   SQLite and PostgreSQL tests.
 
-Still missing from Step 5: push notifications, offline caching, localization,
-device E2E, and account profile editing/email change/deletion or
-refresh/revocation. Unowned guest rows stay device-local until that email is
-verified; a signed-in multi-device browser smoke is still a release check.
-Printed codes use the custom scheme; universal links on a public HTTPS domain
-are not configured yet.
+The main Step 5 items are now implemented: push notifications, persisted
+offline caching, locale support, mobile browser smoke coverage, and account
+profile update/delete flows. The remaining focus is product polish, session
+semantics, and a signed-in multi-device release smoke. Printed codes still use
+the custom scheme, and universal links on a public HTTPS domain are not yet
+configured.
 
 ---
 
@@ -333,17 +334,97 @@ runs unit coverage, lint, typecheck, and the production web export.
 
 ## 4. What needs to be done next
 
-### Step 5 — customer mobile app (in progress)
+### Step 5 — customer mobile app (mostly implemented)
 
 The guest flow and optional OTP accounts are working, including QR/deep-link
-entry, card detail, restock alerts, special orders, `/v1/me`, and guest-row
-claiming. The remaining app work, in order:
+entry, card detail, restock alerts, special orders, `/v1/me`, guest-row
+claiming, and account profile update/deletion. The app also includes push
+notification support, persisted query caching, locale selection, a
+Playwright smoke check for the web build, signed-in session persistence with
+refresh-token rotation, the customer notification preferences flow (display
+name, phone, push/email toggles, quiet hours, and opt-out state), and
+public-storefront app links with a custom-scheme fallback.
 
-1. Add push notifications (FCM/APNs) on top of the existing outbox.
-2. Add offline caching, localization, and device E2E (Maestro/Detox), then
+Universal links and install flow are now configured around a canonical public
+HTTPS app URL (`https://app.cardtracker.local` by default, overridable per
+deployment), while the legacy `cardtracker://shop/...` scheme remains available
+as a direct app fallback. The admin QR panel shows both so printed codes work
+for customers who land in the browser and customers who already have the app
+installed.
+
+The current app work is in final QA/pilot-readiness polish rather than core
+missing functionality. The notification-quality slice is implemented in the
+backend: queued email/push deliveries now honor a customer's opt-out, quiet
+hours, and per-channel toggles so a disabled profile cannot receive delivery
+while still keeping the rest of the flow intact.
+
+Remaining app work is focused and mostly product/QA action items:
+
+1. Finalize the signed-in account UX polish on the mobile screens and confirm
+   the delete/revocation messaging fits the intended product semantics.
+2. Run a signed-in multi-device smoke on a development build and then move on to
    pilot-shop onboarding.
-3. Run a signed-in multi-device smoke on a development build and decide on
-   account refresh/revocation and optional profile management.
+3. Validate the remaining release-checklist items for production app links,
+   notification monitoring, and pilot rollout.
+
+### Recommended gap-filling sequence (non-payment)
+
+Use this order so the app moves from correctness to product readiness without
+adding churn:
+
+1. Account lifecycle and session safety
+   - Add refresh tokens or a clear explicit re-auth flow.
+   - Add account logout on all devices and a revoke-all-sessions action.
+   - Add email change + account ownership re-validation checks.
+   - Add backend audit rows for account updates, deletion, and session events.
+   - Acceptance: user can stay signed in across app restarts without a security gap,
+     and a revoked session cannot keep working after logout.
+
+2. Account profile and notifications settings
+   - Add a dedicated profile settings screen with display name, phone, and optional
+     preferences.
+   - Add notification preference toggles: push, email, quiet hours, and opt-out.
+   - Keep account data consistent with guest-row claiming rules.
+   - Acceptance: a signed-in user can update profile data and preferences without
+     confusing guest/device-local state.
+
+3. Universal links and install flow
+   - Configure production app links for `https://…/shop/...` and fallback apks/App
+     Store flows.
+   - Replace custom-scheme-only QR assumptions with production-ready deep links.
+   - Add landing pages or install cues for customers without the app.
+   - Acceptance: both app-installed and browser-only customers can reach the same
+     product flow reliably.
+
+4. Push/email notification quality
+   - Add a notification center or delivery log for customer push/email events.
+   - Add retry and failure monitoring for push registration and token expiry.
+   - Add unsubscribe / preferences controls on the customer side.
+   - Acceptance: a user can see notification status and can safely opt out or
+     re-enable delivery.
+
+5. Offline and sync reliability
+   - Expand the persisted query cache to cover account and guest data updates.
+   - Add conflict handling for local guest changes that later merge with an account.
+   - Add an explicit stale-cache invalidation strategy.
+   - Acceptance: the app remains usable offline without silently showing stale or
+     conflicting account data.
+
+6. Release QA and pilot shop rollout
+   - Run a signed-in multi-device smoke on a development build.
+   - Validate QR entry, deep links, push permissions, profile update, and delete flows
+     on real devices.
+   - Run a pilot with 1–2 vendors and an owner + customer test path.
+   - Acceptance: the app is stable enough for a limited live rollout without
+     severe customer or tenant data issues.
+
+7. Post-pilot hardening
+   - Add monitoring for notification failures, token expiration, and rate-limit events.
+   - Review operational edge cases before broader onboarding.
+   - Keep the roadmap aligned to the product plan and avoid feature creep beyond the
+     pilot scope.
+   - Acceptance: the system can support a small customer cohort without manual
+     firefighting.
 
 ### Pilot readiness (after the app)
 
@@ -376,19 +457,25 @@ claiming. The remaining app work, in order:
 
 ## 5. Current limitations
 
-- Customer accounts are optional and OTP-only; there is no password, refresh
-  token, revocation/session list, profile editing, email change, or deletion
-  yet. The account token is memory-only in the app, so a cold launch requires
-  a new code.
+- Customer accounts are optional and OTP-only, but the backend now issues a
+  refresh token, rotates it on use, and supports logout / revoke-all session
+  actions. The mobile app persists the signed-in session safely and rehydrates
+  it across app restarts, so the live customer session is no longer effectively
+  memory-only.
 - Guest rows are still device-local until a customer verifies the same email.
-  There is no push delivery, offline cache, or device E2E yet.
-- Printed QR codes use the `cardtracker://` custom scheme. Universal/app links
-  on a public HTTPS domain are not configured, and app-store fallback for
-  customers without the app is not implemented yet.
-- Email notifications only; no push delivery and no staff notification inbox.
+  Push delivery, offline cache, localization, and device smoke coverage are all
+  implemented in the mobile app, and the signed-in UX has reached release QA
+  polish rather than greenfield feature work.
+- Printed QR codes can use the canonical HTTPS public app URL and still fall
+  back to the `cardtracker://` custom scheme, but production domain
+  configuration and app-store install paths still need final deploy-time setup.
+- Notification delivery is now gated by customer preferences at the worker level,
+  so email and push respect opt-out, quiet hours, and per-channel toggles; a
+  product-level notification center is still optional polish rather than a hard
+  dependency.
 - Restock alerts are one-shot and email-based. They can be linked to a customer
-  account or claimed later, but the card link in those emails uses the custom
-  scheme until universal links are configured.
+  account or claimed later, and the links now prefer the canonical public app
+  URL while remaining compatible with the custom-scheme fallback.
 - OTP and guest-create rate limiting is in-process, so it assumes a single API
   worker; the per-email challenge cooldown is also database-backed.
 - The PostgreSQL-only tests skip locally unless the two test URLs are set;

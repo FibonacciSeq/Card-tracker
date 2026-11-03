@@ -57,6 +57,11 @@ def create_customer_access_token(customer_id: uuid.UUID) -> str:
     return jwt.encode(payload, settings.jwt_secret, algorithm="HS256")
 
 
+def create_customer_refresh_token() -> str:
+    """Issue a random refresh token kept opaque on the server side."""
+    return secrets.token_urlsafe(32)
+
+
 def decode_access_token(token: str) -> dict:
     return jwt.decode(
         token,

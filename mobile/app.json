@@ -40,6 +40,11 @@
           "barcodeScannerEnabled": true
         }
       ]
-    ]
+    ],
+    "extra": {
+      "publicAppBaseUrl": "https://app.cardtracker.local",
+      "appStoreUrl": "https://apps.apple.com/app/id000000000",
+      "playStoreUrl": "https://play.google.com/store/apps/details?id=com.cardtracker.customer"
+    }
   }
 }

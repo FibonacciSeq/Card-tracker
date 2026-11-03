@@ -85,6 +85,10 @@ class User(Base):
     display_name: Mapped[str | None] = mapped_column(String(200))
     phone: Mapped[str | None] = mapped_column(String(50))
     email_verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    push_notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    email_notifications_enabled: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
+    quiet_hours_enabled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    notifications_opt_out: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     __table_args__ = (
@@ -147,6 +151,28 @@ class PushToken(Base):
         UniqueConstraint("token_hash", name="uq_push_tokens_hash"),
         CheckConstraint("platform IN ('ios','android')", name="ck_push_tokens_platform"),
         Index("ix_push_tokens_user_active", "user_id", "revoked_at"),
+    )
+
+
+class CustomerRefreshToken(Base):
+    """A refresh token used to reissue a customer access token without a new OTP."""
+
+    __tablename__ = "customer_refresh_tokens"
+
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    replaced_by: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("customer_refresh_tokens.id", ondelete="SET NULL"),
+        index=True,
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    __table_args__ = (
+        Index("ix_customer_refresh_tokens_user_active", "user_id", "revoked_at"),
     )
 
 

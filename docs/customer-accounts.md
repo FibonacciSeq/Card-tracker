@@ -252,12 +252,13 @@ No `tenant_id`: the account is global. `get_current_customer` checks:
 Staff endpoints keep their existing tenant JWT and cannot accept a customer
 token. Customer endpoints cannot accept a staff token.
 
-Token lifetime is 12 hours in this slice. The mobile app keeps it only in
-memory, so a cold launch starts signed out and requires a new code. There is no
-refresh token and no server-side revocation; backgrounding and reopening the
-same app process keeps the in-memory session until the server expiry. Disabling
-an account takes effect on the next request because `is_active` is checked. A
-session/revocation table and refresh rotation are later work.
+Token lifetime is 12 hours in this slice. The backend also issues a server-side
+opaque refresh token with a 7-day lifetime; refresh tokens rotate on use and are
+revoked on logout and `POST /v1/me/sessions/revoke-all`. The mobile app still
+keeps the live customer session in memory until the auth state is wired to
+persist and use the refresh token, so a cold launch still requires a new code
+until that client integration lands. Disabling an account takes effect on the
+next request because `is_active` is checked.
 
 ## 6. Guest claiming
 

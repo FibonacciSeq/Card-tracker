@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   cardDeepLink,
+  cardPublicUrl,
   shopDeepLink,
+  shopPublicUrl,
   targetFromInput,
   targetFromPath,
   targetFromUrl,
@@ -70,6 +72,8 @@ describe("QR/deep-link parsing", () => {
   it("renders canonical paths and links", () => {
     expect(targetPath({ kind: "shop", slug: "bolt shop" })).toBe("/shop/bolt%20shop");
     expect(targetPath({ kind: "card", slug: "bolt", stockId })).toBe(`/shop/bolt/card/${stockId}`);
+    expect(shopPublicUrl("bolt shop")).toBe("https://app.cardtracker.local/shop/bolt%20shop");
+    expect(cardPublicUrl("bolt", stockId)).toBe(`https://app.cardtracker.local/shop/bolt/card/${stockId}`);
     expect(shopDeepLink("bolt shop")).toBe("cardtracker://shop/bolt%20shop");
     expect(cardDeepLink("bolt", stockId)).toBe(`cardtracker://shop/bolt/card/${stockId}`);
   });

@@ -6,6 +6,7 @@ import type {
   CardRequest,
   CardRequestCreate,
   CustomerAccount,
+  CustomerProfileUpdate,
   CustomerToken,
   Facets,
   OtpRequestResult,
@@ -42,10 +43,15 @@ type RequestOptions = {
 };
 
 let unauthorizedHandler: (() => void) | null = null;
+let refreshHandler: (() => Promise<boolean>) | null = null;
 
-/** Lets AuthProvider clear an expired memory-only token on any account call. */
+/** Lets AuthProvider handle expired customer sessions without forcing a full sign-out. */
 export function setAccountUnauthorizedHandler(handler: (() => void) | null): void {
   unauthorizedHandler = handler;
+}
+
+export function setAccountRefreshHandler(handler: (() => Promise<boolean>) | null): void {
+  refreshHandler = handler;
 }
 
 function bearer(token: string | null | undefined): Record<string, string> {
@@ -103,7 +109,15 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   const payload: unknown = text ? safeJson(text) : null;
 
   if (!response.ok) {
-    if (options.auth && response.status === 401) unauthorizedHandler?.();
+    if (options.auth && response.status === 401) {
+      if (refreshHandler) {
+        const refreshed = await refreshHandler();
+        if (refreshed) {
+          return request<T>(path, options);
+        }
+      }
+      unauthorizedHandler?.();
+    }
     throw new ApiError(response.status, detailFrom(payload, response.status), payload);
   }
   return payload as T;
@@ -286,8 +300,43 @@ export function verifyOtp(email: string, code: string): Promise<CustomerToken> {
   });
 }
 
+export function refreshCustomerToken(refreshToken: string): Promise<CustomerToken> {
+  return request<CustomerToken>("/v1/auth/refresh", {
+    method: "POST",
+    body: { refresh_token: refreshToken },
+  });
+}
+
+export function logoutCustomerSession(token: string): Promise<void> {
+  return request<void>("/v1/auth/logout", {
+    method: "POST",
+    headers: bearer(token),
+    auth: true,
+  });
+}
+
 export function getMe(token: string): Promise<CustomerAccount> {
   return request<CustomerAccount>("/v1/me", {
+    headers: bearer(token),
+    auth: true,
+  });
+}
+
+export function updateMe(
+  token: string,
+  payload: CustomerProfileUpdate,
+): Promise<CustomerAccount> {
+  return request<CustomerAccount>("/v1/me", {
+    method: "PATCH",
+    body: payload,
+    headers: bearer(token),
+    auth: true,
+  });
+}
+
+export function deleteMe(token: string): Promise<void> {
+  return request<void>("/v1/me", {
+    method: "DELETE",
     headers: bearer(token),
     auth: true,
   });

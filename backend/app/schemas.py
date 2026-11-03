@@ -171,13 +171,32 @@ class OtpVerifyIn(BaseModel):
     code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
 
 
+class CustomerRefreshIn(BaseModel):
+    refresh_token: str = Field(min_length=16, max_length=512)
+
+
 class CustomerOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
     email: EmailStr
+    display_name: str | None = None
+    phone: str | None = None
+    push_notifications_enabled: bool = True
+    email_notifications_enabled: bool = True
+    quiet_hours_enabled: bool = False
+    notifications_opt_out: bool = False
     email_verified_at: datetime | None = None
     created_at: datetime
+
+
+class CustomerProfileUpdateIn(BaseModel):
+    display_name: str | None = Field(default=None, max_length=200)
+    phone: str | None = Field(default=None, max_length=50)
+    push_notifications_enabled: bool | None = None
+    email_notifications_enabled: bool | None = None
+    quiet_hours_enabled: bool | None = None
+    notifications_opt_out: bool | None = None
 
 
 class ClaimedOut(BaseModel):
@@ -190,6 +209,8 @@ class CustomerTokenOut(BaseModel):
     access_token: str
     token_type: str = "bearer"
     expires_in: int
+    refresh_token: str | None = None
+    refresh_expires_in: int | None = None
     is_new_account: bool
     customer: CustomerOut
     claimed: ClaimedOut

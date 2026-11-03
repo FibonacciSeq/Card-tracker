@@ -18,6 +18,7 @@ import { Field } from "../components/Field";
 import { LoadingState } from "../components/LoadingState";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { formatDateTime } from "../lib/format";
+import { useLocale } from "../state/locale";
 import { useAuth } from "../state/auth";
 import { usePush, type PushStatus } from "../state/push";
 import { colors, radii, spacing, type } from "../theme";
@@ -27,8 +28,10 @@ type Step = "email" | "code";
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  const { locale, setLocale, t } = useLocale();
   const {
     customer,
+    deleteAccount,
     hydrated,
     isAuthenticated,
     lastClaimed,
@@ -36,6 +39,7 @@ export default function AccountScreen() {
     requestCode,
     signOut,
     token,
+    updateProfile,
     verifyCode,
   } = useAuth();
   const push = usePush();
@@ -46,9 +50,16 @@ export default function AccountScreen() {
   const [debugCode, setDebugCode] = useState<string | null>(null);
   const [resendIn, setResendIn] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [savingProfile, setSavingProfile] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [pushEnabled, setPushEnabled] = useState(true);
+  const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(true);
+  const [quietHoursEnabled, setQuietHoursEnabled] = useState(false);
+  const [notificationsOptOut, setNotificationsOptOut] = useState(false);
 
   const reservations = useMyReservations(token);
   const requests = useMyCardRequests(token);
@@ -59,6 +70,51 @@ export default function AccountScreen() {
     const timer = setInterval(() => setResendIn((value) => Math.max(0, value - 1)), 1000);
     return () => clearInterval(timer);
   }, [resendIn]);
+
+  useEffect(() => {
+    if (!customer) return;
+    setDisplayName(customer.display_name ?? "");
+    setPhone(customer.phone ?? "");
+    setPushEnabled(customer.push_notifications_enabled ?? true);
+    setEmailNotificationsEnabled(customer.email_notifications_enabled ?? true);
+    setQuietHoursEnabled(customer.quiet_hours_enabled ?? false);
+    setNotificationsOptOut(customer.notifications_opt_out ?? false);
+  }, [customer]);
+
+  async function saveProfile() {
+    setError(null);
+    setNotice(null);
+    setSavingProfile(true);
+    try {
+      await updateProfile({
+        display_name: displayName.trim() || null,
+        phone: phone.trim() || null,
+        push_notifications_enabled: pushEnabled,
+        email_notifications_enabled: emailNotificationsEnabled,
+        quiet_hours_enabled: quietHoursEnabled,
+        notifications_opt_out: notificationsOptOut,
+      });
+      setNotice("Profile updated.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not update your profile.");
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  async function deleteCurrentAccount() {
+    setError(null);
+    setNotice(null);
+    setBusy(true);
+    try {
+      await deleteAccount();
+      setNotice("Your account has been removed.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not delete your account.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function sendCode() {
     setError(null);
@@ -141,20 +197,18 @@ export default function AccountScreen() {
           <View style={styles.heroIcon}>
             <Ionicons name="person-outline" size={22} color={colors.primary} />
           </View>
-          <Text style={styles.heroEyebrow}>SIGNED IN</Text>
+          <Text style={styles.heroEyebrow}>{t("signedIn")}</Text>
           <Text style={styles.heroEmail}>{customer.email}</Text>
-          <Text style={styles.heroBody}>
-            Your holds, alerts, and special orders follow this verified email.
-          </Text>
+          <Text style={styles.heroBody}>{t("signedInBody")}</Text>
         </View>
 
         {notice ? <Notice text={notice} /> : null}
         {error ? <ErrorBox text={error} /> : null}
 
         <View style={styles.countGrid}>
-          <CountCard icon="bag-handle-outline" label="Holds" value={counts.reservations} />
-          <CountCard icon="sparkles-outline" label="Requests" value={counts.requests} />
-          <CountCard icon="notifications-outline" label="Alerts" value={counts.alerts} />
+          <CountCard icon="bag-handle-outline" label={t("holds")} value={counts.reservations} />
+          <CountCard icon="sparkles-outline" label={t("requests")} value={counts.requests} />
+          <CountCard icon="notifications-outline" label={t("alerts")} value={counts.alerts} />
         </View>
 
         {lastClaimed && totalClaimed(lastClaimed) > 0 ? (
@@ -176,10 +230,55 @@ export default function AccountScreen() {
           <Row label="Session" value="Memory only" />
         </View>
 
+        <View style={styles.profileCard}>
+          <Text style={styles.pushTitle}>Profile</Text>
+          <Field
+            label="Display name"
+            onChangeText={setDisplayName}
+            placeholder="Your name"
+            value={displayName}
+          />
+          <Field
+            autoComplete="tel"
+            keyboardType="phone-pad"
+            label="Phone"
+            onChangeText={setPhone}
+            placeholder="+381600000000"
+            textContentType="telephoneNumber"
+            value={phone}
+          />
+          <SettingToggle
+            label="Push notifications"
+            value={pushEnabled}
+            onValueChange={setPushEnabled}
+          />
+          <SettingToggle
+            label="Email notifications"
+            value={emailNotificationsEnabled}
+            onValueChange={setEmailNotificationsEnabled}
+          />
+          <SettingToggle
+            label="Quiet hours"
+            value={quietHoursEnabled}
+            onValueChange={setQuietHoursEnabled}
+          />
+          <SettingToggle
+            label="Opt out of all notifications"
+            value={notificationsOptOut}
+            onValueChange={setNotificationsOptOut}
+          />
+          <PrimaryButton
+            label="Save profile"
+            loading={savingProfile}
+            onPress={() => void saveProfile()}
+            variant="secondary"
+          />
+        </View>
+
         <View style={styles.pushCard}>
           <View style={styles.pushHeader}>
             <Ionicons name="notifications-outline" size={18} color={colors.primary} />
-            <Text style={styles.pushTitle}>Push notifications</Text>
+            <Text style={styles.pushTitle}>{t("turnOnPush")}</Text>
           </View>
           <Text style={styles.pushBody}>{pushMessage(push.status)}</Text>
           {push.error ? <Text style={styles.pushError}>{push.error}</Text> : null}
@@ -200,8 +299,9 @@ export default function AccountScreen() {
         </View>
 
         <Text style={styles.note}>
-          For privacy, this session is not saved on the device. Closing and reopening the app signs
-          you out; guest holds on this device are always still available.
+          This signed-in session is kept in secure device storage so you can stay signed in across
+          app restarts. Signing out revokes the active refresh token, while guest holds on this device
+          remain available.
         </Text>
 
         <PrimaryButton
@@ -209,6 +309,12 @@ export default function AccountScreen() {
           loading={refreshing}
           onPress={() => void refresh()}
           variant="secondary"
+        />
+        <PrimaryButton
+          label="Delete account"
+          loading={busy}
+          onPress={() => void deleteCurrentAccount()}
+          variant="danger"
         />
         <PrimaryButton label="Sign out" onPress={handleSignOut} variant="danger" />
       </ScrollView>
@@ -233,16 +339,46 @@ export default function AccountScreen() {
           <View style={styles.heroIcon}>
             <Ionicons name="mail-outline" size={22} color={colors.primary} />
           </View>
-          <Text style={styles.heroEyebrow}>OPTIONAL ACCOUNT</Text>
-          <Text style={styles.heroTitle}>Keep your card list with you.</Text>
-          <Text style={styles.heroBody}>
-            Sign in with a one-time email code to see your holds, restock alerts, and special
-            orders on another device. Guest checkout still works without an account.
-          </Text>
+          <Text style={styles.heroEyebrow}>{t("optionalAccount")}</Text>
+          <Text style={styles.heroTitle}>{t("accountHeroTitle")}</Text>
+          <Text style={styles.heroBody}>{t("accountHeroBody")}</Text>
         </View>
 
         {error ? <ErrorBox text={error} /> : null}
         {notice ? <Notice text={notice} /> : null}
+
+        <View style={styles.localeCard}>
+          <Text style={styles.localeLabel}>{t("language")}</Text>
+          <View style={styles.localeRow}>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setLocale("en")}
+              style={({ pressed }) => [
+                styles.localeButton,
+                locale === "en" && styles.localeButtonActive,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={[styles.localeButtonText, locale === "en" && styles.localeButtonTextActive]}>
+                {t("english")}
+              </Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setLocale("sr")}
+              style={({ pressed }) => [
+                styles.localeButton,
+                locale === "sr" && styles.localeButtonActive,
+                pressed && styles.pressed,
+              ]}
+            >
+              <Text style={[styles.localeButtonText, locale === "sr" && styles.localeButtonTextActive]}>
+                {t("serbian")}
+              </Text>
+            </Pressable>
+          </View>
+          <Text style={styles.localeHint}>{t("languageHint")}</Text>
+        </View>
 
         <View style={styles.form}>
           <Field
@@ -271,7 +407,7 @@ export default function AccountScreen() {
               />
               <PrimaryButton
                 disabled={email.trim().length === 0 || code.length !== 6}
-                label="Verify and sign in"
+                label={t("verifyAndSignIn")}
                 loading={busy}
                 onPress={() => void verify()}
               />
@@ -297,7 +433,7 @@ export default function AccountScreen() {
           ) : (
             <PrimaryButton
               disabled={email.trim().length === 0}
-              label="Email me a sign-in code"
+              label={t("emailMeCode")}
               loading={busy}
               onPress={() => void sendCode()}
             />
@@ -368,6 +504,33 @@ function Row({ label, value }: { label: string; value: string }) {
   );
 }
 
+function SettingToggle({
+  label,
+  value,
+  onValueChange,
+}: {
+  label: string;
+  value: boolean;
+  onValueChange: (next: boolean) => void;
+}) {
+  return (
+    <View style={styles.toggleRow}>
+      <Text style={styles.toggleLabel}>{label}</Text>
+      <Pressable
+        accessibilityRole="switch"
+        onPress={() => onValueChange(!value)}
+        style={({ pressed }) => [
+          styles.switch,
+          value ? styles.switchOn : styles.switchOff,
+          pressed && styles.pressed,
+        ]}
+      >
+        <View style={[styles.switchThumb, value && styles.switchThumbOn]} />
+      </Pressable>
+    </View>
+  );
+}
+
 function Notice({ text }: { text: string }) {
   return (
     <View style={styles.notice}>
@@ -422,6 +585,50 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   heroBody: { color: "#D8E8E1", fontSize: type.small, lineHeight: 19 },
+  localeCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    borderWidth: 1,
+    borderColor: colors.line,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  localeLabel: {
+    color: colors.ink,
+    fontSize: type.small,
+    fontWeight: "800",
+  },
+  localeRow: {
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  localeButton: {
+    flex: 1,
+    minHeight: 40,
+    borderRadius: radii.md,
+    borderWidth: 1,
+    borderColor: colors.line,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.background,
+  },
+  localeButtonActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  localeButtonText: {
+    color: colors.ink,
+    fontSize: type.small,
+    fontWeight: "700",
+  },
+  localeButtonTextActive: {
+    color: colors.primary,
+  },
+  localeHint: {
+    color: colors.inkMuted,
+    fontSize: type.tiny,
+    lineHeight: 18,
+  },
   form: {
     backgroundColor: colors.surface,
     borderRadius: radii.lg,
@@ -501,6 +708,14 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
+  profileCard: {
+    backgroundColor: colors.surface,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+    gap: spacing.md,
+  },
   pushCard: {
     backgroundColor: colors.surface,
     borderWidth: 1,
@@ -516,5 +731,30 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", justifyContent: "space-between", gap: spacing.md },
   rowLabel: { color: colors.inkMuted, fontSize: type.small },
   rowValue: { flex: 1, color: colors.ink, fontSize: type.small, fontWeight: "800", textAlign: "right" },
+  toggleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  toggleLabel: { flex: 1, color: colors.ink, fontSize: type.small, fontWeight: "700" },
+  switch: {
+    width: 52,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: "center",
+    paddingHorizontal: 4,
+  },
+  switchOn: { backgroundColor: colors.primary },
+  switchOff: { backgroundColor: colors.line },
+  switchThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.white,
+    marginLeft: 0,
+  },
+  switchThumbOn: { marginLeft: 20 },
   note: { color: colors.inkMuted, fontSize: type.small, lineHeight: 19 },
 });

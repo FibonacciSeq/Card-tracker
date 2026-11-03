@@ -31,6 +31,22 @@ BACKOFF_BASE_SECONDS = 60
 BACKOFF_MAX_SECONDS = 3600
 
 
+def customer_notification_allowed(db: Session, *, user_id: uuid.UUID | None, channel: str) -> bool:
+    """Return whether a queued notification should be delivered to a customer."""
+    if user_id is None:
+        return True
+    customer = db.get(models.User, user_id)
+    if customer is None or not customer.is_active:
+        return False
+    if customer.notifications_opt_out or customer.quiet_hours_enabled:
+        return False
+    if channel == "email" and not customer.email_notifications_enabled:
+        return False
+    if channel == "push" and not customer.push_notifications_enabled:
+        return False
+    return True
+
+
 class Sender(Protocol):
     def send(
         self,
@@ -189,6 +205,10 @@ def deliver_tenant(
 
     delivered = 0
     for row in pending:
+        if not customer_notification_allowed(db, user_id=row.user_id, channel="email"):
+            row.sent_at = now
+            row.error = "Customer notification preferences disabled"
+            continue
         try:
             subject, body = notifications.render(row, tenant)
             assert row.recipient is not None
@@ -267,6 +287,11 @@ def deliver_push(
 
     delivered = 0
     for row in pending:
+        if not customer_notification_allowed(db, user_id=row.user_id, channel="push"):
+            row.sent_at = now
+            row.error = "Customer notification preferences disabled"
+            continue
+
         tokens = list(
             db.scalars(
                 select(models.PushToken).where(

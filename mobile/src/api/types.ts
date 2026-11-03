@@ -16,6 +16,14 @@ export type CardRequest = Schemas["CardRequestOut"];
 export type CardRequestCreate = Schemas["CardRequestCreateIn"];
 export type Customer = Schemas["CustomerIn"];
 export type CustomerAccount = Schemas["CustomerOut"];
+export type CustomerProfileUpdate = {
+  display_name?: string | null;
+  phone?: string | null;
+  push_notifications_enabled?: boolean | null;
+  email_notifications_enabled?: boolean | null;
+  quiet_hours_enabled?: boolean | null;
+  notifications_opt_out?: boolean | null;
+};
 export type ClaimedCounts = Schemas["ClaimedOut"];
 export type OtpRequestResult = Schemas["OtpRequestOut"];
 export type CustomerToken = Schemas["CustomerTokenOut"];
