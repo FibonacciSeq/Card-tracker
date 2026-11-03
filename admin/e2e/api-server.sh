@@ -4,7 +4,14 @@ set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 backend="$here/../../backend"
-python="${CARDTRACKER_E2E_PYTHON:-$here/../../.venv/bin/python}"
+python="${CARDTRACKER_E2E_PYTHON:-${PYTHON:-python3}}"
+if ! command -v "$python" >/dev/null 2>&1; then
+  python="$here/../../.venv/bin/python"
+fi
+if ! command -v "$python" >/dev/null 2>&1; then
+  echo "Python interpreter not found for the seeded Playwright API" >&2
+  exit 1
+fi
 db="${CARDTRACKER_E2E_DB:-/tmp/cardtracker-e2e.db}"
 
 rm -f "$db"

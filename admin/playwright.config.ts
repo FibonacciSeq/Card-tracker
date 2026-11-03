@@ -25,6 +25,10 @@ export default defineConfig({
       timeout: 60_000,
       stdout: "pipe",
       stderr: "pipe",
+      env: {
+        ...process.env,
+        CARDTRACKER_E2E_PYTHON: process.env.CARDTRACKER_E2E_PYTHON ?? "python",
+      },
     },
     {
       command: "npx vite --port 5173 --strictPort",
