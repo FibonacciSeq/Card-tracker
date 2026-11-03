@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const API_URL = "http://127.0.0.1:8010";
+const API_URL = "http://127.0.0.1:8081";
 const ADMIN_URL = "http://127.0.0.1:5173";
 
 export default defineConfig({
