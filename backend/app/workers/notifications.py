@@ -42,9 +42,7 @@ def customer_notification_allowed(db: Session, *, user_id: uuid.UUID | None, cha
         return False
     if channel == "email" and not customer.email_notifications_enabled:
         return False
-    if channel == "push" and not customer.push_notifications_enabled:
-        return False
-    return True
+    return channel != "push" or customer.push_notifications_enabled
 
 
 class Sender(Protocol):
@@ -147,7 +145,10 @@ def deliver_otp_challenges(
     for challenge in pending:
         try:
             code = derive_otp_code(challenge.id, challenge.email)
-            subject, body = notifications.render_otp(code, settings.otp_expiry_seconds)
+            if challenge.user_id is None:
+                subject, body = notifications.render_otp(code, settings.otp_expiry_seconds)
+            else:
+                subject, body = notifications.render_email_change_otp(code, settings.otp_expiry_seconds)
             sender.send(recipient=challenge.email, subject=subject, body=body)
         except Exception as exc:
             challenge.email_attempts += 1

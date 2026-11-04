@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { readGuestToken, removeGuestToken, writeGuestToken } from "./tokenStore";
+import {
+  readAuthToken,
+  readGuestToken,
+  removeAuthToken,
+  removeGuestToken,
+  writeAuthToken,
+  writeGuestToken,
+} from "./tokenStore";
 
 const { platform, storage, asyncStorage, secureStore } = vi.hoisted(() => {
   const platform = { OS: "web" };
@@ -54,5 +61,12 @@ describe("guest token storage", () => {
     await removeGuestToken("key");
     expect(secureStore.deleteItemAsync).toHaveBeenCalledWith("key");
     await expect(readGuestToken("key")).resolves.toBeNull();
+  });
+
+  it("routes auth tokens through the same storage", async () => {
+    await writeAuthToken("auth-key", "auth-token");
+    await expect(readAuthToken("auth-key")).resolves.toBe("auth-token");
+    await removeAuthToken("auth-key");
+    await expect(readAuthToken("auth-key")).resolves.toBeNull();
   });
 });

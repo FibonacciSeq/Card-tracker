@@ -130,7 +130,8 @@ class FcmSender:
             return
 
         data = _json(response)
-        error = data.get("error") if isinstance(data.get("error"), dict) else {}
+        raw_error = data.get("error")
+        error = raw_error if isinstance(raw_error, dict) else {}
         status = str(error.get("status") or "")
         if response.status_code in (400, 404) or status in (
             "INVALID_ARGUMENT",

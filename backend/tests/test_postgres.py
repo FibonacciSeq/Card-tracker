@@ -31,7 +31,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app import models, schemas
 from app.db import set_customer_context, set_push_worker_context, set_tenant_context
-from app.services import accounts, reservations
+from app.services import accounts, audit, reservations
 
 ADMIN_URL = os.environ.get("CARDTRACKER_TEST_POSTGRES_ADMIN_URL")
 APP_URL = os.environ.get("CARDTRACKER_TEST_POSTGRES_URL")
@@ -432,6 +432,36 @@ def test_push_tokens_are_customer_scoped_and_worker_visible(app_session: Session
     set_push_worker_context(app_session)
     visible = {row.id for row in app_session.scalars(select(models.PushToken)).all()}
     assert {token_a.id, token_b.id} <= visible
+
+
+def test_customer_audit_events_are_customer_scoped(app_session: Session, admin: Session) -> None:
+    suffix = uuid.uuid4().hex[:8]
+    customer_a = _make_customer(admin, f"audit-a-{suffix}@example.com")
+    customer_b = _make_customer(admin, f"audit-b-{suffix}@example.com")
+
+    set_customer_context(app_session, customer_a.id)
+    event = audit.record_customer(
+        app_session,
+        customer_id=customer_a.id,
+        action="account.login",
+        summary="Customer signed in",
+    )
+    app_session.commit()
+
+    assert {row.id for row in app_session.scalars(select(models.CustomerAuditEvent)).all()} == {event.id}
+
+    set_customer_context(app_session, customer_b.id)
+    assert app_session.scalars(select(models.CustomerAuditEvent)).all() == []
+
+    audit.record_customer(
+        app_session,
+        customer_id=customer_a.id,
+        action="account.login",
+        summary="Cross-customer write must fail",
+    )
+    with pytest.raises(DBAPIError):
+        app_session.commit()
+    app_session.rollback()
 
 
 def test_app_role_can_create_a_global_customer_without_tenant_context(app_session: Session) -> None:

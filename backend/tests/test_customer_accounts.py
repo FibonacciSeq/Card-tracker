@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from app import models
 from app.config import settings
 from app.security import derive_otp_code
+from app.services import accounts
 from app.workers import notifications as worker
 
 
@@ -426,7 +427,15 @@ def test_customer_notification_preferences_block_delivery(client, db, tenant):
     assert email_row.error == "Customer notification preferences disabled"
 
     class FakePushSender:
-        def send(self, *, token, platform, title, body, url):
+        def send(
+            self,
+            *,
+            token: str,
+            platform: str,
+            title: str,
+            body: str,
+            url: str | None = None,
+        ) -> None:
             raise AssertionError("push should be skipped when preferences are disabled")
 
     delivered_push = worker.deliver_push(db, tenant, FakePushSender(), now=datetime.now(UTC))
@@ -511,3 +520,420 @@ def test_run_once_drains_otp_and_tenant_notifications(db, tenant, client, monkey
     subjects = {item["subject"] for item in sender.sent}
     assert "Your Card Tracker sign-in code" in subjects
     assert "Your cards are ready — R-ABC123" in subjects
+
+
+def _audit_actions(db, customer_id):
+    db.expire_all()
+    return [
+        row.action
+        for row in db.scalars(
+            select(models.CustomerAuditEvent)
+            .where(models.CustomerAuditEvent.user_id == customer_id)
+            .order_by(models.CustomerAuditEvent.id)
+        ).all()
+    ]
+
+
+def test_email_change_verifies_the_new_address_and_claims_its_guest_rows(client, db, tenant, stock, monkeypatch):
+    monkeypatch.setattr(settings, "otp_resend_seconds", 0)
+    monkeypatch.setattr(settings, "otp_debug_code", True)
+
+    guest = _guest_reservation(client, tenant, stock, email="new@example.com")
+
+    _request_code(client)
+    signed_in = _verify(client, db)
+    assert signed_in.status_code == 200, signed_in.text
+    body = signed_in.json()
+    headers = _headers(body["access_token"])
+    customer_id = uuid.UUID(body["customer"]["id"])
+    old_refresh = body["refresh_token"]
+
+    same = client.post("/v1/me/email", headers=headers, json={"email": "ana@example.com"})
+    assert same.status_code == 400
+    assert same.json()["detail"] == "This is already your email address."
+
+    taken = models.User(
+        tenant_id=None,
+        email="taken@example.com",
+        role="customer",
+        is_active=True,
+    )
+    db.add(taken)
+    db.commit()
+    unavailable = client.post("/v1/me/email", headers=headers, json={"email": "taken@example.com"})
+    assert unavailable.status_code == 409
+    assert unavailable.json()["detail"] == "This email address is already in use."
+
+    requested = client.post("/v1/me/email", headers=headers, json={"email": "New@Example.com"})
+    assert requested.status_code == 202, requested.text
+    assert len(requested.json()["debug_code"]) == 6
+
+    # A second request with the cooldown disabled replaces the pending code.
+    replacement = client.post("/v1/me/email", headers=headers, json={"email": "new@example.com"})
+    assert replacement.status_code == 202, replacement.text
+
+    challenge = _latest_challenge(db, "new@example.com")
+    assert challenge.user_id == customer_id
+    assert challenge.consumed_at is None
+
+    sender = RecordingSender()
+    assert worker.deliver_otp_challenges(db, sender, now=datetime.now(UTC)) == 1
+    assert sender.sent[0]["recipient"] == "new@example.com"
+    assert sender.sent[0]["subject"] == "Confirm your new Card Tracker email"
+
+    actual = derive_otp_code(challenge.id, challenge.email)
+    wrong = f"{(int(actual) + 1) % 1_000_000:06d}"
+    rejected = client.post(
+        "/v1/me/email/verify",
+        headers=headers,
+        json={"email": "new@example.com", "code": wrong},
+    )
+    assert rejected.status_code == 401
+
+    changed = client.post(
+        "/v1/me/email/verify",
+        headers=headers,
+        json={"email": "new@example.com", "code": actual},
+    )
+    assert changed.status_code == 200, changed.text
+    changed_body = changed.json()
+    assert changed_body["customer"]["email"] == "new@example.com"
+    assert changed_body["customer"]["email_verified_at"] is not None
+    assert changed_body["is_new_account"] is False
+    assert changed_body["claimed"] == {"reservations": 1, "restock_alerts": 0, "card_requests": 0}
+    assert changed_body["refresh_token"] != old_refresh
+
+    stale = client.post("/v1/auth/refresh", json={"refresh_token": old_refresh})
+    assert stale.status_code == 401
+
+    me = client.get("/v1/me", headers=_headers(changed_body["access_token"]))
+    assert me.status_code == 200
+    assert me.json()["email"] == "new@example.com"
+
+    db.expire_all()
+    assert db.get(models.User, customer_id).email == "new@example.com"
+    assert db.get(models.Reservation, uuid.UUID(guest["id"])).customer_id == customer_id
+    actions = _audit_actions(db, customer_id)
+    assert actions[0] == "account.login"
+    assert "account.sessions_revoked" in actions
+    assert actions[-1] == "account.email_changed"
+
+
+def test_email_change_rejects_expired_attempts_and_late_conflicts(client, db, monkeypatch):
+    monkeypatch.setattr(settings, "otp_resend_seconds", 0)
+
+    _request_code(client)
+    signed_in = _verify(client, db)
+    headers = _headers(signed_in.json()["access_token"])
+
+    missing = client.post(
+        "/v1/me/email/verify",
+        headers=headers,
+        json={"email": "other@example.com", "code": "123456"},
+    )
+    assert missing.status_code == 401
+
+    requested = client.post("/v1/me/email", headers=headers, json={"email": "free@example.com"})
+    assert requested.status_code == 202
+    challenge = _latest_challenge(db, "free@example.com")
+    actual = derive_otp_code(challenge.id, challenge.email)
+    wrong = f"{(int(actual) + 1) % 1_000_000:06d}"
+    for _ in range(settings.otp_max_attempts):
+        response = client.post(
+            "/v1/me/email/verify",
+            headers=headers,
+            json={"email": "free@example.com", "code": wrong},
+        )
+        assert response.status_code == 401
+
+    db.expire_all()
+    challenged = _latest_challenge(db, "free@example.com")
+    assert challenged.attempts == settings.otp_max_attempts
+    assert challenged.consumed_at is not None
+
+    again = client.post("/v1/me/email", headers=headers, json={"email": "free@example.com"})
+    assert again.status_code == 202
+    expired = _latest_challenge(db, "free@example.com")
+    expired.expires_at = datetime.now(UTC) - timedelta(seconds=1)
+    db.commit()
+    late = client.post(
+        "/v1/me/email/verify",
+        headers=headers,
+        json={"email": "free@example.com", "code": derive_otp_code(expired.id, expired.email)},
+    )
+    assert late.status_code == 401
+
+    third = client.post("/v1/me/email", headers=headers, json={"email": "free@example.com"})
+    assert third.status_code == 202
+    final = _latest_challenge(db, "free@example.com")
+    db.add(
+        models.User(
+            tenant_id=None,
+            email="free@example.com",
+            role="customer",
+            is_active=True,
+        )
+    )
+    db.commit()
+    conflict = client.post(
+        "/v1/me/email/verify",
+        headers=headers,
+        json={"email": "free@example.com", "code": derive_otp_code(final.id, final.email)},
+    )
+    assert conflict.status_code == 409
+    assert conflict.json()["detail"] == "This email address is already in use."
+    db.expire_all()
+    assert db.get(models.User, uuid.UUID(signed_in.json()["customer"]["id"])).email == "ana@example.com"
+
+
+def test_email_change_request_respects_the_resend_cooldown(client, db):
+    _request_code(client)
+    signed_in = _verify(client, db)
+    headers = _headers(signed_in.json()["access_token"])
+
+    first = client.post("/v1/me/email", headers=headers, json={"email": "cool@example.com"})
+    assert first.status_code == 202
+    too_soon = client.post("/v1/me/email", headers=headers, json={"email": "cool@example.com"})
+    assert too_soon.status_code == 429
+    assert "retry-after" in too_soon.headers
+
+
+def test_login_and_email_change_challenges_are_independent(client, db, monkeypatch):
+    monkeypatch.setattr(settings, "otp_resend_seconds", 0)
+
+    _request_code(client)
+    signed_in = _verify(client, db)
+    headers = _headers(signed_in.json()["access_token"])
+    customer_id = uuid.UUID(signed_in.json()["customer"]["id"])
+    target = "new@example.com"
+
+    _request_code(client, target)
+    login_challenge = _latest_challenge(db, target)
+    assert login_challenge.user_id is None
+
+    requested = client.post("/v1/me/email", headers=headers, json={"email": target})
+    assert requested.status_code == 202
+    change_challenge = _latest_challenge(db, target)
+    assert change_challenge.user_id == customer_id
+    assert change_challenge.id != login_challenge.id
+
+    # A fresh login request replaces only the login challenge.
+    _request_code(client, target)
+    db.expire_all()
+    still_pending = db.get(models.CustomerOtpChallenge, change_challenge.id)
+    consumed_login = db.get(models.CustomerOtpChallenge, login_challenge.id)
+    assert still_pending is not None and still_pending.consumed_at is None
+    assert consumed_login is not None and consumed_login.consumed_at is not None
+    new_login = _latest_challenge(db, target)
+    assert new_login.user_id is None
+
+    # The login endpoint must not accept the email-change code.
+    change_code = derive_otp_code(change_challenge.id, target)
+    rejected = client.post("/v1/auth/otp/verify", json={"email": target, "code": change_code})
+    assert rejected.status_code == 401
+
+    login_code = derive_otp_code(new_login.id, target)
+    logged_in = client.post("/v1/auth/otp/verify", json={"email": target, "code": login_code})
+    assert logged_in.status_code == 200, logged_in.text
+
+
+def test_customer_audit_covers_profile_refresh_and_session_actions(client, db, monkeypatch):
+    monkeypatch.setattr(settings, "otp_resend_seconds", 0)
+
+    _request_code(client)
+    signed_in = _verify(client, db)
+    body = signed_in.json()
+    headers = _headers(body["access_token"])
+    refresh_token = body["refresh_token"]
+    customer_id = uuid.UUID(body["customer"]["id"])
+    db.expire_all()
+    assert _audit_actions(db, customer_id) == ["account.login"]
+
+    empty = client.patch("/v1/me", headers=headers, json={})
+    assert empty.status_code == 200
+    db.expire_all()
+    assert _audit_actions(db, customer_id) == ["account.login"]
+
+    updated = client.patch(
+        "/v1/me",
+        headers=headers,
+        json={
+            "display_name": " Ana ",
+            "phone": " +381600000000 ",
+            "push_notifications_enabled": False,
+            "email_notifications_enabled": False,
+            "quiet_hours_enabled": True,
+            "notifications_opt_out": True,
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["display_name"] == "Ana"
+    db.expire_all()
+    profile = db.scalar(
+        select(models.CustomerAuditEvent).where(
+            models.CustomerAuditEvent.user_id == customer_id,
+            models.CustomerAuditEvent.action == "account.profile_updated",
+        )
+    )
+    assert profile is not None
+    assert profile.data["fields"] == [
+        "display_name",
+        "phone",
+        "push_notifications_enabled",
+        "email_notifications_enabled",
+        "quiet_hours_enabled",
+        "notifications_opt_out",
+    ]
+
+    rotated = client.post("/v1/auth/refresh", json={"refresh_token": refresh_token})
+    assert rotated.status_code == 200, rotated.text
+    rotated_body = rotated.json()
+
+    revoked = client.post("/v1/me/sessions/revoke-all", headers=_headers(rotated_body["access_token"]))
+    assert revoked.status_code == 204
+    assert client.post("/v1/auth/refresh", json={"refresh_token": rotated_body["refresh_token"]}).status_code == 401
+
+    _request_code(client)
+    second = _verify(client, db).json()
+    logout = client.post("/v1/auth/logout", headers=_headers(second["access_token"]))
+    assert logout.status_code == 204
+    assert client.post("/v1/auth/refresh", json={"refresh_token": second["refresh_token"]}).status_code == 401
+
+    db.expire_all()
+    actions = _audit_actions(db, customer_id)
+    assert "account.profile_updated" in actions
+    assert "account.session_refreshed" in actions
+    assert actions.count("account.sessions_revoked") == 1
+    assert actions.count("account.logout") == 1
+
+
+def test_delete_account_revokes_sessions_and_records_audit(client, db):
+    _request_code(client)
+    signed_in = _verify(client, db)
+    body = signed_in.json()
+    customer_id = uuid.UUID(body["customer"]["id"])
+
+    deleted = client.delete("/v1/me", headers=_headers(body["access_token"]))
+    assert deleted.status_code == 204
+    assert client.get("/v1/me", headers=_headers(body["access_token"])).status_code == 401
+    assert client.post("/v1/auth/refresh", json={"refresh_token": body["refresh_token"]}).status_code == 401
+
+    db.expire_all()
+    assert db.get(models.User, customer_id).is_active is False
+    actions = _audit_actions(db, customer_id)
+    assert "account.sessions_revoked" in actions
+    assert actions[-1] == "account.deleted"
+
+
+def test_refresh_rejects_unknown_tokens_and_non_customer_rows(client, db, tenant):
+    _request_code(client)
+    signed_in = _verify(client, db)
+    body = signed_in.json()
+    customer_id = uuid.UUID(body["customer"]["id"])
+
+    unknown = client.post("/v1/auth/refresh", json={"refresh_token": "x" * 32})
+    assert unknown.status_code == 401
+    assert unknown.json()["detail"] == "Invalid refresh token"
+
+    staff = models.User(
+        tenant_id=tenant.id,
+        email="staff@example.com",
+        role="staff",
+        is_active=True,
+    )
+    db.add(staff)
+    db.flush()
+    staff_token = "s" * 32
+    db.add(
+        models.CustomerRefreshToken(
+            user_id=staff.id,
+            token_hash=accounts._refresh_token_hash(staff_token),
+            issued_at=datetime.now(UTC),
+            expires_at=datetime.now(UTC) + timedelta(days=1),
+        )
+    )
+    db.commit()
+
+    wrong_owner = client.post("/v1/auth/refresh", json={"refresh_token": staff_token})
+    assert wrong_owner.status_code == 401
+    assert wrong_owner.json()["detail"] == "Invalid customer session"
+
+    # A targeted revoke leaves the other token active and records the action.
+    other = "o" * 32
+    db.add(
+        models.CustomerRefreshToken(
+            user_id=customer_id,
+            token_hash=accounts._refresh_token_hash(other),
+            issued_at=datetime.now(UTC),
+            expires_at=datetime.now(UTC) + timedelta(days=1),
+        )
+    )
+    db.commit()
+    accounts.revoke_customer_refresh_tokens(
+        db,
+        customer_id,
+        body["refresh_token"],
+        action="account.logout",
+        commit=False,
+    )
+    db.commit()
+    db.expire_all()
+    rows = db.scalars(
+        select(models.CustomerRefreshToken).where(models.CustomerRefreshToken.user_id == customer_id)
+    ).all()
+    assert sum(1 for row in rows if row.revoked_at is not None) == 1
+    assert sum(1 for row in rows if row.revoked_at is None) == 1
+    event = db.scalar(
+        select(models.CustomerAuditEvent).where(
+            models.CustomerAuditEvent.user_id == customer_id, models.CustomerAuditEvent.action == "account.logout"
+        )
+    )
+    assert event is not None
+    assert event.data == {"token_count": 1, "single_token": True}
+
+
+def test_notification_allowed_rejects_inactive_unknown_and_disabled_channels(db):
+    assert worker.customer_notification_allowed(db, user_id=None, channel="email") is True
+
+    unknown = worker.customer_notification_allowed(db, user_id=uuid.uuid4(), channel="email")
+    assert unknown is False
+
+    disabled = models.User(
+        tenant_id=None,
+        email="disabled@example.com",
+        role="customer",
+        is_active=False,
+    )
+    email_off = models.User(
+        tenant_id=None,
+        email="email-off@example.com",
+        role="customer",
+        is_active=True,
+        email_notifications_enabled=False,
+    )
+    push_off = models.User(
+        tenant_id=None,
+        email="push-off@example.com",
+        role="customer",
+        is_active=True,
+        push_notifications_enabled=False,
+    )
+    db.add_all([disabled, email_off, push_off])
+    db.commit()
+
+    assert worker.customer_notification_allowed(db, user_id=disabled.id, channel="email") is False
+    assert worker.customer_notification_allowed(db, user_id=email_off.id, channel="email") is False
+    assert worker.customer_notification_allowed(db, user_id=push_off.id, channel="push") is False
+
+
+def test_app_card_url_custom_scheme_and_scheme_less_public_url(tenant, monkeypatch):
+    from app.services import notifications
+
+    monkeypatch.setattr(settings, "public_app_url", "")
+    assert notifications.app_card_url(tenant, {}) == f"cardtracker://shop/{tenant.slug}"
+    assert notifications.app_card_url(tenant, {"stock_id": "s1"}) == f"cardtracker://shop/{tenant.slug}/card/s1"
+
+    monkeypatch.setattr(settings, "public_app_url", "app.example.test/")
+    assert (
+        notifications.app_card_url(tenant, {"stock_id": "s1"}) == f"https://app.example.test/shop/{tenant.slug}/card/s1"
+    )

@@ -382,6 +382,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/me/email": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Request Customer Email Change */
+        post: operations["request_customer_email_change_v1_me_email_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/email/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Verify Customer Email Change */
+        post: operations["verify_customer_email_change_v1_me_email_verify_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me": {
         parameters: {
             query?: never;
@@ -1250,6 +1284,26 @@ export interface components {
             display_name?: string | null;
             /** Phone */
             phone?: string | null;
+            /**
+             * Push Notifications Enabled
+             * @default true
+             */
+            push_notifications_enabled: boolean;
+            /**
+             * Email Notifications Enabled
+             * @default true
+             */
+            email_notifications_enabled: boolean;
+            /**
+             * Quiet Hours Enabled
+             * @default false
+             */
+            quiet_hours_enabled: boolean;
+            /**
+             * Notifications Opt Out
+             * @default false
+             */
+            notifications_opt_out: boolean;
             /** Email Verified At */
             email_verified_at?: string | null;
             /**
@@ -1264,6 +1318,14 @@ export interface components {
             display_name?: string | null;
             /** Phone */
             phone?: string | null;
+            /** Push Notifications Enabled */
+            push_notifications_enabled?: boolean | null;
+            /** Email Notifications Enabled */
+            email_notifications_enabled?: boolean | null;
+            /** Quiet Hours Enabled */
+            quiet_hours_enabled?: boolean | null;
+            /** Notifications Opt Out */
+            notifications_opt_out?: boolean | null;
         };
         /** CustomerRefreshIn */
         CustomerRefreshIn: {
@@ -1317,6 +1379,24 @@ export interface components {
              * @default
              */
             vendor_note: string;
+        };
+        /** EmailChangeRequestIn */
+        EmailChangeRequestIn: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+        };
+        /** EmailChangeVerifyIn */
+        EmailChangeVerifyIn: {
+            /**
+             * Email
+             * Format: email
+             */
+            email: string;
+            /** Code */
+            code: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -3019,6 +3099,72 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    request_customer_email_change_v1_me_email_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailChangeRequestIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OtpRequestOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    verify_customer_email_change_v1_me_email_verify_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EmailChangeVerifyIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CustomerTokenOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

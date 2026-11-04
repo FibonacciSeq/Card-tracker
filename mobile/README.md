@@ -40,10 +40,11 @@ in memory only and combines `/v1/me` rows with device-local guest rows.
   restock alerts, and special orders with the same verified email, then shows
   account data across shops and devices. Signed-in create forms use the
   account email and still work with the existing guest response.
-- Guest tokens are stored with Expo SecureStore on native platforms. The
-  customer account token is intentionally memory-only: a cold launch starts
-  signed out, while backgrounding and reopening the same process keeps the
-  session until the server expiry.
+- Guest tokens are stored with Expo SecureStore on native platforms. Customer
+  access and refresh tokens are persisted the same way (AsyncStorage on web), so
+  a cold launch restores the session and rotates the access token through the
+  refresh endpoint. Signing out revokes the server session and clears account
+  queries.
 - In-store QR scanning with `expo-camera`: a shop code opens the storefront and a
   card code opens that card. Manual shop-code entry is always available, which
   is also how the web preview works.
@@ -55,8 +56,9 @@ in memory only and combines `/v1/me` rows with device-local guest rows.
   `cardtracker://shop/<slug>` remains accepted for direct installs and older QR
   codes.
 
-Not in this slice yet: offline cache, localization, device E2E, and account
-profile editing, email change, deletion, or refresh/revocation.
+Not in this slice yet: real-device signed-in E2E, a customer-facing activity
+log, notification-center delivery visibility, and production universal-link
+validation.
 
 ## Run it
 
@@ -155,9 +157,10 @@ For production builds set `EXPO_PUBLIC_API_BASE_URL` to the public HTTPS API.
 4. While signed in, the home screen, alerts, and special orders show account
    data for all shops, plus any remaining device-local guest rows. Detail
    screens use account actions where possible and fall back to guest tokens.
-5. **Sign out** clears the in-memory session and account query cache. Local
-   guest data stays on the device. Closing and reopening the app also starts
-   signed out because the account token is never persisted.
+5. **Sign out** revokes the active session and clears stored tokens plus the
+   account query cache. Local guest data stays on the device. A cold launch
+   restores a valid persisted session and refreshes the access token when
+   needed.
 
 Guest checkout remains available at every step. Signed-in create forms lock the
 email to the account address and still return the normal guest token for local
@@ -251,7 +254,7 @@ src/
   api/                         generated schema, client, query hooks
   components/                  reusable UI
   lib/                         config, deeplink parser, formatting, account merge, timers
-  state/                       auth (memory-only), push, cart, reservations, alerts, requests
+  state/                       auth (persisted session), push, cart, reservations, alerts, requests
   theme.ts                     colours, spacing, type scale
 ```
 
@@ -261,7 +264,7 @@ Current local verification:
 
 - `npm run typecheck` — clean
 - `npm run lint` — clean
-- `npm run test:coverage` — **31 tests, 100% statements/branches/functions/lines**
+- `npm run test:coverage` — **42 tests, 100% statements/branches/functions/lines**
   for `src/lib/**` (excluding the `useNow` timer hook)
 - `npm run export:web` — production web bundle builds
 - `npm run doctor` — 20/20 checks
@@ -282,10 +285,11 @@ exercises the manual-entry fallback. Device E2E is still not wired up.
 
 ## Security notes
 
-- The customer account token is a 12-hour bearer credential held only in
-  memory. It is never written to SecureStore or AsyncStorage, so a cold launch
-  requires a new OTP. Do not add persistence without redesigning sign-out and
-  cache clearing.
+- The customer account access token is a 12-hour bearer credential. The app
+  also stores a 7-day refresh token that rotates on use; both live in
+  SecureStore on native platforms and AsyncStorage on web. Sign-out revokes the
+  server session and clears local tokens and account queries. Keep that
+  sign-out/cache-clearing path intact if session handling changes.
 - The guest reservation token is a credential. Native builds store it in
   SecureStore; the web preview falls back to AsyncStorage because SecureStore
   has no web implementation. Do not treat the web preview as a production

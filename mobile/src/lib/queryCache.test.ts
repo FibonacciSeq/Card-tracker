@@ -50,4 +50,35 @@ describe("queryCache", () => {
 
     expect(client.getQueryCache().findAll()).toHaveLength(0);
   });
+
+  it("clears stored data when there is nothing to persist", async () => {
+    await AsyncStorage.setItem(QUERY_CACHE_STORAGE_KEY, "{}");
+
+    await persistQueryCache(new QueryClient());
+
+    await expect(AsyncStorage.getItem(QUERY_CACHE_STORAGE_KEY)).resolves.toBeNull();
+  });
+
+  it("does nothing when there is no stored cache", async () => {
+    const client = new QueryClient();
+
+    await hydrateQueryClient(client);
+
+    expect(client.getQueryCache().findAll()).toHaveLength(0);
+  });
+
+  it("ignores non-object payloads and non-array query keys", async () => {
+    const client = new QueryClient();
+
+    await AsyncStorage.setItem(QUERY_CACHE_STORAGE_KEY, "[]");
+    await hydrateQueryClient(client);
+    expect(client.getQueryCache().findAll()).toHaveLength(0);
+
+    await AsyncStorage.setItem(
+      QUERY_CACHE_STORAGE_KEY,
+      JSON.stringify({ [JSON.stringify("not-an-array")]: { value: 1 }, broken: { value: 2 } }),
+    );
+    await hydrateQueryClient(client);
+    expect(client.getQueryCache().findAll()).toHaveLength(0);
+  });
 });

@@ -135,6 +135,18 @@ def render_otp(code: str, expires_seconds: int) -> tuple[str, str]:
     return subject, body
 
 
+def render_email_change_otp(code: str, expires_seconds: int) -> tuple[str, str]:
+    """Render the confirmation code for a customer's new email address."""
+    subject = "Confirm your new Card Tracker email"
+    minutes = max(1, expires_seconds // 60)
+    body = (
+        f"Your email confirmation code is: {code}\n\n"
+        f"It expires in {minutes} minute(s). If you did not request this change, "
+        f"you can ignore this email and keep your current address."
+    )
+    return subject, body
+
+
 def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
     """Return (subject, body) for one queued notification."""
     payload = row.payload or {}

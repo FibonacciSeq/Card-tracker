@@ -19,7 +19,9 @@ depends_on = None
 
 def upgrade() -> None:
     op.add_column("users", sa.Column("push_notifications_enabled", sa.Boolean(), nullable=False, server_default="true"))
-    op.add_column("users", sa.Column("email_notifications_enabled", sa.Boolean(), nullable=False, server_default="true"))
+    op.add_column(
+        "users", sa.Column("email_notifications_enabled", sa.Boolean(), nullable=False, server_default="true")
+    )
     op.add_column("users", sa.Column("quiet_hours_enabled", sa.Boolean(), nullable=False, server_default="false"))
     op.add_column("users", sa.Column("notifications_opt_out", sa.Boolean(), nullable=False, server_default="false"))
 

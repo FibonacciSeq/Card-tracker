@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   cardDeepLink,
   cardPublicUrl,
+  publicAppBaseUrl,
   shopDeepLink,
   shopPublicUrl,
   targetFromInput,
@@ -76,5 +77,19 @@ describe("QR/deep-link parsing", () => {
     expect(cardPublicUrl("bolt", stockId)).toBe(`https://app.cardtracker.local/shop/bolt/card/${stockId}`);
     expect(shopDeepLink("bolt shop")).toBe("cardtracker://shop/bolt%20shop");
     expect(cardDeepLink("bolt", stockId)).toBe(`cardtracker://shop/bolt/card/${stockId}`);
+  });
+
+  it("falls back when the configured public app URL is blank", () => {
+    const previousBase = process.env.EXPO_PUBLIC_APP_BASE_URL;
+    process.env.EXPO_PUBLIC_APP_BASE_URL = "   ";
+    try {
+      expect(publicAppBaseUrl()).toBe("https://app.cardtracker.local");
+    } finally {
+      if (previousBase === undefined) {
+        delete process.env.EXPO_PUBLIC_APP_BASE_URL;
+      } else {
+        process.env.EXPO_PUBLIC_APP_BASE_URL = previousBase;
+      }
+    }
   });
 });

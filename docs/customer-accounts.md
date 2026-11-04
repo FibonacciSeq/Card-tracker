@@ -1,6 +1,7 @@
 # Customer accounts and guest-data claiming
 
-Status: **implemented** on 2026-10-29.
+Status: **implemented** on 2026-10-29; extended 2026-11-04 with refresh
+sessions, revoke-all, email change, and customer account audit events.
 
 This records the Step 5 account slice: optional customer accounts, email OTP
 login, `/v1/me`, and automatic claiming of guest reservations, restock alerts,
@@ -25,10 +26,13 @@ and special orders. Guest checkout remains the default path.
 | Account creation | Created lazily on first successful OTP verification |
 | OTP delivery | Existing notification worker drains OTP challenges; no synchronous SMTP call |
 | OTP storage | No plaintext code at rest; code is derived from the challenge id and server secret |
-| Session token | HS256 JWT, 12 hours, memory-only in the app |
+| Session token | HS256 JWT, 12 hours, persisted in secure device storage |
+| Refresh token | Opaque server-side token, 7 days, rotates on use; revoked on logout / revoke-all |
+| Email change | New address must prove ownership with an OTP before the account email changes |
+| Account audit | Customer-scoped rows in `customer_audit_events`, separate from tenant audit |
 | Mobile account data | Fetched from `/v1/me` and held in React Query; not merged into guest AsyncStorage |
-| Sign-out | Remove account token and account query cache; leave device-local guest rows alone |
-| App launch | No persisted account token, so a cold launch always starts signed out |
+| Sign-out | Remove account tokens and account query cache; leave device-local guest rows alone |
+| App launch | Restore the persisted session, then refresh or return to sign-in if it is invalid |
 
 ### Why global identity
 
@@ -252,17 +256,30 @@ No `tenant_id`: the account is global. `get_current_customer` checks:
 Staff endpoints keep their existing tenant JWT and cannot accept a customer
 token. Customer endpoints cannot accept a staff token.
 
-Token lifetime is 12 hours in this slice. The backend also issues a server-side
-opaque refresh token with a 7-day lifetime; refresh tokens rotate on use and are
-revoked on logout and `POST /v1/me/sessions/revoke-all`. The mobile app still
-keeps the live customer session in memory until the auth state is wired to
-persist and use the refresh token, so a cold launch still requires a new code
-until that client integration lands. Disabling an account takes effect on the
-next request because `is_active` is checked.
+Token lifetime is 12 hours. The backend also issues a server-side opaque refresh
+token with a 7-day lifetime; refresh tokens rotate on use and are revoked on
+logout, `POST /v1/me/sessions/revoke-all`, account deletion, and email change.
+The mobile app persists both tokens in secure device storage, restores the
+session on cold launch, and swaps in the rotated pair after a refresh. A failed
+refresh clears the stored session. Disabling an account takes effect on the next
+request because `is_active` is checked.
+
+Email change uses the OTP challenge store with a non-null `user_id`:
+
+```text
+POST /v1/me/email         -> send a code to the requested new address
+POST /v1/me/email/verify  -> move the account email after proving ownership
+```
+
+Verification rejects addresses already owned by another account, revokes every
+refresh session, issues a fresh token pair to the current device, claims unowned
+guest rows matching the new email, and records a customer audit event. Login
+verification only redeems challenges with `user_id IS NULL`; email-change
+verification only redeems the current customer's non-null challenge.
 
 ## 6. Guest claiming
 
-On every successful verification, for each tenant:
+On every successful login verification, for each tenant:
 
 ```sql
 UPDATE reservations
@@ -287,6 +304,8 @@ Rules:
 - Claiming iterates tenants because RLS prevents a global email scan. Shop
   counts are small today; this can be replaced with a customer/tenant
   membership index later.
+- Email change re-runs claiming for the new address after the change commits, so
+  guest rows created with the new email are linked to the same account.
 
 When a customer creates a row while signed in:
 
@@ -302,8 +321,9 @@ immediately if the request already has an owner.
 
 ## 7. API contracts
 
-All account endpoints require `Authorization: Bearer <customer token>` and
-return `Cache-Control: no-store`.
+All `/v1/me` endpoints and `/v1/auth/logout` require
+`Authorization: Bearer <customer token>` and return `Cache-Control: no-store`.
+OTP request/verify and refresh are unauthenticated credential exchanges.
 
 ### Auth
 
@@ -326,6 +346,8 @@ POST /v1/auth/otp/verify
   "access_token": "...",
   "token_type": "bearer",
   "expires_in": 43200,
+  "refresh_token": "...",
+  "refresh_expires_in": 604800,
   "is_new_account": true,
   "customer": {
     "id": "...",
@@ -344,6 +366,28 @@ POST /v1/auth/otp/verify
 Errors: generic `401` for invalid/expired code, `429` with `Retry-After`,
 `403` for disabled accounts. Request errors never reveal account existence.
 
+```http
+POST /v1/auth/refresh
+{ "refresh_token": "..." }
+```
+
+Returns the same token shape as verify. Refresh tokens rotate; a replayed token
+is rejected. Requesting a new OTP does not revoke existing sessions.
+
+```http
+POST /v1/auth/logout
+204
+```
+
+Requires a customer token and revokes that customer's refresh tokens.
+
+```http
+POST /v1/me/sessions/revoke-all
+204
+```
+
+Requires a customer token and revokes every refresh token for the account.
+
 ### Me
 
 ```http
@@ -351,6 +395,40 @@ GET /v1/me
 ```
 
 Returns the customer profile.
+
+```http
+PATCH /v1/me
+{ "display_name": "...", "phone": "...", "push_notifications_enabled": true }
+```
+
+Updates the profile and notification preferences, returning the customer profile.
+
+```http
+DELETE /v1/me
+204
+```
+
+Deactivates the account, revokes refresh tokens, and records a customer audit
+event.
+
+```http
+POST /v1/me/email
+{ "email": "new@example.com" }
+
+202 {
+  "expires_in": 600,
+  "resend_after": 60,
+  "debug_code": null
+}
+```
+
+```http
+POST /v1/me/email/verify
+{ "email": "new@example.com", "code": "123456" }
+```
+
+Returns the same token shape as verify, with a new access/refresh pair for the
+current device. The new address must not belong to another account.
 
 ```http
 GET /v1/me/reservations
@@ -426,6 +504,9 @@ No token means the current guest behavior, unchanged.
 - `users` gains a global-row policy; staff rows remain tenant-scoped and staff
   queries continue to filter by tenant.
 - `customer_otp_challenges` is global like `cards`; it has no tenant RLS.
+- `customer_audit_events` is global because one customer spans tenants; RLS
+  limits rows to the active `app.customer_id`.
+- `push_tokens` are customer-scoped and visible to the push worker context.
 - Guest endpoints continue to set tenant context and authorize by access-token
   hash.
 
@@ -435,10 +516,13 @@ Postgres coverage proves:
 - a customer context cannot see another customer's rows in the same tenant;
 - a tenant context alone cannot see another tenant's rows;
 - global customer login works without a tenant context;
-- claim updates only unowned matching rows.
+- claim updates only unowned matching rows;
+- customer audit rows are isolated to their customer and reject cross-customer
+  writes.
 
-The Alembic `0004_customer_accounts` downgrade/upgrade round trip is verified
-separately on PostgreSQL and SQLite.
+The Alembic `0007_customer_email_audit` downgrade/upgrade round trip is verified
+separately on PostgreSQL and SQLite. The customer audit RLS policy and table are
+recreated on upgrade.
 
 ## 9. Mobile UX and state
 
@@ -446,17 +530,19 @@ separately on PostgreSQL and SQLite.
 
 Add `AuthProvider` inside `QueryClientProvider`:
 
-- token held only in memory; no account token in SecureStore or AsyncStorage;
-- a cold app launch has no token and therefore starts signed out;
-- backgrounding and reopening the same app process keeps the in-memory token
-  until the 12-hour server expiry;
-- key `cardtracker.auth-token.v1` is not used; guest tokens keep their existing
-  storage;
-- no launch restore; the token is set only after a successful verify in this
-  app process;
-- `401` clears the token;
-- `requestCode(email)` and `verifyCode(email, code)`;
-- `signOut()` removes the token and account query cache;
+- access and refresh tokens persist via SecureStore on native platforms and
+  AsyncStorage on web;
+- cold launch restores both tokens, validates them with `/v1/me`, and falls back
+  to a refresh-token exchange when the access token is stale;
+- the refresh handler rotates the stored tokens; a failed refresh signs out and
+  clears local account cache;
+- the guest token keys are unchanged;
+- `401` attempts one refresh when a refresh token exists; a failed refresh signs
+  out and clears local session state;
+- `requestCode(email)` / `verifyCode(email, code)`;
+- `requestEmailChange(email)` / `verifyEmailChange(email, code)`;
+- `signOut()` revokes the server session, removes both tokens, and removes the
+  account query cache;
 - expose `customer`, `token`, `hydrated`, `isAuthenticated`.
 
 ### Account screen
@@ -468,15 +554,19 @@ Add `/account`:
 - explain that guest holds, alerts, and special orders with the same email will
   be linked;
 - after verification, show claimed counts;
-- signed in: account email, linked-data counts, "Refresh", "Sign out";
-- development-only debug code display when the API returns one.
+- signed in: account email, linked-data counts, profile and notification
+  preferences, email change with a new-address code, "Refresh", "Delete account",
+  and "Sign out";
+- development-only debug code display for login and email-change codes.
 
 Add an account/sign-in entry point on the home hero.
 
 ### Account data
 
 Use React Query hooks for `/v1/me` lists, enabled only when signed in. Do not
-write account data into the existing guest AsyncStorage stores.
+write account data into the existing guest AsyncStorage stores. The persisted
+query cache can include account queries while signed in; sign-out removes
+account queries from it.
 
 Home, alerts, and special-order lists combine:
 
@@ -503,12 +593,11 @@ Create forms:
 
 ### Not in this slice
 
-- offline caching of account data;
-- push notifications;
-- account profile editing, email change, or deletion;
-- account merge UI;
+- a customer-facing audit/activity screen;
+- an account merge conflict UI (automatic claiming is implemented);
 - admin customer lookup;
-- universal/app links for account emails.
+- notification center/delivery log and push failure monitoring;
+- production universal-link validation and browser install cues.
 
 ## 10. Security and privacy notes
 
@@ -527,8 +616,13 @@ Create forms:
   does not invalidate a previously saved guest token. This preserves the
   existing guest contract; a later "clear device data" control can address it.
 - Rate limiting remains in-process; Redis is still a production hardening item.
-- No refresh/revocation table yet; token lifetime and disabled-account checks
-  are the current controls.
+- Refresh token secrets are stored hashed; the table supports per-session
+  revocation and rotation. A replayed or expired refresh token is rejected.
+- Email change requires control of both the current session and the new email.
+  A target address owned by another account is rejected before a confirmation
+  code is sent; the unauthenticated OTP request path stays deliberately generic.
+- Customer audit rows store action metadata, never OTPs or token secrets. They
+  are customer-scoped by RLS and are separate from tenant audit rows.
 
 ## 11. Tests and verification
 
@@ -552,19 +646,31 @@ Backend:
 - account cancel/accept/unsubscribe works;
 - claimed restock alerts still work with the guest unsubscribe token;
 - inactive accounts are rejected;
-- Postgres RLS tests for global users, customer context, and claim scope.
+- refresh tokens rotate, reject replay, and are revoked by logout, revoke-all,
+  deletion, and email change;
+- email change sends a challenge to the new address, rejects addresses owned by
+  another account, handles expiry/attempts/cooldown, issues a fresh token pair,
+  and re-claims matching guest rows;
+- customer audit rows are written for login, refresh, logout, revoke-all,
+  profile update, email change, and deletion;
+- Postgres RLS tests for global users, customer context, claim scope, push
+  tokens, and customer audit rows.
 - migration downgrade/upgrade verified on PostgreSQL and SQLite.
 
 Mobile:
 
-- TypeScript, ESLint, web export;
+- TypeScript, ESLint, Vitest for `src/lib/**` at 100% statement/branch/function/
+  line coverage;
 - guest browser smoke from the earlier Step 5 slice still passes;
 - account UI/API coverage comes from the backend suites. A signed-in manual
   smoke is still required before release:
   - guest hold -> sign in -> claim -> sign out -> guest still visible;
+  - cold launch restores the session and rotates an expired access token;
   - second browser/device sign-in sees the same account data;
   - account-only hold detail/cancel works;
   - account alert unsubscribe and special-order accept/cancel work;
+  - email change signs out other devices, applies the new address, and keeps
+    the current device signed in;
   - guest-only flows still work.
 
 Docs:

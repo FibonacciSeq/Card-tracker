@@ -1,10 +1,11 @@
 # Card Tracker platform — status
 
-Last updated: **2026-11-03**
-Latest commit: **`b05107c` — Add restock alerts and special-order customer flows**
+Last updated: **2026-11-04**
+Latest commit: **`9704c5b` — Fix Playwright API port**
 Working tree: Step 5 customer mobile work is mostly complete: push
-notifications, offline cache, localization, account profile updates/deletes, and
-mobile smoke coverage are in place; remaining work is polishing and release QA.
+notifications, offline cache, localization, account lifecycle and session
+safety, profile updates/deletes, and mobile smoke coverage are in place;
+remaining work is notification monitoring and release QA.
 
 This file is the quick, human-readable status of the multi-vendor platform.
 The full product/technical specification lives outside the repository in the
@@ -41,8 +42,9 @@ for the original single-shop workflow until the new stack replaces it.
 - **Admin:** Vite + React 19 + TypeScript + TanStack Query, no SSR and no
   second backend. Types are generated from a committed OpenAPI snapshot.
 - **Mobile:** Expo SDK 58 + React Native + TypeScript + Expo Router +
-  TanStack Query. The customer app is guest-first with an optional
-  memory-only account session; types come from the same OpenAPI snapshot.
+  TanStack Query. The customer app is guest-first with an optional account
+  session persisted in secure device storage and rotated by refresh token; types
+  come from the same OpenAPI snapshot.
 - **Workers:** expiry worker (holds and quotes) and notification outbox worker.
 - **Notifications:** transactional outbox with console or SMTP delivery,
   retry/backoff, and per-tenant iteration so RLS stays enforced. The `none`
@@ -231,9 +233,18 @@ email-OTP accounts on top:
   account-side cancel, quote accept, and alert deletion. Signing in claims
   unowned guest rows with the same email across shops; rows owned by another
   customer are never reassigned.
-- Account token is 12 hours and memory-only in the app: cold launch starts
-  signed out, while background resume keeps the session until expiry. There is
-  no refresh or revocation yet.
+- Account access tokens are short-lived and paired with a rotated refresh token.
+  The app persists both in secure device storage, rehydrates the session on cold
+  launch, and revokes the refresh token on logout. `POST
+  /v1/me/sessions/revoke-all` ends every active refresh session.
+- Email changes require an OTP sent to the new address. Verification rejects a
+  target address already owned by another account, revokes existing refresh
+  sessions, issues a fresh token pair to the current device, and claims unowned
+  guest rows that use the new email.
+- Global customer account/session events (login, refresh, logout, profile
+  update, email change, deletion, and session revocation) are stored in
+  `customer_audit_events`. The table is customer-scoped by PostgreSQL RLS and is
+  deliberately separate from the tenant audit trail.
 - The app combines `/v1/me` rows with device-local guest rows, preferring the
   account copy on duplicate IDs. Signed-in create forms lock the account email
   and still return a guest token for local detail.
@@ -244,11 +255,11 @@ email-OTP accounts on top:
   SQLite and PostgreSQL tests.
 
 The main Step 5 items are now implemented: push notifications, persisted
-offline caching, locale support, mobile browser smoke coverage, and account
-profile update/delete flows. The remaining focus is product polish, session
-semantics, and a signed-in multi-device release smoke. Printed codes still use
-the custom scheme, and universal links on a public HTTPS domain are not yet
-configured.
+offline caching, locale support, mobile browser smoke coverage, account
+lifecycle/session safety, and account profile update/delete flows. The remaining
+focus is notification monitoring, product polish, and a signed-in multi-device
+release smoke. Printed codes still use the custom scheme, and universal links on
+a public HTTPS domain are configured but not yet validated in production.
 
 ---
 
@@ -257,24 +268,24 @@ configured.
 | Check | Result |
 | --- | --- |
 | Root Python suite (`pytest --cov --cov-branch`) | **351 passed, 100% line/branch** |
-| Backend SQLite suite | **209 passed, 10 PostgreSQL tests skipped, 100%** |
-| Backend with PostgreSQL test URLs | **219 passed, 100%** |
-| Backend PostgreSQL-only suite (RLS, customer claiming, locking) | **10 passed** |
+| Backend SQLite suite | **259 passed, 12 PostgreSQL tests skipped, 100%** |
+| Backend with PostgreSQL test URLs | **271 passed, 100%** |
+| Backend PostgreSQL-only suite (RLS, customer claiming, locking) | **12 passed** |
 | Backend Ruff / format / mypy | Clean |
-| Alembic `0004_customer_accounts` downgrade → upgrade | Verified on PostgreSQL; indexes and RLS policies recreated |
+| Alembic `0007_customer_email_audit` downgrade → upgrade | Verified on SQLite and PostgreSQL; customer RLS policy recreated |
 | Admin ESLint / TypeScript / production build | Clean |
 | Admin Vitest logic/API-client coverage | **23 passed, 100% statements/branches/functions/lines** |
 | Admin production source maps | **0** `.map` files in `dist/` |
 | Admin Playwright suite | **8 passed** |
 | Mobile TypeScript / ESLint | Clean |
-| Mobile Vitest `src/lib/**` coverage | **26 passed, 100% statements/branches/functions/lines** |
+| Mobile Vitest `src/lib/**` coverage | **42 passed, 100% statements/branches/functions/lines** |
 | Mobile `expo-doctor` | **20/20** |
 | Mobile production web export | Passed |
 | Mobile browser smoke test (local API) | Passed: scan entry → storefront → card detail → add to hold; restock subscribe/unsubscribe; special-order create → staff quote → customer accept |
 | Mobile deep-link parser cases | Passed: custom scheme, https, Expo Go, path, slug, bad UUID, traversal, foreign scheme |
 | SQL Server Docker schema/E2E | Wired in CI/Makefile; 21/21 assertions pass locally; skips cleanly without Docker |
 | Alembic downgrade base → upgrade head | Verified on PostgreSQL |
-| RLS enabled + forced | All 10 tenant tables, including `card_requests` and `restock_alerts` |
+| RLS enabled + forced | All 10 tenant tables, plus customer-scoped `push_tokens` and `customer_audit_events` |
 
 The Python coverage floors are 100% line and branch for both the root and
 backend suites. Admin and mobile keep their explicitly included logic/API
@@ -319,9 +330,9 @@ npm run doctor
 PostgreSQL verification uses `backend/scripts/local_postgres.sh`; export the
 admin and non-owner app URLs as described in `backend/README.md`, or use
 `./scripts/test_backend_postgres.sh`, which starts the portable server and
-applies the URLs. Without those variables the SQLite run reports 10
+applies the URLs. Without those variables the SQLite run reports 12
 PostgreSQL-test skips; with the local server and both URLs exported it reports
-219 passed. CI supplies a real non-owner role.
+271 passed. CI supplies a real non-owner role.
 
 CI runs four workflows: legacy (`ci.yml`), backend (`backend.yml`), admin
 (`admin.yml`), and mobile (`mobile.yml`). The legacy workflow now includes the
@@ -370,50 +381,49 @@ Remaining app work is focused and mostly product/QA action items:
 ### Recommended gap-filling sequence (non-payment)
 
 Use this order so the app moves from correctness to product readiness without
-adding churn:
+adding churn. Items 1–3 and 5 are implemented; notification delivery visibility
+is the main remaining code slice before release QA.
 
-1. Account lifecycle and session safety
-   - Add refresh tokens or a clear explicit re-auth flow.
-   - Add account logout on all devices and a revoke-all-sessions action.
-   - Add email change + account ownership re-validation checks.
-   - Add backend audit rows for account updates, deletion, and session events.
-   - Acceptance: user can stay signed in across app restarts without a security gap,
-     and a revoked session cannot keep working after logout.
+1. Account lifecycle and session safety — **implemented 2026-11-04**
+   - Refresh tokens rotate on use; logout and revoke-all revoke server-side
+     sessions.
+   - Email changes require an OTP sent to the new address, reject addresses
+     owned by another account, rotate sessions, and re-claim matching guest rows.
+   - Customer audit rows cover logins, refreshes, profile updates, email changes,
+     deletion, logout, and session revocation.
+   - Acceptance met: sessions survive restarts without a security gap, and a
+     revoked session cannot keep refreshing.
 
-2. Account profile and notifications settings
-   - Add a dedicated profile settings screen with display name, phone, and optional
-     preferences.
-   - Add notification preference toggles: push, email, quiet hours, and opt-out.
-   - Keep account data consistent with guest-row claiming rules.
-   - Acceptance: a signed-in user can update profile data and preferences without
-     confusing guest/device-local state.
+2. Account profile and notifications settings — **implemented**
+   - Dedicated profile settings cover display name, phone, push/email toggles,
+     quiet hours, and opt-out state.
+   - Acceptance met: profile and preference changes stay consistent with account
+     and guest-row claiming rules.
 
-3. Universal links and install flow
-   - Configure production app links for `https://…/shop/...` and fallback apks/App
-     Store flows.
-   - Replace custom-scheme-only QR assumptions with production-ready deep links.
-   - Add landing pages or install cues for customers without the app.
-   - Acceptance: both app-installed and browser-only customers can reach the same
-     product flow reliably.
+3. Universal links and install flow — **configured; production validation remains**
+   - Canonical HTTPS app links and the custom-scheme fallback are wired through
+     the admin QR panel and mobile parser.
+   - Remaining: validate the production domain, store links, and browser install
+     cues on real devices.
 
-4. Push/email notification quality
+4. Push/email notification quality — **next**
    - Add a notification center or delivery log for customer push/email events.
    - Add retry and failure monitoring for push registration and token expiry.
-   - Add unsubscribe / preferences controls on the customer side.
-   - Acceptance: a user can see notification status and can safely opt out or
+   - Per-channel preferences, quiet hours, and opt-out are already implemented.
+   - Acceptance: a user can see notification status and safely opt out or
      re-enable delivery.
 
-5. Offline and sync reliability
-   - Expand the persisted query cache to cover account and guest data updates.
-   - Add conflict handling for local guest changes that later merge with an account.
-   - Add an explicit stale-cache invalidation strategy.
+5. Offline and sync reliability — **mostly implemented**
+   - Persisted query cache and account/guest merge are in place.
+   - Remaining: conflict handling for guest rows edited offline and an explicit
+     stale-cache invalidation strategy.
    - Acceptance: the app remains usable offline without silently showing stale or
      conflicting account data.
 
 6. Release QA and pilot shop rollout
    - Run a signed-in multi-device smoke on a development build.
-   - Validate QR entry, deep links, push permissions, profile update, and delete flows
-     on real devices.
+   - Validate QR entry, deep links, push permissions, profile update, email
+     change, and delete flows on real devices.
    - Run a pilot with 1–2 vendors and an owner + customer test path.
    - Acceptance: the app is stable enough for a limited live rollout without
      severe customer or tenant data issues.
@@ -457,11 +467,11 @@ adding churn:
 
 ## 5. Current limitations
 
-- Customer accounts are optional and OTP-only, but the backend now issues a
-  refresh token, rotates it on use, and supports logout / revoke-all session
-  actions. The mobile app persists the signed-in session safely and rehydrates
-  it across app restarts, so the live customer session is no longer effectively
-  memory-only.
+- Customer accounts are optional and OTP-only. The backend issues rotating
+  refresh tokens, supports logout / revoke-all session actions, requires an OTP
+  to the new address before changing email, and writes customer-scoped account
+  audit rows. The mobile app persists and rehydrates the session across app
+  restarts. A customer-facing audit/activity screen is not exposed yet.
 - Guest rows are still device-local until a customer verifies the same email.
   Push delivery, offline cache, localization, and device smoke coverage are all
   implemented in the mobile app, and the signed-in UX has reached release QA

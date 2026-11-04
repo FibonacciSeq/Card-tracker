@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
-import secrets
+import uuid
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException, Request, status
@@ -21,7 +21,7 @@ from app.security import (
     derive_otp_code,
     normalize_email,
 )
-from app.services import ratelimit
+from app.services import audit, ratelimit
 
 
 def _now() -> datetime:
@@ -94,6 +94,7 @@ def request_otp(db: Session, email: str, request: Request) -> schemas.OtpRequest
         update(models.CustomerOtpChallenge)
         .where(
             models.CustomerOtpChallenge.email == email,
+            models.CustomerOtpChallenge.user_id.is_(None),
             models.CustomerOtpChallenge.consumed_at.is_(None),
         )
         .values(consumed_at=now)
@@ -212,6 +213,7 @@ def verify_otp(
         select(models.CustomerOtpChallenge)
         .where(
             models.CustomerOtpChallenge.email == email,
+            models.CustomerOtpChallenge.user_id.is_(None),
             models.CustomerOtpChallenge.consumed_at.is_(None),
         )
         .order_by(models.CustomerOtpChallenge.created_at.desc())
@@ -271,6 +273,14 @@ def verify_otp(
     customer.email = email
     db.flush()
 
+    set_customer_context(db, customer.id)
+    audit.record_customer(
+        db,
+        customer_id=customer.id,
+        action="account.login",
+        summary="Customer signed in",
+        data={"is_new_account": created},
+    )
     claimed = _claim_guest_rows(db, customer)
     db.commit()
 
@@ -284,6 +294,187 @@ def verify_otp(
         refresh_token=refresh_token,
         refresh_expires_in=settings.customer_refresh_token_minutes * 60,
         is_new_account=created,
+        customer=schemas.CustomerOut.model_validate(customer),
+        claimed=claimed,
+    )
+
+
+def request_email_change(
+    db: Session,
+    customer: models.User,
+    email: str,
+    request: Request,
+) -> schemas.OtpRequestOut:
+    """Send a confirmation code to the new address before changing it."""
+    new_email = normalize_email(email)
+
+    ratelimit.enforce(
+        request,
+        scope="otp-request-ip",
+        limit=settings.otp_request_ip_limit,
+        window_seconds=settings.otp_request_ip_window_seconds,
+    )
+    ratelimit.enforce(
+        request,
+        scope="otp-request-email",
+        limit=settings.otp_request_email_limit,
+        window_seconds=settings.otp_request_email_window_seconds,
+        extra=_email_rate_key(new_email),
+    )
+
+    if new_email == customer.email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="This is already your email address.",
+        )
+
+    other = _find_customer(db, new_email)
+    if other is not None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This email address is already in use.",
+        )
+
+    now = _now()
+    latest = _latest_challenge(db, new_email)
+    latest_created = _as_utc(latest.created_at) if latest else None
+    if latest_created is not None:
+        elapsed = (now - latest_created).total_seconds()
+        if elapsed < settings.otp_resend_seconds:
+            retry_after = max(1, int(settings.otp_resend_seconds - elapsed))
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Please wait before requesting another code.",
+                headers={"Retry-After": str(retry_after)},
+            )
+
+    # One pending change per account; an older target address must not remain
+    # redeemable after the customer asks for a different one.
+    db.execute(
+        update(models.CustomerOtpChallenge)
+        .where(
+            models.CustomerOtpChallenge.user_id == customer.id,
+            models.CustomerOtpChallenge.consumed_at.is_(None),
+        )
+        .values(consumed_at=now)
+    )
+    challenge = models.CustomerOtpChallenge(
+        email=new_email,
+        user_id=customer.id,
+        expires_at=now + timedelta(seconds=settings.otp_expiry_seconds),
+        created_at=now,
+    )
+    db.add(challenge)
+    db.commit()
+    db.refresh(challenge)
+
+    debug_code = None
+    if settings.otp_debug_code and settings.environment in ("development", "test"):
+        debug_code = derive_otp_code(challenge.id, new_email)
+
+    return schemas.OtpRequestOut(
+        expires_in=settings.otp_expiry_seconds,
+        resend_after=settings.otp_resend_seconds,
+        debug_code=debug_code,
+    )
+
+
+def verify_email_change(
+    db: Session,
+    customer: models.User,
+    email: str,
+    code: str,
+    request: Request,
+) -> schemas.CustomerTokenOut:
+    """Apply an email change after the customer proves control of the address."""
+    new_email = normalize_email(email)
+    ratelimit.enforce(
+        request,
+        scope="otp-verify-ip",
+        limit=settings.otp_verify_ip_limit,
+        window_seconds=settings.otp_verify_ip_window_seconds,
+    )
+    ratelimit.enforce(
+        request,
+        scope="otp-verify-email",
+        limit=settings.otp_verify_email_limit,
+        window_seconds=settings.otp_verify_email_window_seconds,
+        extra=_email_rate_key(new_email),
+    )
+
+    now = _now()
+    challenge = db.scalar(
+        select(models.CustomerOtpChallenge)
+        .where(
+            models.CustomerOtpChallenge.email == new_email,
+            models.CustomerOtpChallenge.user_id == customer.id,
+            models.CustomerOtpChallenge.consumed_at.is_(None),
+        )
+        .order_by(models.CustomerOtpChallenge.created_at.desc())
+        .limit(1)
+        .with_for_update()
+    )
+    expires_at = _as_utc(challenge.expires_at) if challenge else None
+    if challenge is None or expires_at is None or expires_at <= now or challenge.attempts >= settings.otp_max_attempts:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired code",
+        )
+
+    expected = derive_otp_code(challenge.id, new_email)
+    if not hmac.compare_digest(expected, code):
+        challenge.attempts += 1
+        if challenge.attempts >= settings.otp_max_attempts:
+            challenge.consumed_at = now
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired code",
+        )
+
+    challenge.consumed_at = now
+    other = _find_customer(db, new_email)
+    if other is not None:
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This email address is already in use.",
+        )
+
+    old_email = customer.email
+    customer.email = new_email
+    customer.email_verified_at = now
+    db.flush()
+
+    claimed = _claim_guest_rows(db, customer)
+    # Email is an account identifier, so a change ends every other session.
+    revoke_customer_refresh_tokens(
+        db,
+        customer.id,
+        commit=False,
+        action="account.sessions_revoked",
+    )
+    refresh_token = _issue_refresh_token(db, customer.id)
+    audit.record_customer(
+        db,
+        customer_id=customer.id,
+        action="account.email_changed",
+        summary="Customer email changed",
+        data={
+            "old_email": old_email,
+            "new_email": new_email,
+            "claimed": claimed.model_dump(),
+        },
+    )
+    db.commit()
+
+    set_customer_context(db, customer.id)
+    return schemas.CustomerTokenOut(
+        access_token=create_customer_access_token(customer.id),
+        expires_in=settings.customer_access_token_minutes * 60,
+        refresh_token=refresh_token,
+        refresh_expires_in=settings.customer_refresh_token_minutes * 60,
+        is_new_account=False,
         customer=schemas.CustomerOut.model_validate(customer),
         claimed=claimed,
     )
@@ -306,14 +497,29 @@ def _issue_refresh_token(db: Session, customer_id: uuid.UUID) -> str:
     return token
 
 
-def revoke_customer_refresh_tokens(db: Session, customer_id: uuid.UUID, refresh_token: str | None = None) -> None:
+def revoke_customer_refresh_tokens(
+    db: Session,
+    customer_id: uuid.UUID,
+    refresh_token: str | None = None,
+    *,
+    action: str = "account.sessions_revoked",
+    commit: bool = True,
+) -> None:
     stmt = select(models.CustomerRefreshToken).where(models.CustomerRefreshToken.user_id == customer_id)
     if refresh_token is not None:
         stmt = stmt.where(models.CustomerRefreshToken.token_hash == _refresh_token_hash(refresh_token))
     rows = db.scalars(stmt).all()
     for row in rows:
         row.revoked_at = _now()
-    db.commit()
+    audit.record_customer(
+        db,
+        customer_id=customer_id,
+        action=action,
+        summary="Customer signed out" if action == "account.logout" else "Customer sessions revoked",
+        data={"token_count": len(rows), "single_token": refresh_token is not None},
+    )
+    if commit:
+        db.commit()
 
 
 def refresh_customer_session(db: Session, refresh_token: str) -> schemas.CustomerTokenOut:
@@ -344,6 +550,13 @@ def refresh_customer_session(db: Session, refresh_token: str) -> schemas.Custome
         select(models.CustomerRefreshToken.id).where(
             models.CustomerRefreshToken.token_hash == _refresh_token_hash(new_refresh)
         )
+    )
+    set_customer_context(db, customer.id)
+    audit.record_customer(
+        db,
+        customer_id=customer.id,
+        action="account.session_refreshed",
+        summary="Customer session refreshed",
     )
     db.commit()
     access_token = create_customer_access_token(customer.id)

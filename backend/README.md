@@ -276,12 +276,12 @@ cd backend
 ../.venv/bin/python -m pytest --cov=app --cov-branch --cov-report=term-missing
 ```
 
-The current local result is **209 passed, 10 PostgreSQL tests skipped, 100%
+The current local result is **259 passed, 12 PostgreSQL tests skipped, 100%
 line and branch coverage**. The coverage floor is 100% in `pyproject.toml`, so
 any new uncovered line or branch fails the command.
 
 With the Postgres URLs exported, the same run includes the isolation,
-customer-account, and locking tests and reports **219 passed, 100% coverage**.
+customer-account, and locking tests and reports **271 passed, 100% coverage**.
 The repository helper starts the portable server and applies the URLs for you:
 
 ```bash
@@ -367,27 +367,29 @@ with an optional account: shop directory, storefront search and pagination,
 local cart, guest or signed-in reservation create/lookup/cancel, hold history,
 restock alerts, special-order request/quote/cancel flows, and email OTP
 sign-in. Account data is fetched from `/v1/me` and combined with device-local
-guest rows; the account token is memory-only and is never persisted. Guest
-tokens are stored in SecureStore on native platforms and in AsyncStorage for
-the web preview. See [`mobile/README.md`](../mobile/README.md) for setup and
-current scope.
+guest rows. Access and refresh tokens are persisted with SecureStore on native
+platforms and AsyncStorage for the web preview; sign-out revokes the server
+session and clears account queries. See [`mobile/README.md`](../mobile/README.md)
+for setup and current scope.
 
 ## Phase 0 gaps / before pilot
 
-- Customer accounts are optional and use email OTP only; there is no password,
-  refresh token, revocation/session list, profile editing, or account deletion
-  yet. Account numbers are global per verified email across shops.
+- Customer accounts are optional and use email OTP only. Refresh-token rotation,
+  logout / revoke-all sessions, profile editing, email change with OTP
+  re-validation, and account deletion are implemented. Account emails are
+  global per verified email across shops.
 - Native FCM/APNs delivery is implemented, but a real end-to-end send needs a
   Firebase service-account JSON, an APNs `.p8` key, provider project setup, and
   a physical device. Staff in-app notifications still exist only in the outbox;
   they are not surfaced in the admin yet.
 - Restock alerts and special orders created while signed out stay device-local
-  until a customer verifies the same email and claims them. Account data is not
-  cached offline.
-- The mobile app has native push registration/deep links, but still no offline
-  cache, localization, or device E2E suite. It supports QR/deep-link entry,
-  card detail, restock alerts, special orders, and optional OTP accounts. The
-  API and vendor web admin are otherwise implemented.
+  until a customer verifies the same email and claims them. The persisted query
+  cache can include account data while signed in; sign-out removes account
+  queries from it.
+- The mobile app has native push registration/deep links, QR/deep-link entry,
+  card detail, restock alerts, special orders, optional OTP accounts, offline
+  query caching, localization, and a browser smoke suite. A real-device signed-in
+  E2E suite is still outstanding.
 - PostgreSQL-only tests skip unless `CARDTRACKER_TEST_POSTGRES_ADMIN_URL` and
   `CARDTRACKER_TEST_POSTGRES_URL` are set; SQLite cannot prove RLS or locking.
 - Rate limiting is in-process, so it assumes a single API worker.

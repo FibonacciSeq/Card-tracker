@@ -342,6 +342,28 @@ export function deleteMe(token: string): Promise<void> {
   });
 }
 
+export function requestEmailChange(token: string, email: string): Promise<OtpRequestResult> {
+  return request<OtpRequestResult>("/v1/me/email", {
+    method: "POST",
+    body: { email },
+    headers: bearer(token),
+    auth: true,
+  });
+}
+
+export function verifyEmailChange(
+  token: string,
+  email: string,
+  code: string,
+): Promise<CustomerToken> {
+  return request<CustomerToken>("/v1/me/email/verify", {
+    method: "POST",
+    body: { email, code },
+    headers: bearer(token),
+    auth: true,
+  });
+}
+
 export function registerPushToken(
   token: string,
   payload: PushTokenCreate,

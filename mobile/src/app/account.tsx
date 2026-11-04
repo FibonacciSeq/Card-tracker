@@ -13,7 +13,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { accountKeys, useMyCardRequests, useMyReservations, useMyRestockAlerts } from "../api/queries";
-import type { ClaimedCounts } from "../api/types";
+import type { ClaimedCounts, CustomerAccount, CustomerProfileUpdate } from "../api/types";
 import { Field } from "../components/Field";
 import { LoadingState } from "../components/LoadingState";
 import { PrimaryButton } from "../components/PrimaryButton";
@@ -24,6 +24,7 @@ import { usePush, type PushStatus } from "../state/push";
 import { colors, radii, spacing, type } from "../theme";
 
 type Step = "email" | "code";
+type EmailChangeStep = "idle" | "code";
 
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
@@ -37,10 +38,12 @@ export default function AccountScreen() {
     lastClaimed,
     refreshCustomer,
     requestCode,
+    requestEmailChange,
     signOut,
     token,
     updateProfile,
     verifyCode,
+    verifyEmailChange,
   } = useAuth();
   const push = usePush();
 
@@ -50,16 +53,15 @@ export default function AccountScreen() {
   const [debugCode, setDebugCode] = useState<string | null>(null);
   const [resendIn, setResendIn] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [savingProfile, setSavingProfile] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [displayName, setDisplayName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [pushEnabled, setPushEnabled] = useState(true);
-  const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(true);
-  const [quietHoursEnabled, setQuietHoursEnabled] = useState(false);
-  const [notificationsOptOut, setNotificationsOptOut] = useState(false);
+  const [emailStep, setEmailStep] = useState<EmailChangeStep>("idle");
+  const [newEmail, setNewEmail] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [emailDebugCode, setEmailDebugCode] = useState<string | null>(null);
+  const [emailResendIn, setEmailResendIn] = useState(0);
+  const [changingEmail, setChangingEmail] = useState(false);
 
   const reservations = useMyReservations(token);
   const requests = useMyCardRequests(token);
@@ -72,33 +74,19 @@ export default function AccountScreen() {
   }, [resendIn]);
 
   useEffect(() => {
-    if (!customer) return;
-    setDisplayName(customer.display_name ?? "");
-    setPhone(customer.phone ?? "");
-    setPushEnabled(customer.push_notifications_enabled ?? true);
-    setEmailNotificationsEnabled(customer.email_notifications_enabled ?? true);
-    setQuietHoursEnabled(customer.quiet_hours_enabled ?? false);
-    setNotificationsOptOut(customer.notifications_opt_out ?? false);
-  }, [customer]);
+    if (emailResendIn <= 0) return;
+    const timer = setInterval(() => setEmailResendIn((value) => Math.max(0, value - 1)), 1000);
+    return () => clearInterval(timer);
+  }, [emailResendIn]);
 
-  async function saveProfile() {
+  async function saveProfile(values: CustomerProfileUpdate) {
     setError(null);
     setNotice(null);
-    setSavingProfile(true);
     try {
-      await updateProfile({
-        display_name: displayName.trim() || null,
-        phone: phone.trim() || null,
-        push_notifications_enabled: pushEnabled,
-        email_notifications_enabled: emailNotificationsEnabled,
-        quiet_hours_enabled: quietHoursEnabled,
-        notifications_opt_out: notificationsOptOut,
-      });
+      await updateProfile(values);
       setNotice("Profile updated.");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not update your profile.");
-    } finally {
-      setSavingProfile(false);
     }
   }
 
@@ -114,6 +102,56 @@ export default function AccountScreen() {
     } finally {
       setBusy(false);
     }
+  }
+
+  async function sendEmailChangeCode() {
+    setError(null);
+    setNotice(null);
+    setChangingEmail(true);
+    try {
+      const result = await requestEmailChange(newEmail);
+      setEmailStep("code");
+      setEmailCode("");
+      setEmailDebugCode(result.debug_code ?? null);
+      setEmailResendIn(result.resend_after);
+      setNotice(`We sent a confirmation code to ${newEmail.trim().toLowerCase()}.`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not send a confirmation code.");
+    } finally {
+      setChangingEmail(false);
+    }
+  }
+
+  async function confirmEmailChange() {
+    setError(null);
+    setNotice(null);
+    setChangingEmail(true);
+    try {
+      const result = await verifyEmailChange(newEmail, emailCode);
+      setEmailStep("idle");
+      setNewEmail("");
+      setEmailCode("");
+      setEmailDebugCode(null);
+      setEmailResendIn(0);
+      setNotice(emailChangeMessage(result.claimed));
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: accountKeys.reservations }),
+        queryClient.invalidateQueries({ queryKey: accountKeys.cardRequests }),
+        queryClient.invalidateQueries({ queryKey: accountKeys.restockAlerts }),
+      ]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not confirm the new email.");
+    } finally {
+      setChangingEmail(false);
+    }
+  }
+
+  function cancelEmailChange() {
+    setEmailStep("idle");
+    setNewEmail("");
+    setEmailCode("");
+    setEmailDebugCode(null);
+    setEmailResendIn(0);
   }
 
   async function sendCode() {
@@ -173,6 +211,11 @@ export default function AccountScreen() {
     setStep("email");
     setCode("");
     setDebugCode(null);
+    setEmailStep("idle");
+    setNewEmail("");
+    setEmailCode("");
+    setEmailDebugCode(null);
+    setEmailResendIn(0);
     signOut();
   }
 
@@ -227,52 +270,93 @@ export default function AccountScreen() {
             label="Account created"
             value={customer.created_at ? formatDateTime(customer.created_at) : "—"}
           />
-          <Row label="Session" value="Memory only" />
+          <Row label="Session" value="Secure storage with refresh" />
         </View>
 
+        <ProfileCard customer={customer} onSave={saveProfile} />
+
         <View style={styles.profileCard}>
-          <Text style={styles.pushTitle}>Profile</Text>
-          <Field
-            label="Display name"
-            onChangeText={setDisplayName}
-            placeholder="Your name"
-            value={displayName}
-          />
-          <Field
-            autoComplete="tel"
-            keyboardType="phone-pad"
-            label="Phone"
-            onChangeText={setPhone}
-            placeholder="+381600000000"
-            textContentType="telephoneNumber"
-            value={phone}
-          />
-          <SettingToggle
-            label="Push notifications"
-            value={pushEnabled}
-            onValueChange={setPushEnabled}
-          />
-          <SettingToggle
-            label="Email notifications"
-            value={emailNotificationsEnabled}
-            onValueChange={setEmailNotificationsEnabled}
-          />
-          <SettingToggle
-            label="Quiet hours"
-            value={quietHoursEnabled}
-            onValueChange={setQuietHoursEnabled}
-          />
-          <SettingToggle
-            label="Opt out of all notifications"
-            value={notificationsOptOut}
-            onValueChange={setNotificationsOptOut}
-          />
-          <PrimaryButton
-            label="Save profile"
-            loading={savingProfile}
-            onPress={() => void saveProfile()}
-            variant="secondary"
-          />
+          <Text style={styles.pushTitle}>Email address</Text>
+          <Text style={styles.pushBody}>
+            Changing your email signs out other devices and links guest items that use the new
+            address. We send a confirmation code before applying the change.
+          </Text>
+          {emailStep === "idle" ? (
+            <>
+              <Field
+                autoCapitalize="none"
+                autoComplete="email"
+                keyboardType="email-address"
+                label="New email"
+                onChangeText={setNewEmail}
+                placeholder="new@example.com"
+                textContentType="emailAddress"
+                value={newEmail}
+              />
+              <PrimaryButton
+                disabled={
+                  changingEmail ||
+                  newEmail.trim().length === 0 ||
+                  newEmail.trim().toLowerCase() === customer.email.toLowerCase()
+                }
+                label="Send confirmation code"
+                loading={changingEmail}
+                onPress={() => void sendEmailChangeCode()}
+                variant="secondary"
+              />
+            </>
+          ) : (
+            <>
+              <Text style={styles.pushBody}>
+                Enter the 6-digit code sent to {newEmail.trim().toLowerCase()}.
+              </Text>
+              <Field
+                autoCapitalize="none"
+                keyboardType="number-pad"
+                label="Confirmation code"
+                maxLength={6}
+                onChangeText={(value) => setEmailCode(value.replace(/\D/g, "").slice(0, 6))}
+                placeholder="000000"
+                returnKeyType="done"
+                textContentType="oneTimeCode"
+                value={emailCode}
+              />
+              <PrimaryButton
+                disabled={changingEmail || emailCode.length !== 6}
+                label="Confirm new email"
+                loading={changingEmail}
+                onPress={() => void confirmEmailChange()}
+              />
+              <Pressable
+                accessibilityRole="button"
+                disabled={changingEmail || emailResendIn > 0}
+                onPress={() => void sendEmailChangeCode()}
+                style={({ pressed }) => [styles.resend, pressed && styles.pressed]}
+              >
+                <Text style={[styles.resendLabel, emailResendIn > 0 && styles.resendDisabled]}>
+                  {emailResendIn > 0
+                    ? `Send a new code in ${emailResendIn}s`
+                    : "Send a new code"}
+                </Text>
+              </Pressable>
+              {__DEV__ && emailDebugCode ? (
+                <View style={styles.debug}>
+                  <Text style={styles.debugLabel}>Development code</Text>
+                  <Text selectable style={styles.debugCode}>
+                    {emailDebugCode}
+                  </Text>
+                </View>
+              ) : null}
+              <Pressable
+                accessibilityRole="button"
+                disabled={changingEmail}
+                onPress={cancelEmailChange}
+                style={({ pressed }) => [styles.resend, pressed && styles.pressed]}
+              >
+                <Text style={styles.resendLabel}>Cancel email change</Text>
+              </Pressable>
+            </>
+          )}
         </View>
 
         <View style={styles.pushCard}>
@@ -477,6 +561,12 @@ function claimMessage(claimed: ClaimedCounts): string {
   return `Signed in and linked ${total} earlier item${total === 1 ? "" : "s"}.`;
 }
 
+function emailChangeMessage(claimed: ClaimedCounts): string {
+  const total = totalClaimed(claimed);
+  if (total === 0) return "Email updated. Other devices were signed out.";
+  return `Email updated and linked ${total} earlier item${total === 1 ? "" : "s"}. Other devices were signed out.`;
+}
+
 function CountCard({
   icon,
   label,
@@ -500,6 +590,89 @@ function Row({ label, value }: { label: string; value: string }) {
     <View style={styles.row}>
       <Text style={styles.rowLabel}>{label}</Text>
       <Text style={styles.rowValue}>{value}</Text>
+    </View>
+  );
+}
+
+function ProfileCard({
+  customer,
+  onSave,
+}: {
+  customer: CustomerAccount;
+  onSave: (values: CustomerProfileUpdate) => Promise<void>;
+}) {
+  const [displayName, setDisplayName] = useState(customer.display_name ?? "");
+  const [phone, setPhone] = useState(customer.phone ?? "");
+  const [pushEnabled, setPushEnabled] = useState(customer.push_notifications_enabled ?? true);
+  const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(
+    customer.email_notifications_enabled ?? true,
+  );
+  const [quietHoursEnabled, setQuietHoursEnabled] = useState(customer.quiet_hours_enabled ?? false);
+  const [notificationsOptOut, setNotificationsOptOut] = useState(
+    customer.notifications_opt_out ?? false,
+  );
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    setSaving(true);
+    try {
+      await onSave({
+        display_name: displayName.trim() || null,
+        phone: phone.trim() || null,
+        push_notifications_enabled: pushEnabled,
+        email_notifications_enabled: emailNotificationsEnabled,
+        quiet_hours_enabled: quietHoursEnabled,
+        notifications_opt_out: notificationsOptOut,
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <View style={styles.profileCard}>
+      <Text style={styles.pushTitle}>Profile</Text>
+      <Field
+        label="Display name"
+        onChangeText={setDisplayName}
+        placeholder="Your name"
+        value={displayName}
+      />
+      <Field
+        autoComplete="tel"
+        keyboardType="phone-pad"
+        label="Phone"
+        onChangeText={setPhone}
+        placeholder="+381600000000"
+        textContentType="telephoneNumber"
+        value={phone}
+      />
+      <SettingToggle
+        label="Push notifications"
+        value={pushEnabled}
+        onValueChange={setPushEnabled}
+      />
+      <SettingToggle
+        label="Email notifications"
+        value={emailNotificationsEnabled}
+        onValueChange={setEmailNotificationsEnabled}
+      />
+      <SettingToggle
+        label="Quiet hours"
+        value={quietHoursEnabled}
+        onValueChange={setQuietHoursEnabled}
+      />
+      <SettingToggle
+        label="Opt out of all notifications"
+        value={notificationsOptOut}
+        onValueChange={setNotificationsOptOut}
+      />
+      <PrimaryButton
+        label="Save profile"
+        loading={saving}
+        onPress={() => void save()}
+        variant="secondary"
+      />
     </View>
   );
 }

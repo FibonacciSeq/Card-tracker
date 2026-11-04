@@ -115,6 +115,8 @@ class CustomerOtpChallenge(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(320), index=True)
+    # Set for an email-change challenge; login challenges leave it NULL.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     consumed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -128,6 +130,7 @@ class CustomerOtpChallenge(Base):
         Index("ix_otp_email_created", "email", "created_at"),
         Index("ix_otp_pending_email", "email_sent_at", "next_email_attempt_at"),
         Index("ix_otp_expires", "expires_at"),
+        Index("ix_otp_user_created", "user_id", "created_at"),
     )
 
 
@@ -171,9 +174,7 @@ class CustomerRefreshToken(Base):
     )
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    __table_args__ = (
-        Index("ix_customer_refresh_tokens_user_active", "user_id", "revoked_at"),
-    )
+    __table_args__ = (Index("ix_customer_refresh_tokens_user_active", "user_id", "revoked_at"),)
 
 
 class Card(Base):
@@ -455,6 +456,23 @@ class AuditEvent(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
 
     __table_args__ = (Index("ix_audit_events_tenant_created", "tenant_id", "created_at"),)
+
+
+class CustomerAuditEvent(Base):
+    """Append-only trail of global customer account and session events."""
+
+    __tablename__ = "customer_audit_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True)
+    action: Mapped[str] = mapped_column(String(80), index=True)
+    entity_type: Mapped[str] = mapped_column(String(40))
+    entity_id: Mapped[str] = mapped_column(String(64))
+    summary: Mapped[str] = mapped_column(String(500))
+    data: Mapped[dict] = mapped_column(JSON, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, index=True)
+
+    __table_args__ = (Index("ix_customer_audit_events_user_created", "user_id", "created_at"),)
 
 
 class IdempotencyKey(Base):

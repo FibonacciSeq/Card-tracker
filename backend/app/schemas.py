@@ -171,6 +171,15 @@ class OtpVerifyIn(BaseModel):
     code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
 
 
+class EmailChangeRequestIn(BaseModel):
+    email: EmailStr
+
+
+class EmailChangeVerifyIn(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+
+
 class CustomerRefreshIn(BaseModel):
     refresh_token: str = Field(min_length=16, max_length=512)
 

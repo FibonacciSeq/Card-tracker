@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, joinedload
 from app import models, schemas, serializers
 from app.db import get_db, set_tenant_context
 from app.deps import get_current_customer
-from app.services import accounts
+from app.services import accounts, audit
 from app.services import card_requests as card_request_service
 from app.services import reservations as reservation_service
 
@@ -51,7 +51,7 @@ def logout_customer(
     customer: models.User = Depends(get_current_customer),
     db: Session = Depends(get_db),
 ):
-    accounts.revoke_customer_refresh_tokens(db, customer.id)
+    accounts.revoke_customer_refresh_tokens(db, customer.id, action="account.logout")
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -62,6 +62,26 @@ def revoke_all_customer_sessions(
 ):
     accounts.revoke_customer_refresh_tokens(db, customer.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/me/email", response_model=schemas.OtpRequestOut, status_code=status.HTTP_202_ACCEPTED)
+def request_customer_email_change(
+    payload: schemas.EmailChangeRequestIn,
+    request: Request,
+    customer: models.User = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+):
+    return accounts.request_email_change(db, customer, str(payload.email), request)
+
+
+@router.post("/me/email/verify", response_model=schemas.CustomerTokenOut)
+def verify_customer_email_change(
+    payload: schemas.EmailChangeVerifyIn,
+    request: Request,
+    customer: models.User = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+):
+    return accounts.verify_email_change(db, customer, str(payload.email), payload.code, request)
 
 
 @router.get("/me", response_model=schemas.CustomerOut)
@@ -75,18 +95,33 @@ def update_me(
     customer: models.User = Depends(get_current_customer),
     db: Session = Depends(get_db),
 ):
+    changed: list[str] = []
     if payload.display_name is not None:
         customer.display_name = payload.display_name.strip() or None
+        changed.append("display_name")
     if payload.phone is not None:
         customer.phone = payload.phone.strip() or None
+        changed.append("phone")
     if payload.push_notifications_enabled is not None:
         customer.push_notifications_enabled = payload.push_notifications_enabled
+        changed.append("push_notifications_enabled")
     if payload.email_notifications_enabled is not None:
         customer.email_notifications_enabled = payload.email_notifications_enabled
+        changed.append("email_notifications_enabled")
     if payload.quiet_hours_enabled is not None:
         customer.quiet_hours_enabled = payload.quiet_hours_enabled
+        changed.append("quiet_hours_enabled")
     if payload.notifications_opt_out is not None:
         customer.notifications_opt_out = payload.notifications_opt_out
+        changed.append("notifications_opt_out")
+    if changed:
+        audit.record_customer(
+            db,
+            customer_id=customer.id,
+            action="account.profile_updated",
+            summary="Customer profile updated",
+            data={"fields": changed},
+        )
     db.add(customer)
     db.commit()
     db.refresh(customer)
@@ -99,6 +134,18 @@ def delete_me(
     db: Session = Depends(get_db),
 ):
     customer.is_active = False
+    accounts.revoke_customer_refresh_tokens(
+        db,
+        customer.id,
+        commit=False,
+        action="account.sessions_revoked",
+    )
+    audit.record_customer(
+        db,
+        customer_id=customer.id,
+        action="account.deleted",
+        summary="Customer deleted account",
+    )
     db.add(customer)
     db.commit()
     return Response(status_code=status.HTTP_204_NO_CONTENT)

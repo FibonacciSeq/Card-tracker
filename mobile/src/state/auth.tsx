@@ -14,10 +14,12 @@ import {
   getMe,
   logoutCustomerSession,
   refreshCustomerToken,
+  requestEmailChange as requestEmailChangeApi,
   requestOtp,
   setAccountRefreshHandler,
   setAccountUnauthorizedHandler,
   updateMe,
+  verifyEmailChange as verifyEmailChangeApi,
   verifyOtp,
 } from "../api/client";
 import { accountKeys } from "../api/queries";
@@ -46,6 +48,8 @@ type AuthContextValue = {
     quiet_hours_enabled?: boolean | null;
     notifications_opt_out?: boolean | null;
   }) => Promise<CustomerAccount>;
+  requestEmailChange: (email: string) => Promise<OtpRequestResult>;
+  verifyEmailChange: (email: string, code: string) => Promise<CustomerToken>;
   deleteAccount: () => Promise<void>;
   signOut: () => void;
 };
@@ -242,6 +246,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     signOut();
   }, [signOut, token]);
 
+  const requestEmailChange = useCallback(
+    async (email: string) => {
+      if (!token) throw new Error("Not signed in.");
+      return requestEmailChangeApi(token, email.trim());
+    },
+    [token],
+  );
+
+  const verifyEmailChange = useCallback(
+    async (email: string, code: string) => {
+      if (!token) throw new Error("Not signed in.");
+      const result = await verifyEmailChangeApi(token, email.trim(), code.trim());
+      setToken(result.access_token);
+      setRefreshToken(result.refresh_token ?? null);
+      setCustomer(result.customer);
+      setLastClaimed(result.claimed);
+      await persistTokens(result.access_token, result.refresh_token ?? null);
+      return result;
+    },
+    [persistTokens, token],
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       hydrated,
@@ -253,10 +279,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyCode,
       refreshCustomer,
       updateProfile,
+      requestEmailChange,
+      verifyEmailChange,
       deleteAccount,
       signOut,
     }),
-    [customer, deleteAccount, hydrated, lastClaimed, refreshCustomer, requestCode, signOut, token, updateProfile, verifyCode],
+    [
+      customer,
+      deleteAccount,
+      hydrated,
+      lastClaimed,
+      refreshCustomer,
+      requestCode,
+      requestEmailChange,
+      signOut,
+      token,
+      updateProfile,
+      verifyCode,
+      verifyEmailChange,
+    ],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

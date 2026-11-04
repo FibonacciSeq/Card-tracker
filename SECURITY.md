@@ -52,17 +52,16 @@ special-order data in PostgreSQL in production (SQLite locally). Treat database
 dumps, API logs, and notification payloads as sensitive. The mobile app keeps a
 local cart, guest token material, and the guest metadata needed to reopen a
 hold, manage a restock alert, or track a special order. When a customer signs
-in, `/v1/me` data lives only in the in-memory React Query cache for that app
-process; it is not written to device storage.
+in, `/v1/me` data lives in the React Query cache and may be included in the
+persisted offline query cache; sign-out removes account queries from that cache.
 
 ## Mobile app tokens
 
 - Customer account access tokens are 12-hour JWTs. The backend also issues an
-  opaque refresh token and supports logout / revoke-all session actions; the app
-  is still in the process of wiring those refresh tokens into the mobile auth
-  state. Until that client integration lands, the live session remains in memory,
-  a cold app launch starts signed out, and the app clears the token and account
-  query cache on `401` or sign-out.
+  opaque 7-day refresh token that rotates on use and supports logout /
+  revoke-all session actions. The mobile app persists both tokens with SecureStore
+  on native platforms and AsyncStorage on web, restores the session on cold
+  launch, and clears local session state on a failed refresh or sign-out.
 - Guest reservation, restock-alert manage, and special-order tokens are
   credentials. Native builds store them in Expo SecureStore; the web preview
   falls back to AsyncStorage because SecureStore has no web implementation. Do
@@ -92,9 +91,12 @@ process; it is not written to device storage.
   linked to another customer are never reassigned.
 - Disabling a customer account blocks new OTP verification and takes effect on
   the next account request because `is_active` is checked while resolving the
-  token. The backend now revokes refresh-token rows on logout and a full
-  revoke-all action; until the mobile client consumes those tokens, a still-
-  active access token continues to work until it expires.
+  token. The backend revokes refresh-token rows on logout, revoke-all, email
+  change, and deletion. An already-issued access token remains valid until its
+  12-hour expiry, as with any JWT; refresh rotation controls continuation.
+- Global customer account/session audit rows are written to
+  `customer_audit_events` and scoped by PostgreSQL RLS. They store action
+  metadata, never OTPs or token secrets.
 - The app sends an idempotency key when creating a reservation and reuses it
   while a submission is retried, preventing duplicate holds after a lost
   response.
