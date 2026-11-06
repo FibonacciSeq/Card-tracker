@@ -434,6 +434,79 @@ def test_push_tokens_are_customer_scoped_and_worker_visible(app_session: Session
     assert {token_a.id, token_b.id} <= visible
 
 
+def test_notifications_are_customer_scoped(app_session: Session, admin: Session) -> None:
+    policy_cmd = admin.scalar(
+        text(
+            "SELECT cmd FROM pg_policies "
+            "WHERE schemaname = current_schema() "
+            "AND tablename = 'notifications' "
+            "AND policyname = 'notifications_customer_own'"
+        )
+    )
+    assert policy_cmd == "SELECT"
+
+    suffix = uuid.uuid4().hex[:8]
+    shop_a = _make_shop(admin)
+    shop_b = _make_shop(admin)
+    customer_a = _make_customer(admin, f"notify-a-{suffix}@example.com")
+    customer_b = _make_customer(admin, f"notify-b-{suffix}@example.com")
+    a_for_a = models.Notification(
+        tenant_id=shop_a["tenant_id"],
+        user_id=customer_a.id,
+        kind="RESERVATION_READY",
+        payload={"public_ref": "R-A"},
+        channel="push",
+    )
+    b_for_a = models.Notification(
+        tenant_id=shop_b["tenant_id"],
+        user_id=customer_a.id,
+        kind="RESERVATION_READY",
+        payload={"public_ref": "R-B"},
+        channel="push",
+    )
+    b_for_b = models.Notification(
+        tenant_id=shop_a["tenant_id"],
+        user_id=customer_b.id,
+        kind="RESERVATION_READY",
+        payload={"public_ref": "R-C"},
+        channel="push",
+    )
+    admin.add_all([a_for_a, b_for_a, b_for_b])
+    admin.commit()
+
+    shop_ids = {shop_a["tenant_id"], shop_b["tenant_id"]}
+    assert (
+        app_session.scalars(select(models.Notification).where(models.Notification.tenant_id.in_(shop_ids))).all() == []
+    )
+
+    set_customer_context(app_session, customer_a.id)
+    visible = app_session.scalars(select(models.Notification).where(models.Notification.tenant_id.in_(shop_ids))).all()
+    assert {row.id for row in visible} == {a_for_a.id, b_for_a.id}
+
+    app_session.rollback()
+    set_tenant_context(app_session, shop_a["tenant_id"])
+    tenant_visible = app_session.scalars(
+        select(models.Notification).where(models.Notification.tenant_id == shop_a["tenant_id"])
+    ).all()
+    assert {row.id for row in tenant_visible} == {a_for_a.id, b_for_b.id}
+
+    app_session.rollback()
+    app_session.info.pop("tenant_id", None)
+    set_customer_context(app_session, customer_a.id)
+    app_session.add(
+        models.Notification(
+            tenant_id=shop_a["tenant_id"],
+            user_id=customer_b.id,
+            kind="RESERVATION_READY",
+            payload={},
+            channel="push",
+        )
+    )
+    with pytest.raises(DBAPIError):
+        app_session.commit()
+    app_session.rollback()
+
+
 def test_customer_audit_events_are_customer_scoped(app_session: Session, admin: Session) -> None:
     suffix = uuid.uuid4().hex[:8]
     customer_a = _make_customer(admin, f"audit-a-{suffix}@example.com")

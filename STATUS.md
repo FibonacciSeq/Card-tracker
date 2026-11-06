@@ -1,11 +1,12 @@
 # Card Tracker platform — status
 
-Last updated: **2026-11-04**
-Latest commit: **`9704c5b` — Fix Playwright API port**
-Working tree: Step 5 customer mobile work is mostly complete: push
-notifications, offline cache, localization, account lifecycle and session
-safety, profile updates/deletes, and mobile smoke coverage are in place;
-remaining work is notification monitoring and release QA.
+Last updated: **2026-11-06**
+Latest commit: **`cc9af97` — Add customer email account audit**
+Working tree: the customer notification delivery log, push-token diagnostics,
+backend migration and regression tests, signed-in mobile notification screen,
+generated API types, and documentation are implemented and verified but not
+yet committed. Step 5 is now focused on release QA and the signed-in
+multi-device smoke.
 
 This file is the quick, human-readable status of the multi-vendor platform.
 The full product/technical specification lives outside the repository in the
@@ -229,8 +230,10 @@ email-OTP accounts on top:
 - Optional global customer account per verified email, with 6-digit email OTP
   sign-in. The API stores only an HMAC-derived code/challenge, not plaintext,
   and the notification worker delivers the code through the existing outbox.
-- `/v1/me` profile, reservations, card requests, and restock alerts, including
-  account-side cancel, quote accept, and alert deletion. Signing in claims
+- `/v1/me` profile, reservations, card requests, restock alerts, notification
+  delivery rows, and push devices, including account-side cancel, quote accept,
+  and alert deletion. The delivery log returns rendered titles only, and the
+  push-device list exposes diagnostics without the raw token. Signing in claims
   unowned guest rows with the same email across shops; rows owned by another
   customer are never reassigned.
 - Account access tokens are short-lived and paired with a rotated refresh token.
@@ -248,18 +251,22 @@ email-OTP accounts on top:
 - The app combines `/v1/me` rows with device-local guest rows, preferring the
   account copy on duplicate IDs. Signed-in create forms lock the account email
   and still return a guest token for local detail.
-- Mobile checks: TypeScript, ESLint, Vitest logic coverage, production web
-  export, and a local browser smoke test through QR/manual entry, card detail,
-  add-to-hold, restock subscribe/unsubscribe, special-order create, staff
-  quote, and quote accept. Account/OTP/claim behavior is covered by backend
-  SQLite and PostgreSQL tests.
+- The signed-in `/notifications` screen shows per-channel delivery status,
+  sanitized failures, active/revoked push devices, pull-to-refresh, and
+  cursor-based load-more. It links back to Account for preference changes.
+- Mobile checks: TypeScript, ESLint, Vitest logic coverage, `expo-doctor`,
+  production web export, and a local browser smoke test through QR/manual entry,
+  card detail, add-to-hold, restock subscribe/unsubscribe, special-order create,
+  staff quote, and quote accept. Account/OTP/claim behavior is covered by
+  backend SQLite and PostgreSQL tests.
 
 The main Step 5 items are now implemented: push notifications, persisted
 offline caching, locale support, mobile browser smoke coverage, account
-lifecycle/session safety, and account profile update/delete flows. The remaining
-focus is notification monitoring, product polish, and a signed-in multi-device
-release smoke. Printed codes still use the custom scheme, and universal links on
-a public HTTPS domain are configured but not yet validated in production.
+lifecycle/session safety, account profile update/delete flows, and a customer
+notification delivery log with push-device diagnostics. The remaining focus is
+release QA, the signed-in multi-device smoke, and production app-link
+validation. Printed codes still use the custom scheme, and universal links on a
+public HTTPS domain are configured but not yet validated in production.
 
 ---
 
@@ -268,11 +275,11 @@ a public HTTPS domain are configured but not yet validated in production.
 | Check | Result |
 | --- | --- |
 | Root Python suite (`pytest --cov --cov-branch`) | **351 passed, 100% line/branch** |
-| Backend SQLite suite | **259 passed, 12 PostgreSQL tests skipped, 100%** |
-| Backend with PostgreSQL test URLs | **271 passed, 100%** |
-| Backend PostgreSQL-only suite (RLS, customer claiming, locking) | **12 passed** |
+| Backend SQLite suite | **264 passed, 13 PostgreSQL tests skipped, 100%** |
+| Backend with PostgreSQL test URLs | **277 passed, 100%** |
+| Backend PostgreSQL-only suite (RLS, customer claiming, notifications, locking) | **13 passed** |
 | Backend Ruff / format / mypy | Clean |
-| Alembic `0007_customer_email_audit` downgrade → upgrade | Verified on SQLite and PostgreSQL; customer RLS policy recreated |
+| Alembic `0008_customer_notifications` downgrade → upgrade | Verified on SQLite and PostgreSQL; notification customer RLS policy and push diagnostics recreated; `alembic_version` widened to 64 chars |
 | Admin ESLint / TypeScript / production build | Clean |
 | Admin Vitest logic/API-client coverage | **23 passed, 100% statements/branches/functions/lines** |
 | Admin production source maps | **0** `.map` files in `dist/` |
@@ -285,7 +292,7 @@ a public HTTPS domain are configured but not yet validated in production.
 | Mobile deep-link parser cases | Passed: custom scheme, https, Expo Go, path, slug, bad UUID, traversal, foreign scheme |
 | SQL Server Docker schema/E2E | Wired in CI/Makefile; 21/21 assertions pass locally; skips cleanly without Docker |
 | Alembic downgrade base → upgrade head | Verified on PostgreSQL |
-| RLS enabled + forced | All 10 tenant tables, plus customer-scoped `push_tokens` and `customer_audit_events` |
+| RLS enabled + forced | All 10 tenant tables, plus customer-scoped `push_tokens`, `customer_audit_events`, and customer-readable `notifications` |
 
 The Python coverage floors are 100% line and branch for both the root and
 backend suites. Admin and mobile keep their explicitly included logic/API
@@ -330,9 +337,9 @@ npm run doctor
 PostgreSQL verification uses `backend/scripts/local_postgres.sh`; export the
 admin and non-owner app URLs as described in `backend/README.md`, or use
 `./scripts/test_backend_postgres.sh`, which starts the portable server and
-applies the URLs. Without those variables the SQLite run reports 12
+applies the URLs. Without those variables the SQLite run reports 13
 PostgreSQL-test skips; with the local server and both URLs exported it reports
-271 passed. CI supplies a real non-owner role.
+277 passed. CI supplies a real non-owner role.
 
 CI runs four workflows: legacy (`ci.yml`), backend (`backend.yml`), admin
 (`admin.yml`), and mobile (`mobile.yml`). The legacy workflow now includes the
@@ -353,7 +360,8 @@ claiming, and account profile update/deletion. The app also includes push
 notification support, persisted query caching, locale selection, a
 Playwright smoke check for the web build, signed-in session persistence with
 refresh-token rotation, the customer notification preferences flow (display
-name, phone, push/email toggles, quiet hours, and opt-out state), and
+name, phone, push/email toggles, quiet hours, and opt-out state), a signed-in
+notification delivery log with active/revoked push-device diagnostics, and
 public-storefront app links with a custom-scheme fallback.
 
 Universal links and install flow are now configured around a canonical public
@@ -364,10 +372,11 @@ for customers who land in the browser and customers who already have the app
 installed.
 
 The current app work is in final QA/pilot-readiness polish rather than core
-missing functionality. The notification-quality slice is implemented in the
-backend: queued email/push deliveries now honor a customer's opt-out, quiet
-hours, and per-channel toggles so a disabled profile cannot receive delivery
-while still keeping the rest of the flow intact.
+missing functionality. The notification-quality slice is implemented:
+queued email/push deliveries honor a customer's opt-out, quiet hours, and
+per-channel toggles, and the account now exposes per-channel delivery status,
+sanitized failures, and push-token diagnostics. A disabled profile cannot
+receive delivery while still keeping the rest of the flow intact.
 
 Remaining app work is focused and mostly product/QA action items:
 
@@ -375,14 +384,14 @@ Remaining app work is focused and mostly product/QA action items:
    the delete/revocation messaging fits the intended product semantics.
 2. Run a signed-in multi-device smoke on a development build and then move on to
    pilot-shop onboarding.
-3. Validate the remaining release-checklist items for production app links,
-   notification monitoring, and pilot rollout.
+3. Validate the remaining release-checklist items for production app links and
+   pilot rollout.
 
 ### Recommended gap-filling sequence (non-payment)
 
 Use this order so the app moves from correctness to product readiness without
-adding churn. Items 1–3 and 5 are implemented; notification delivery visibility
-is the main remaining code slice before release QA.
+adding churn. Items 1–5 are implemented or mostly implemented; the remaining
+work is release QA, real-device smoke, and pilot rollout.
 
 1. Account lifecycle and session safety — **implemented 2026-11-04**
    - Refresh tokens rotate on use; logout and revoke-all revoke server-side
@@ -406,11 +415,15 @@ is the main remaining code slice before release QA.
    - Remaining: validate the production domain, store links, and browser install
      cues on real devices.
 
-4. Push/email notification quality — **next**
-   - Add a notification center or delivery log for customer push/email events.
-   - Add retry and failure monitoring for push registration and token expiry.
-   - Per-channel preferences, quiet hours, and opt-out are already implemented.
-   - Acceptance: a user can see notification status and safely opt out or
+4. Push/email notification quality — **implemented 2026-11-06**
+   - `/v1/me/notifications` exposes per-channel delivery status, rendered
+     titles, attempts, timestamps, and sanitized errors with cursor pagination.
+   - `/v1/me/push-tokens` exposes active/revoked devices, failure counts, last
+     failure time, and sanitized errors without returning the raw token.
+   - The mobile notification screen shows the delivery log and device health,
+     links back to preferences, and supports opt-out/re-enable flows.
+   - Per-channel preferences, quiet hours, and opt-out were already implemented.
+   - Acceptance met: a user can see notification status and safely opt out or
      re-enable delivery.
 
 5. Offline and sync reliability — **mostly implemented**
@@ -479,10 +492,14 @@ is the main remaining code slice before release QA.
 - Printed QR codes can use the canonical HTTPS public app URL and still fall
   back to the `cardtracker://` custom scheme, but production domain
   configuration and app-store install paths still need final deploy-time setup.
-- Notification delivery is now gated by customer preferences at the worker level,
-  so email and push respect opt-out, quiet hours, and per-channel toggles; a
-  product-level notification center is still optional polish rather than a hard
-  dependency.
+- Notification delivery is gated by customer preferences at the worker level,
+  so email and push respect opt-out, quiet hours, and per-channel toggles. The
+  customer delivery log is per-channel: one business event can appear as a
+  separate email and push entry. It returns rendered titles but deliberately
+  omits message bodies so unsubscribe tokens do not leak.
+- Push-device diagnostics show the last sanitized error and failure count on the
+  token, and invalid provider tokens are revoked automatically. A customer can
+  re-enable delivery by registering the device again.
 - Restock alerts are one-shot and email-based. They can be linked to a customer
   account or claimed later, and the links now prefer the canonical public app
   URL while remaining compatible with the custom-scheme fallback.

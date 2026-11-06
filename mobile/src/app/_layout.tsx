@@ -64,6 +64,7 @@ export default function RootLayout() {
                         />
                         <Stack.Screen name="reservation/[id]" options={{ title: "Reservation" }} />
                         <Stack.Screen name="alerts" options={{ title: "Restock alerts" }} />
+                        <Stack.Screen name="notifications" options={{ title: "Notifications" }} />
                         <Stack.Screen name="requests/index" options={{ title: "Special orders" }} />
                         <Stack.Screen name="requests/new" options={{ title: "Request a card" }} />
                         <Stack.Screen name="requests/[id]" options={{ title: "Special order" }} />

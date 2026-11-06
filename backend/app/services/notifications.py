@@ -8,6 +8,7 @@ slow SMTP server never slows down a reservation.
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
 from app import models
 from app.config import settings
@@ -44,6 +45,26 @@ def enqueue(
             )
         )
     return row
+
+
+SKIPPED_DELIVERY_ERRORS = (
+    "Customer notification preferences disabled",
+    "No active push token",
+)
+
+
+NotificationStatus = Literal["pending", "retrying", "sent", "skipped", "failed"]
+
+
+def delivery_status(row: models.Notification) -> NotificationStatus:
+    """Human-readable status for the customer delivery log."""
+    if row.sent_at is None:
+        return "retrying" if row.attempts else "pending"
+    if not row.error:
+        return "sent"
+    if row.error in SKIPPED_DELIVERY_ERRORS:
+        return "skipped"
+    return "failed"
 
 
 def shop_label(tenant: models.Tenant) -> str:
@@ -198,6 +219,11 @@ def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
     if kind == "RESERVATION_COMPLETED":
         subject = f"Thanks for collecting {ref}"
         body = f"Reservation {ref} at {shop} is complete. The cards are now marked as sold."
+        return subject, body
+
+    if kind == "RESERVATION_UPDATED":
+        subject = f"Reservation {ref} updated"
+        body = f"Reservation {ref} at {shop} was updated.\nCurrent status: {payload.get('status', 'UPDATED')}."
         return subject, body
 
     if kind == "CARD_REQUEST_CREATED":

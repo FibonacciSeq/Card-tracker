@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas, serializers
 from app.db import get_db, set_tenant_context
 from app.deps import get_current_customer
-from app.services import accounts, audit
+from app.services import accounts, audit, notifications
 from app.services import card_requests as card_request_service
 from app.services import reservations as reservation_service
 
@@ -168,6 +168,62 @@ def unregister_push_token(
 ):
     accounts.unregister_push_token(db, customer, token)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.get("/me/push-tokens", response_model=schemas.PushTokenListOut)
+def list_my_push_tokens(
+    customer: models.User = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+):
+    rows = db.scalars(
+        select(models.PushToken)
+        .where(models.PushToken.user_id == customer.id)
+        .order_by(models.PushToken.created_at.desc())
+        .limit(MAX_ACCOUNT_ROWS)
+    ).all()
+    return schemas.PushTokenListOut(items=[schemas.PushTokenOut.model_validate(row) for row in rows])
+
+
+@router.get("/me/notifications", response_model=schemas.MeNotificationListOut)
+def list_my_notifications(
+    cursor: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    customer: models.User = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+):
+    stmt = (
+        select(models.Notification, models.Tenant)
+        .join(models.Tenant, models.Tenant.id == models.Notification.tenant_id)
+        .where(models.Notification.user_id == customer.id)
+    )
+    if cursor is not None:
+        stmt = stmt.where(models.Notification.id < cursor)
+    rows = list(db.execute(stmt.order_by(models.Notification.id.desc()).limit(limit + 1)).all())
+
+    next_cursor = None
+    if len(rows) > limit:
+        next_cursor = str(rows[limit - 1][0].id)
+        rows = rows[:limit]
+
+    items = []
+    for row, tenant in rows:
+        title, _body = notifications.render(row, tenant)
+        items.append(
+            schemas.MeNotificationOut(
+                id=row.id,
+                kind=row.kind,
+                channel=row.channel,
+                status=notifications.delivery_status(row),
+                title=title,
+                shop={"slug": tenant.slug, "name": tenant.name},
+                attempts=row.attempts,
+                created_at=row.created_at,
+                sent_at=row.sent_at,
+                next_attempt_at=row.next_attempt_at,
+                error=row.error,
+            )
+        )
+    return schemas.MeNotificationListOut(items=items, next_cursor=next_cursor)
 
 
 @router.get("/me/reservations", response_model=schemas.MeReservationListOut)

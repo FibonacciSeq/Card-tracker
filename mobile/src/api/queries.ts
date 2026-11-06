@@ -5,6 +5,8 @@ import {
   getCardRequest,
   getMyCardRequest,
   getMyCardRequests,
+  getMyNotifications,
+  getMyPushTokens,
   getMyReservation,
   getMyReservations,
   getMyRestockAlerts,
@@ -33,6 +35,8 @@ export const accountKeys = {
   cardRequests: ["account", "card-requests"] as const,
   cardRequest: (id: string) => ["account", "card-request", id] as const,
   restockAlerts: ["account", "restock-alerts"] as const,
+  notifications: ["account", "notifications"] as const,
+  pushTokens: ["account", "push-tokens"] as const,
 };
 
 export function useShops(search: string) {
@@ -154,6 +158,26 @@ export function useMyRestockAlerts(token: string | null) {
   return useQuery({
     queryKey: accountKeys.restockAlerts,
     queryFn: () => getMyRestockAlerts(token ?? ""),
+    enabled: Boolean(token),
+    retry: false,
+  });
+}
+
+export function useMyNotifications(token: string | null) {
+  return useInfiniteQuery({
+    queryKey: accountKeys.notifications,
+    queryFn: ({ pageParam }) => getMyNotifications(token ?? "", pageParam),
+    initialPageParam: null as string | null,
+    getNextPageParam: (lastPage) => lastPage.next_cursor,
+    enabled: Boolean(token),
+    retry: false,
+  });
+}
+
+export function useMyPushTokens(token: string | null) {
+  return useQuery({
+    queryKey: accountKeys.pushTokens,
+    queryFn: () => getMyPushTokens(token ?? ""),
     enabled: Boolean(token),
     retry: false,
   });

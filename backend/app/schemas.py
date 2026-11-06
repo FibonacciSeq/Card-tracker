@@ -237,6 +237,33 @@ class PushTokenOut(BaseModel):
     platform: str
     created_at: datetime
     last_seen_at: datetime
+    revoked_at: datetime | None = None
+    failure_count: int = 0
+    last_failure_at: datetime | None = None
+    last_error: str | None = None
+
+
+class PushTokenListOut(BaseModel):
+    items: list[PushTokenOut]
+
+
+class MeNotificationOut(BaseModel):
+    id: int
+    kind: str
+    channel: str
+    status: Literal["pending", "retrying", "sent", "skipped", "failed"]
+    title: str
+    shop: dict
+    attempts: int
+    created_at: datetime
+    sent_at: datetime | None = None
+    next_attempt_at: datetime | None = None
+    error: str | None = None
+
+
+class MeNotificationListOut(BaseModel):
+    items: list[MeNotificationOut]
+    next_cursor: str | None = None
 
 
 class MeReservationSummaryOut(ReservationSummaryOut):

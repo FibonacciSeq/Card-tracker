@@ -45,6 +45,18 @@ def customer_notification_allowed(db: Session, *, user_id: uuid.UUID | None, cha
     return channel != "push" or customer.push_notifications_enabled
 
 
+def record_push_failure(
+    token: models.PushToken,
+    error: push.PushError,
+    *,
+    now: datetime,
+) -> None:
+    """Persist sanitized token diagnostics without storing the token itself."""
+    token.failure_count += 1
+    token.last_failure_at = now
+    token.last_error = f"{type(error).__name__}: {error}"[:1000]
+
+
 class Sender(Protocol):
     def send(
         self,
@@ -323,8 +335,10 @@ def deliver_push(
             except push.PushTokenInvalid as exc:
                 invalid += 1
                 token.revoked_at = now
+                record_push_failure(token, exc, now=now)
                 errors.append(f"{type(exc).__name__}: {exc}")
             except push.PushTransientError as exc:
+                record_push_failure(token, exc, now=now)
                 errors.append(f"{type(exc).__name__}: {exc}")
             else:
                 successes += 1

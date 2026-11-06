@@ -97,6 +97,16 @@ persisted offline query cache; sign-out removes account queries from that cache.
 - Global customer account/session audit rows are written to
   `customer_audit_events` and scoped by PostgreSQL RLS. They store action
   metadata, never OTPs or token secrets.
+- The customer notification delivery log reads tenant `notifications` rows
+  through a permissive customer RLS policy limited to the active
+  `app.customer_id`. `/v1/me/notifications` returns rendered titles only, not
+  message bodies, so restock unsubscribe tokens are not exposed. Stored
+  delivery errors are sanitized and contain no recipient, body, or device token.
+- Push-token registrations are customer-scoped by RLS. The account API never
+  returns the raw FCM/APNs token; it exposes only platform, timestamps, revoked
+  state, failure count, last failure time, and a sanitized error. A token the
+  provider rejects is revoked immediately, and transient failures keep the
+  existing exponential-backoff retry behavior.
 - The app sends an idempotency key when creating a reservation and reuses it
   while a submission is retried, preventing duplicate holds after a lost
   response.

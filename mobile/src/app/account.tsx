@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
@@ -46,6 +47,7 @@ export default function AccountScreen() {
     verifyEmailChange,
   } = useAuth();
   const push = usePush();
+  const router = useRouter();
 
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
@@ -380,6 +382,22 @@ export default function AccountScreen() {
               onPress={() => void push.enable()}
             />
           )}
+        </View>
+
+        <View style={styles.pushCard}>
+          <View style={styles.pushHeader}>
+            <Ionicons name="list-outline" size={18} color={colors.primary} />
+            <Text style={styles.pushTitle}>Notification delivery</Text>
+          </View>
+          <Text style={styles.pushBody}>
+            See which hold, request, and restock updates were sent, skipped, or failed, and check
+            whether this account still has an active push device.
+          </Text>
+          <PrimaryButton
+            label="View notification log"
+            onPress={() => router.push("/notifications")}
+            variant="secondary"
+          />
         </View>
 
         <Text style={styles.note}>

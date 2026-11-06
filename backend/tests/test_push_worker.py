@@ -133,6 +133,9 @@ def test_deliver_push_revokes_a_rejected_token(db, tenant, customer):
     db.refresh(token)
     db.refresh(row)
     assert token.revoked_at == now.replace(tzinfo=None)
+    assert token.failure_count == 1
+    assert token.last_failure_at == now.replace(tzinfo=None)
+    assert "PushTokenInvalid" in (token.last_error or "")
     assert row.sent_at == now.replace(tzinfo=None)
     assert row.attempts == 1
     assert "PushTokenInvalid" in row.error
@@ -153,6 +156,9 @@ def test_deliver_push_retries_transient_failures_and_keeps_the_token(db, tenant,
     assert row.next_attempt_at == (now + timedelta(seconds=60)).replace(tzinfo=None)
     assert "PushTransientError" in row.error
     assert token.revoked_at is None
+    assert token.failure_count == 1
+    assert token.last_failure_at == now.replace(tzinfo=None)
+    assert "PushTransientError" in (token.last_error or "")
 
     row.next_attempt_at = now - timedelta(seconds=1)
     db.commit()

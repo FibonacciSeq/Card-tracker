@@ -1,7 +1,8 @@
 # Customer accounts and guest-data claiming
 
-Status: **implemented** on 2026-10-29; extended 2026-11-04 with refresh
-sessions, revoke-all, email change, and customer account audit events.
+Status: **implemented** on 2026-10-29; extended 2026-11-06 with refresh
+sessions, revoke-all, email change, customer account audit events, a customer
+notification delivery log, and push-token diagnostics.
 
 This records the Step 5 account slice: optional customer accounts, email OTP
 login, `/v1/me`, and automatic claiming of guest reservations, restock alerts,
@@ -135,6 +136,46 @@ loading lines. No row is returned without the customer_id filter.
 
 Downgrade drops the OTP table/indexes and the added customer policies; the
 original tenant-only policies and all existing rows remain untouched.
+
+### 3.4 Customer notification delivery log
+
+Reuse the existing tenant `notifications` outbox as the customer-facing delivery
+log instead of adding a duplicate notification table. Every queued email, push,
+or in-app row already carries `user_id`, `kind`, `payload`, `channel`,
+`attempts`, `sent_at`, `next_attempt_at`, and a sanitized `error`.
+
+Add an index on `(user_id, id)` for the account log cursor, and on Postgres a
+permissive `notifications_customer_own` policy:
+
+```sql
+FOR SELECT
+USING (
+  user_id = NULLIF(current_setting('app.customer_id', true), '')::uuid
+)
+```
+
+The policy is read-only on purpose. The existing tenant policy remains, so the
+notification worker still drains a tenant's outbox. A missing context still sees
+no rows.
+
+Push-token diagnostics live on `push_tokens`:
+
+| Column | Purpose |
+| --- | --- |
+| `failure_count` | Number of failed provider attempts for this token |
+| `last_failure_at` | Time of the most recent failure |
+| `last_error` | Exception type and sanitized provider message, never the device token |
+
+The worker increments these fields for transient and invalid-token failures.
+An invalid token is also marked with `revoked_at`; a later registration of the
+same device/token can reactivate it. The raw device token is never returned by
+the account API.
+
+Alembic `0008_customer_notifications` adds the diagnostics columns, the
+notification index, and the Postgres customer policy. Its downgrade drops the
+policy and index and removes the columns. The migration runner widens
+`alembic_version.version_num` to 64 characters on Postgres so the existing
+38-character `0006_customer_notification_preferences` revision id round-trips.
 
 ## 4. OTP lifecycle
 
@@ -482,6 +523,79 @@ DELETE /v1/me/restock-alerts/{id}
 The signed guest unsubscribe endpoints and `manage_token` behavior stay as they
 are.
 
+```http
+GET /v1/me/notifications?limit=50&cursor=123
+```
+
+Returns the customer's delivery log newest first. `limit` is 1–200; `cursor`
+is the previous page's last numeric notification id. One business event may
+appear once per channel (for example, email and push), because each queued
+delivery row is shown separately.
+
+```json
+{
+  "items": [
+    {
+      "id": 123,
+      "kind": "RESERVATION_READY",
+      "channel": "push",
+      "status": "sent",
+      "title": "Your cards are ready — R-ABC123",
+      "shop": { "slug": "bolt-shop", "name": "Bolt Shop" },
+      "attempts": 1,
+      "created_at": "...",
+      "sent_at": "...",
+      "next_attempt_at": null,
+      "error": null
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+Statuses are derived from the outbox row:
+
+| Status | Meaning |
+| --- | --- |
+| `pending` | Queued and not attempted yet |
+| `retrying` | At least one failed attempt; the worker will retry after `next_attempt_at` |
+| `sent` | Delivered without an error |
+| `skipped` | Preferences disabled delivery or the customer has no active push token |
+| `failed` | Delivery stopped with a non-skipped error |
+
+In-app rows are recorded for this log; they are not sent by the email/push
+worker. Only the rendered title is returned, not the body, so restock
+unsubscribe tokens cannot leak through the account API. `error` is the stored
+sanitized delivery error and never contains a recipient, message body, or device
+token. Rows whose tenant no longer exists are skipped.
+
+```http
+GET /v1/me/push-tokens
+```
+
+Returns the customer's device registrations, newest first, including revoked
+tokens:
+
+```json
+{
+  "items": [
+    {
+      "id": "...",
+      "platform": "android",
+      "created_at": "...",
+      "last_seen_at": "...",
+      "revoked_at": null,
+      "failure_count": 2,
+      "last_failure_at": "...",
+      "last_error": "PushTransientError: FCM transport failed"
+    }
+  ]
+}
+```
+
+The existing `POST /v1/me/push-tokens` and `DELETE /v1/me/push-tokens/{token}`
+endpoints are unchanged. Neither response returns the raw device token.
+
 ### Public create endpoints
 
 `POST /v1/shops/{slug}/reservations`, `/restock-alerts`, and `/card-requests`
@@ -507,6 +621,9 @@ No token means the current guest behavior, unchanged.
 - `customer_audit_events` is global because one customer spans tenants; RLS
   limits rows to the active `app.customer_id`.
 - `push_tokens` are customer-scoped and visible to the push worker context.
+- `notifications` keeps its tenant policy and gains a permissive customer
+  policy. Customer account reads therefore see only rows with the matching
+  `user_id`, while the worker still drains a whole tenant's outbox.
 - Guest endpoints continue to set tenant context and authorize by access-token
   hash.
 
@@ -518,11 +635,13 @@ Postgres coverage proves:
 - global customer login works without a tenant context;
 - claim updates only unowned matching rows;
 - customer audit rows are isolated to their customer and reject cross-customer
-  writes.
+  writes;
+- customer notification rows are isolated across customers and tenants, while
+  a tenant context still sees the tenant's whole notification outbox.
 
-The Alembic `0007_customer_email_audit` downgrade/upgrade round trip is verified
-separately on PostgreSQL and SQLite. The customer audit RLS policy and table are
-recreated on upgrade.
+The Alembic `0008_customer_notifications` downgrade/upgrade round trip is
+verified separately on PostgreSQL and SQLite. The customer notification RLS
+policy and the push-token diagnostic columns are recreated on upgrade.
 
 ## 9. Mobile UX and state
 
@@ -557,6 +676,7 @@ Add `/account`:
 - signed in: account email, linked-data counts, profile and notification
   preferences, email change with a new-address code, "Refresh", "Delete account",
   and "Sign out";
+- a "Notification delivery" card opens the delivery log and push-device status;
 - development-only debug code display for login and email-change codes.
 
 Add an account/sign-in entry point on the home hero.
@@ -591,12 +711,27 @@ Create forms:
 - when signed in, show the account email as locked and send the Bearer token;
 - when signed out, keep the current email input and guest flow.
 
+### Notification delivery
+
+Add `/notifications` as a signed-in account screen:
+
+- summarize active and revoked push devices from `/v1/me/push-tokens`, including
+  failure count, last failure time, and sanitized last error;
+- list delivery rows from `/v1/me/notifications` with channel, status, rendered
+  title, shop, timestamp, attempt count, and sanitized error;
+- support pull-to-refresh and cursor-based "load older notifications";
+- link back to Account for push enable/disable and notification preferences;
+- show an empty state explaining that activity appears after the first hold,
+  request, or restock alert is queued.
+
+The screen does not expose push tokens, notification bodies, unsubscribe tokens,
+or OTP data.
+
 ### Not in this slice
 
 - a customer-facing audit/activity screen;
 - an account merge conflict UI (automatic claiming is implemented);
 - admin customer lookup;
-- notification center/delivery log and push failure monitoring;
 - production universal-link validation and browser install cues.
 
 ## 10. Security and privacy notes
@@ -623,6 +758,12 @@ Create forms:
   code is sent; the unauthenticated OTP request path stays deliberately generic.
 - Customer audit rows store action metadata, never OTPs or token secrets. They
   are customer-scoped by RLS and are separate from tenant audit rows.
+- The delivery log returns rendered titles only, not message bodies, so restock
+  unsubscribe tokens are not exposed through `/v1/me/notifications`. Stored
+  delivery errors are sanitized and contain no recipient, body, or device token.
+- Push-token diagnostics store the failure count, time, and sanitized error. The
+  raw FCM/APNs token is never returned by account endpoints, and an invalid
+  provider token is revoked immediately.
 
 ## 11. Tests and verification
 
@@ -653,8 +794,16 @@ Backend:
   and re-claims matching guest rows;
 - customer audit rows are written for login, refresh, logout, revoke-all,
   profile update, email change, and deletion;
+- `/v1/me/notifications` returns only the customer's rows across tenants,
+  paginates by id, computes all five delivery statuses, renders titles, skips
+  orphaned tenant rows, validates query bounds, and requires auth;
+- `/v1/me/push-tokens` returns only the customer's devices, including revoked
+  tokens and failure diagnostics, and never returns the raw token;
+- the push worker increments failure diagnostics for transient and invalid
+  tokens, sets `revoked_at` for invalid tokens, and keeps the existing retry
+  behavior;
 - Postgres RLS tests for global users, customer context, claim scope, push
-  tokens, and customer audit rows.
+  tokens, customer audit rows, and notification rows.
 - migration downgrade/upgrade verified on PostgreSQL and SQLite.
 
 Mobile:
@@ -695,7 +844,11 @@ verifies that email.
 Rollback:
 
 - stop creating accounts/claims;
-- downgrade the migration (drop the OTP table/indexes and the added customer
-  policies; the original tenant-only policies stay in place);
+- downgrade `0008_customer_notifications` to drop the notification customer
+  policy, the customer-log index, and the push-token diagnostic columns; the
+  tenant notification policy and existing outbox rows stay in place;
+- downgrade the earlier account migrations only if the whole account slice is
+  being removed (drop the OTP table/indexes and the added customer policies; the
+  original tenant-only policies stay in place);
 - global customer rows remain in `users` but become inaccessible until the
   schema is upgraded again.

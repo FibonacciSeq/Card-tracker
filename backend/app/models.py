@@ -149,6 +149,10 @@ class PushToken(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Delivery diagnostics: the token itself is never stored in the error.
+    failure_count: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    last_failure_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error: Mapped[str | None] = mapped_column(Text)
 
     __table_args__ = (
         UniqueConstraint("token_hash", name="uq_push_tokens_hash"),
@@ -357,7 +361,10 @@ class Notification(Base):
     error: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
-    __table_args__ = (Index("ix_notifications_pending", "sent_at", "next_attempt_at"),)
+    __table_args__ = (
+        Index("ix_notifications_pending", "sent_at", "next_attempt_at"),
+        Index("ix_notifications_user_id_id", "user_id", "id"),
+    )
 
 
 class CardRequest(Base):

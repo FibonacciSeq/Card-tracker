@@ -442,7 +442,8 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /** List My Push Tokens */
+        get: operations["list_my_push_tokens_v1_me_push_tokens_get"];
         put?: never;
         /** Register Push Token */
         post: operations["register_push_token_v1_me_push_tokens_post"];
@@ -464,6 +465,23 @@ export interface paths {
         post?: never;
         /** Unregister Push Token */
         delete: operations["unregister_push_token_v1_me_push_tokens__token__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/me/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List My Notifications */
+        get: operations["list_my_notifications_v1_me_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -1464,6 +1482,46 @@ export interface components {
                 [key: string]: unknown;
             };
         };
+        /** MeNotificationListOut */
+        MeNotificationListOut: {
+            /** Items */
+            items: components["schemas"]["MeNotificationOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** MeNotificationOut */
+        MeNotificationOut: {
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** Channel */
+            channel: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "retrying" | "sent" | "skipped" | "failed";
+            /** Title */
+            title: string;
+            /** Shop */
+            shop: {
+                [key: string]: unknown;
+            };
+            /** Attempts */
+            attempts: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Sent At */
+            sent_at?: string | null;
+            /** Next Attempt At */
+            next_attempt_at?: string | null;
+            /** Error */
+            error?: string | null;
+        };
         /** MeReservationListOut */
         MeReservationListOut: {
             /** Items */
@@ -1592,6 +1650,11 @@ export interface components {
              */
             platform: "ios" | "android";
         };
+        /** PushTokenListOut */
+        PushTokenListOut: {
+            /** Items */
+            items: components["schemas"]["PushTokenOut"][];
+        };
         /** PushTokenOut */
         PushTokenOut: {
             /**
@@ -1611,6 +1674,17 @@ export interface components {
              * Format: date-time
              */
             last_seen_at: string;
+            /** Revoked At */
+            revoked_at?: string | null;
+            /**
+             * Failure Count
+             * @default 0
+             */
+            failure_count: number;
+            /** Last Failure At */
+            last_failure_at?: string | null;
+            /** Last Error */
+            last_error?: string | null;
         };
         /** QuoteIn */
         QuoteIn: {
@@ -3239,6 +3313,26 @@ export interface operations {
             };
         };
     };
+    list_my_push_tokens_v1_me_push_tokens_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PushTokenListOut"];
+                };
+            };
+        };
+    };
     register_push_token_v1_me_push_tokens_post: {
         parameters: {
             query?: never;
@@ -3289,6 +3383,38 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_my_notifications_v1_me_notifications_get: {
+        parameters: {
+            query?: {
+                cursor?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MeNotificationListOut"];
+                };
             };
             /** @description Validation Error */
             422: {

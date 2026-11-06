@@ -1,6 +1,7 @@
 import { API_BASE_URL } from "../lib/config";
 import type {
   AccountCardRequest,
+  AccountNotificationList,
   AccountReservation,
   AccountRestockAlert,
   CardRequest,
@@ -12,6 +13,7 @@ import type {
   OtpRequestResult,
   PushToken,
   PushTokenCreate,
+  PushTokenList,
   Reservation,
   ReservationCreate,
   RestockAlert,
@@ -382,6 +384,26 @@ export function unregisterPushToken(token: string, deviceToken: string): Promise
     headers: bearer(token),
     auth: true,
   });
+}
+
+export function getMyPushTokens(token: string): Promise<PushTokenList> {
+  return request<PushTokenList>("/v1/me/push-tokens", {
+    headers: bearer(token),
+    auth: true,
+  });
+}
+
+export function getMyNotifications(
+  token: string,
+  cursor?: string | null,
+): Promise<AccountNotificationList> {
+  return request<AccountNotificationList>(
+    `/v1/me/notifications${queryString({ cursor, limit: 50 })}`,
+    {
+      headers: bearer(token),
+      auth: true,
+    },
+  );
 }
 
 export function getMyReservations(token: string): Promise<{ items: AccountReservation[] }> {

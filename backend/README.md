@@ -13,9 +13,9 @@ desktop app is unchanged and still uses its own SQLite database.
   reservation create, reservation lookup, reservation cancel, restock-alert
   subscribe/unsubscribe, special-order request create/track/accept/cancel.
 - Optional global customer accounts: email OTP sign-in, `/v1/me` reservations,
-  special orders, and restock alerts, plus automatic claiming of unowned guest
-  rows that match the verified email. Guest tokens and guest flows remain
-  valid and unchanged.
+  special orders, restock alerts, a notification delivery log, and push-device
+  diagnostics, plus automatic claiming of unowned guest rows that match the
+  verified email. Guest tokens and guest flows remain valid and unchanged.
 - Staff API: login, stock list/create/update/adjust/sell, reservation queue,
   status transitions, completion with partial quantities, dashboard, settings,
   audit trail, staff management, special-order quote/decline/convert, and
@@ -153,9 +153,11 @@ Push Service. Set `CARDTRACKER_PUSH_BACKEND=native` and provide either
 `CARDTRACKER_APNS_*` team/key/bundle settings. The `console` default logs only
 the platform and never a device token or message body. Invalid provider tokens
 are revoked automatically; transient provider errors share the same exponential
-backoff as email. Signed-in customers can enable or disable push from the
-account screen, and the app deep-links notification taps back to the relevant
-shop or card.
+backoff as email. `push_tokens` stores only delivery diagnostics (`failure_count`,
+`last_failure_at`, and a sanitized `last_error`), never the raw device token in
+an account response. Signed-in customers can enable or disable push from the
+account screen, see active/revoked devices and recent delivery status, and the
+app deep-links notification taps back to the relevant shop or card.
 
 Customer OTP behavior is configured with the `CARDTRACKER_OTP_*` variables and
 `CARDTRACKER_CUSTOMER_ACCESS_TOKEN_MINUTES` (default 720, or 12 hours). Set
@@ -198,12 +200,15 @@ SELECT set_config('app.customer_id', '<customer uuid>', true);
 ```
 
 A customer token is global (no tenant claim). Permissive `*_customer_own`
-policies let `/v1/me` read reservations, special orders, and restock alerts
-across shops without weakening the existing tenant-isolation policies.
-Reservation lines stay tenant-only: account detail resolves the owned
-reservation first, then sets the tenant context before loading lines. Global
-customer rows in `users` are allowed by a separate permissive policy. Claiming
-iterates shops and sets the tenant context for each update.
+policies let `/v1/me` read reservations, special orders, restock alerts, and
+notification delivery rows across shops without weakening the existing
+tenant-isolation policies. Reservation lines stay tenant-only: account detail
+resolves the owned reservation first, then sets the tenant context before
+loading lines. `notifications` keeps its tenant policy and gains a read-only
+customer policy, so the worker still drains a whole shop's outbox while a
+customer sees only rows with its `user_id`. Global customer rows in `users` are
+allowed by a separate permissive policy. Claiming iterates shops and sets the
+tenant context for each update.
 
 `tenant_settings` is intentionally not RLS-protected because the public shop
 directory reads branding across tenants. It contains no customer data.
@@ -251,6 +256,7 @@ What the suite proves:
 | `test_tenant_settings_are_readable_without_tenant_context` | The directory exception stays intentional |
 | `test_tenant_context_survives_commit` | The `after_begin` hook re-applies context after a commit |
 | `test_customer_context_sees_only_own_rows_across_tenants` | A global customer sees its linked rows but not another customer's |
+| `test_notifications_are_customer_scoped` | Customer notification rows are isolated across customers/tenants; tenant context still drains the shop outbox |
 | `test_claim_updates_only_unowned_matching_email` | Email claiming is case-insensitive, idempotent, and never reassigns an owner |
 | `test_app_role_can_create_a_global_customer_without_tenant_context` | Customer creation works with the global `users` policy |
 | `test_last_copy_race_has_exactly_one_winner` | Two simultaneous holds on the last copy: exactly one wins |
@@ -276,12 +282,13 @@ cd backend
 ../.venv/bin/python -m pytest --cov=app --cov-branch --cov-report=term-missing
 ```
 
-The current local result is **259 passed, 12 PostgreSQL tests skipped, 100%
+The current local result is **264 passed, 13 PostgreSQL tests skipped, 100%
 line and branch coverage**. The coverage floor is 100% in `pyproject.toml`, so
 any new uncovered line or branch fails the command.
 
 With the Postgres URLs exported, the same run includes the isolation,
-customer-account, and locking tests and reports **271 passed, 100% coverage**.
+customer-account, notification, and locking tests and reports **277 passed,
+100% coverage**.
 The repository helper starts the portable server and applies the URLs for you:
 
 ```bash
@@ -290,8 +297,11 @@ The repository helper starts the portable server and applies the URLs for you:
 
 CI runs both SQLite and PostgreSQL coverage, plus
 `alembic downgrade base && alembic upgrade head` and an assertion that RLS is
-enabled on every tenant table. The root `tox.ini` runs the legacy Python matrix;
-`make test-matrix` skips interpreters that are not installed.
+enabled on every tenant table. The migration runner widens
+`alembic_version.version_num` to 64 characters on Postgres so the existing
+38-character `0006_customer_notification_preferences` revision id can be
+written. The root `tox.ini` runs the legacy Python matrix; `make test-matrix`
+skips interpreters that are not installed.
 
 ## Error responses
 
@@ -339,6 +349,9 @@ Customer account (Bearer customer token; auth endpoints are public):
 - `POST /v1/me/card-requests/{id}/cancel`
 - `GET /v1/me/restock-alerts`
 - `DELETE /v1/me/restock-alerts/{id}`
+- `GET|POST /v1/me/push-tokens`
+- `DELETE /v1/me/push-tokens/{token}`
+- `GET /v1/me/notifications?limit=50&cursor=...`
 
 Staff:
 

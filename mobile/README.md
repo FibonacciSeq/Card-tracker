@@ -4,7 +4,8 @@ Expo + React Native + TypeScript customer app for the multi-vendor platform.
 The Step 5 slice covers shop discovery, storefront browsing, card detail,
 QR/deep-link entry, local cart, guest reservation, restock alerts,
 special-order requests, confirmation, history, cancellation, optional
-email-OTP customer accounts with `/v1/me` data, and native push notifications.
+email-OTP customer accounts with `/v1/me` data, native push notifications, and
+a signed-in notification delivery log with push-device diagnostics.
 
 The API is the source of truth. Guest checkout works without an account; the
 app keeps a local cart and the guest tokens/metadata needed to reopen a hold,
@@ -36,6 +37,10 @@ in memory only and combines `/v1/me` rows with device-local guest rows.
   token with the API, refreshes rolled tokens, unregisters on sign-out, and
   opens the relevant shop or card when a notification is tapped. The app never
   uses the Expo Push Service.
+- A signed-in notification delivery log shows email, push, and in-app attempts
+  with pending/retrying/sent/skipped/failed status, the shop, timestamps, and
+  sanitized errors. The same screen lists active/revoked push devices with
+  failure counts, and supports pull-to-refresh plus cursor pagination.
 - Optional email OTP account. Signing in claims unowned guest reservations,
   restock alerts, and special orders with the same verified email, then shows
   account data across shops and devices. Signed-in create forms use the
@@ -56,9 +61,8 @@ in memory only and combines `/v1/me` rows with device-local guest rows.
   `cardtracker://shop/<slug>` remains accepted for direct installs and older QR
   codes.
 
-Not in this slice yet: real-device signed-in E2E, a customer-facing activity
-log, notification-center delivery visibility, and production universal-link
-validation.
+Not in this slice yet: real-device signed-in E2E, a customer-facing account
+audit/activity log, and production universal-link validation.
 
 ## Run it
 
@@ -181,6 +185,12 @@ set `CARDTRACKER_PUSH_BACKEND=native` and the matching FCM/APNs variables from
 [`backend/.env.example`](../backend/.env.example). The API talks directly to
 FCM HTTP v1 and APNs HTTP/2; it does not use the Expo Push Service.
 
+Open **Account → Notification delivery** to see the signed-in account's delivery
+log. Each row shows the channel and status (`pending`, `retrying`, `sent`,
+`skipped`, or `failed`) plus the rendered title, shop, timestamps, and sanitized
+error. The screen also shows active/revoked push devices and failure counts, and
+links back to Account so push and email preferences can be changed safely.
+
 To try the QR entry without a printed code, open `/scan` from the home screen
 and type `bolt-shop` into **Enter a code by hand**. The admin prints the matching
 shop QR code from **Settings → Shop QR code**.
@@ -248,6 +258,7 @@ src/
     shop/[slug]/cart.tsx       cart + guest/signed-in reservation form
     reservation/[id].tsx       confirmation / detail / cancel
     alerts.tsx                 combined restock alerts + unsubscribe
+    notifications.tsx          delivery log + push-device diagnostics
     requests/index.tsx         combined special orders
     requests/new.tsx           special-order request form
     requests/[id].tsx          quote detail / accept / cancel
