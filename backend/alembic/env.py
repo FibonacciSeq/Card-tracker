@@ -46,9 +46,7 @@ def _widen_version_table(engine) -> None:
                 "CONSTRAINT alembic_version_pkc PRIMARY KEY (version_num))"
             )
         )
-        connection.execute(
-            text("ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(64)")
-        )
+        connection.execute(text("ALTER TABLE alembic_version ALTER COLUMN version_num TYPE VARCHAR(64)"))
 
 
 def run_migrations_online() -> None:
