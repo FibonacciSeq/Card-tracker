@@ -110,7 +110,10 @@ functions, and lines**. UI screens are intentionally outside the line-coverage
 set; the Playwright suite exercises them end to end.
 
 The Playwright suite starts a throwaway API (`e2e/api-server.sh`) with a seeded
-SQLite database and runs the real UI against it (8 tests):
+SQLite database and runs the real UI against it (8 tests). It uses ports 8011
+and 5174 by default so an API or Vite development server on the usual ports
+does not block the tests. Override these with `CARDTRACKER_E2E_API_PORT` and
+`CARDTRACKER_E2E_ADMIN_PORT` if needed:
 
 - wrong password is rejected, then sign-in succeeds;
 - adjusting stock is visible to the public storefront API;

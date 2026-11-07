@@ -1,7 +1,18 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const API_URL = "http://127.0.0.1:8010";
-const ADMIN_URL = "http://127.0.0.1:5173";
+function configuredPort(name: string, defaultPort: string): string {
+  const port = process.env[name] ?? defaultPort;
+  const numericPort = Number(port);
+  if (!/^\d+$/.test(port) || numericPort < 1 || numericPort > 65_535) {
+    throw new Error(`${name} must be a valid TCP port number.`);
+  }
+  return port;
+}
+
+const API_PORT = configuredPort("CARDTRACKER_E2E_API_PORT", "8011");
+const ADMIN_PORT = configuredPort("CARDTRACKER_E2E_ADMIN_PORT", "5174");
+const API_URL = `http://127.0.0.1:${API_PORT}`;
+const ADMIN_URL = `http://127.0.0.1:${ADMIN_PORT}`;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -27,15 +38,19 @@ export default defineConfig({
       stderr: "pipe",
       env: {
         ...process.env,
-        CARDTRACKER_E2E_PYTHON: process.env.CARDTRACKER_E2E_PYTHON ?? "python",
+        CARDTRACKER_E2E_API_PORT: API_PORT,
+        CARDTRACKER_E2E_PYTHON: process.env.CARDTRACKER_E2E_PYTHON ?? "python3",
       },
     },
     {
-      command: "npx vite --port 5173 --strictPort",
+      command: `npx vite --port ${ADMIN_PORT} --strictPort`,
       url: ADMIN_URL,
       reuseExistingServer: false,
       timeout: 60_000,
-      env: { CARDTRACKER_API_URL: API_URL },
+      env: {
+        ...process.env,
+        CARDTRACKER_API_URL: API_URL,
+      },
     },
   ],
 });

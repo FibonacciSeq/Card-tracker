@@ -12,7 +12,8 @@ if ! command -v "$python" >/dev/null 2>&1; then
   echo "Python interpreter not found for the seeded Playwright API" >&2
   exit 1
 fi
-db="${CARDTRACKER_E2E_DB:-/tmp/cardtracker-e2e.db}"
+port="${CARDTRACKER_E2E_API_PORT:-8011}"
+db="${CARDTRACKER_E2E_DB:-/tmp/cardtracker-e2e-$port.db}"
 
 rm -f "$db"
 cd "$backend"
@@ -32,4 +33,4 @@ export CARDTRACKER_JWT_SECRET="e2e-secret-e2e-secret-e2e-secret-32"
   --email owner@example.com \
   --password secret-password >/dev/null
 
-exec "$python" -m uvicorn app.main:app --host 127.0.0.1 --port 8010 --log-level warning
+exec "$python" -m uvicorn app.main:app --host 127.0.0.1 --port "$port" --log-level warning
