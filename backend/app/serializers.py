@@ -29,9 +29,17 @@ def shop_out(tenant: models.Tenant) -> schemas.ShopOut:
 def staff_shop_out(tenant: models.Tenant) -> schemas.StaffShopOut:
     """Public shop profile plus settings only staff may see."""
     base = shop_out(tenant)
+    pricing = tenant.settings.scryfall_pricing if tenant.settings else {}
+    if not isinstance(pricing, dict):
+        pricing = {}
+    minimum_price = pricing.get("minimum_price_minor", 0)
+    markup_percent = pricing.get("markup_percent", 0)
     return schemas.StaffShopOut(
         **base.model_dump(),
         notification_email=tenant.settings.notification_email if tenant.settings else None,
+        scryfall_pricing_enabled=pricing.get("enabled") is True,
+        scryfall_min_price_minor=minimum_price if type(minimum_price) is int else 0,
+        scryfall_markup_percent=markup_percent if type(markup_percent) is int else 0,
     )
 
 

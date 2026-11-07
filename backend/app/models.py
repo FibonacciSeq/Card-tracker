@@ -67,6 +67,7 @@ class TenantSettings(Base):
     notification_email: Mapped[str | None] = mapped_column(String(320))
     features: Mapped[dict] = mapped_column(JSON, default=dict)
     stock_import_pricing: Mapped[dict | None] = mapped_column(JSON)
+    scryfall_pricing: Mapped[dict | None] = mapped_column(JSON)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     tenant: Mapped[Tenant] = relationship(back_populates="settings")
@@ -199,6 +200,7 @@ class Card(Base):
     image_small: Mapped[str | None] = mapped_column(Text)
     image_normal: Mapped[str | None] = mapped_column(Text)
     image_large: Mapped[str | None] = mapped_column(Text)
+    scryfall_prices: Mapped[dict | None] = mapped_column(JSON)
     raw: Mapped[dict] = mapped_column(JSON, default=dict)
 
     __table_args__ = (

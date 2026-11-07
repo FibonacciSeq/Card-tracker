@@ -21,8 +21,8 @@ services:
     env_file:
       - .env
     environment:
-      CARDTRACKER_DATABASE_URL: postgresql+psycopg://cardtracker_app:cardtracker_app@db:5432/cardtracker
-      CARDTRACKER_MIGRATION_DATABASE_URL: postgresql+psycopg://cardtracker_owner:cardtracker_owner@db:5432/cardtracker
+      CARDTRACKER_DATABASE_URL: "postgresql+psycopg://cardtracker_app:cardtracker_app@db:5432/cardtracker"
+      CARDTRACKER_MIGRATION_DATABASE_URL: "postgresql+psycopg://cardtracker_owner:cardtracker_owner@db:5432/cardtracker"
       CARDTRACKER_AUTO_CREATE_TABLES: "false"
     depends_on:
       db:
@@ -38,7 +38,7 @@ services:
     env_file:
       - .env
     environment:
-      CARDTRACKER_DATABASE_URL: postgresql+psycopg://cardtracker_app:cardtracker_app@db:5432/cardtracker
+      CARDTRACKER_DATABASE_URL: "postgresql+psycopg://cardtracker_app:cardtracker_app@db:5432/cardtracker"
       CARDTRACKER_AUTO_CREATE_TABLES: "false"
     depends_on:
       db:
@@ -50,12 +50,24 @@ services:
     env_file:
       - .env
     environment:
-      CARDTRACKER_DATABASE_URL: postgresql+psycopg://cardtracker_app:cardtracker_app@db:5432/cardtracker
+      CARDTRACKER_DATABASE_URL: "postgresql+psycopg://cardtracker_app:cardtracker_app@db:5432/cardtracker"
       CARDTRACKER_AUTO_CREATE_TABLES: "false"
     depends_on:
       db:
         condition: service_healthy
     command: ["python", "-m", "app.workers.notifications"]
+
+  scryfall-pricing:
+    build: .
+    env_file:
+      - .env
+    environment:
+      CARDTRACKER_DATABASE_URL: "******db:5432/cardtracker"
+      CARDTRACKER_AUTO_CREATE_TABLES: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["python", "-m", "app.workers.scryfall_pricing"]
 
 volumes:
   pgdata:

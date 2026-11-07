@@ -38,6 +38,9 @@ class StaffShopOut(ShopOut):
     """Staff view: adds settings that must not appear on the public profile."""
 
     notification_email: EmailStr | None = None
+    scryfall_pricing_enabled: bool = False
+    scryfall_min_price_minor: int = 0
+    scryfall_markup_percent: int = 0
 
 
 class CardOut(BaseModel):
@@ -552,3 +555,6 @@ class SettingsUpdateIn(BaseModel):
     allow_backorders: bool | None = None
     directory_opt_in: bool | None = None
     notification_email: EmailStr | None = None
+    scryfall_pricing_enabled: bool | None = None
+    scryfall_min_price_minor: int | None = Field(default=None, ge=0, le=2_147_483_647)
+    scryfall_markup_percent: int | None = Field(default=None, ge=0, le=10_000)

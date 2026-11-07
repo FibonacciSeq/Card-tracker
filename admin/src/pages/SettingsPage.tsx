@@ -24,7 +24,10 @@ type FormState = {
   contactEmail: string;
   contactPhone: string;
   contactAddress: string;
-};
+  scryfallPricingEnabled: boolean;
+  scryfallMinimumPrice: string;
+  scryfallMarkupPercent: string;
+}
 
 function toForm(shop: StaffShop): FormState {
   const colors = asRecord(shop.colors);
@@ -41,6 +44,9 @@ function toForm(shop: StaffShop): FormState {
     contactEmail: asText(contact.email),
     contactPhone: asText(contact.phone),
     contactAddress: asText(contact.address),
+    scryfallPricingEnabled: shop.scryfall_pricing_enabled,
+    scryfallMinimumPrice: (shop.scryfall_min_price_minor / 100).toFixed(2),
+    scryfallMarkupPercent: String(shop.scryfall_markup_percent),
   };
 }
 
@@ -169,6 +175,14 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
 
   const holdHours = Number(form.holdHours);
   const holdValid = Number.isInteger(holdHours) && holdHours >= 1 && holdHours <= 720;
+  const minimumPriceMinor = parseMinorAmount(form.scryfallMinimumPrice);
+  const markupPercent = Number(form.scryfallMarkupPercent);
+  const pricingValid =
+    minimumPriceMinor !== null &&
+    form.scryfallMarkupPercent.trim() !== "" &&
+    Number.isInteger(markupPercent) &&
+    markupPercent >= 0 &&
+    markupPercent <= 10_000;
 
   function patch(next: Partial<FormState>) {
     setSaved(false);
@@ -191,6 +205,9 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
       payment_instructions: form.paymentInstructions,
       directory_opt_in: form.directoryOptIn,
       notification_email: form.notificationEmail.trim() || null,
+      scryfall_pricing_enabled: form.scryfallPricingEnabled,
+      scryfall_min_price_minor: minimumPriceMinor ?? 0,
+      scryfall_markup_percent: Number.isInteger(markupPercent) ? markupPercent : 0,
     };
     update.mutate(body, { onSuccess: () => setSaved(true) });
   }
@@ -299,6 +316,51 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
         </fieldset>
 
         <fieldset>
+          <legend>Stock pricing</legend>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={form.scryfallPricingEnabled}
+              onChange={(event) => patch({ scryfallPricingEnabled: event.target.checked })}
+            />
+            Automatically price stock using Scryfall market prices
+          </label>
+          <div className="field-row">
+            <div className="field">
+              <label htmlFor="scryfall-minimum-price">Minimum price ({shop.currency})</label>
+              <input
+                id="scryfall-minimum-price"
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.scryfallMinimumPrice}
+                onChange={(event) => patch({ scryfallMinimumPrice: event.target.value })}
+                aria-invalid={!pricingValid}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="scryfall-markup">Markup at/above minimum (%)</label>
+              <input
+                id="scryfall-markup"
+                type="number"
+                min="0"
+                max="10000"
+                step="1"
+                value={form.scryfallMarkupPercent}
+                onChange={(event) => patch({ scryfallMarkupPercent: event.target.value })}
+                aria-invalid={!pricingValid}
+              />
+            </div>
+          </div>
+          <p className="hint">
+            Below the minimum, the sale price is set to the minimum. At or above it, the configured percentage is added,
+            then the result rounds up to the next whole {shop.currency} unit. Scryfall prices refresh nightly at 02:00
+            UTC and use the finish-specific market price. Cards without a reported market price are skipped during
+            imports; existing stock keeps its last price.
+          </p>
+        </fieldset>
+
+        <fieldset>
           <legend>Storefront</legend>
           <div className="field">
             <label htmlFor="payment-instructions">Payment instructions</label>
@@ -360,7 +422,11 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
         ) : null}
 
         <div className="form__footer">
-          <button type="submit" className="btn btn--primary" disabled={update.isPending || !holdValid}>
+          <button
+            type="submit"
+            className="btn btn--primary"
+            disabled={update.isPending || !holdValid || !pricingValid}
+          >
             {update.isPending ? "Saving…" : "Save settings"}
           </button>
           <span aria-live="polite" className="small tone--available">
@@ -370,4 +436,13 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
       </form>
     </div>
   );
+}
+
+function parseMinorAmount(value: string): number | null {
+  if (!value.trim()) return null;
+  const amount = Number(value);
+  const minor = Math.round(amount * 100);
+  return Number.isFinite(amount) && amount >= 0 && Number.isSafeInteger(minor) && minor <= 2_147_483_647
+    ? minor
+    : null;
 }

@@ -376,6 +376,7 @@ def test_cli_image_and_card_field_fallbacks():
     )
     assert fields["colors"] == ["R"]
     assert fields["image_small"] is None
+    assert fields["scryfall_prices"] == {}
     assert fields["raw"] == {}
 
 
@@ -1013,6 +1014,16 @@ def test_parse_csv_format_errors(db, monkeypatch):
 
     with pytest.raises(stock_csv.CsvFormatError):
         stock_csv.parse_csv("", "RSD")
+    with pytest.raises(stock_csv.CsvFormatError, match="duplicate columns"):
+        stock_csv.parse_csv(
+            "card_name,Name,set_code,collector_number,finish,condition,language,quantity,price,currency,is_online\n",
+            "RSD",
+        )
+    with pytest.raises(stock_csv.CsvFormatError, match="either a stock price"):
+        stock_csv.parse_csv(
+            "card_name,set_code,collector_number,finish,condition,language,quantity,price,purchase_price,currency,is_online\n",
+            "RSD",
+        )
 
     def boom(*_args, **_kwargs):
         raise stock_csv.csv.Error("bad")
@@ -1033,12 +1044,43 @@ def test_parse_csv_row_validation_and_blank_rows():
         + "Bolt,LEB,,nonfoil,NM,english,1,1.00,RSD,true\n"
         + "Bolt,LEB,1,nonfoil,NM,en,-1,1.00,RSD,true\n"
         + "Bolt,LEB,1,nonfoil,NM,en,1,-1.00,RSD,true\n"
+        + "Bolt,LEB,1,nonfoil,NM,en,1,21474836.48,RSD,true\n"
+        + "Bolt,LEB,1,nonfoil,NM,en,1,1.00,XX,true\n"
         + "Bolt,LEB,1,nonfoil,NM,en,1,1.00,RSD,\n"
     )
     rows, errors = stock_csv.parse_csv(body, "RSD")
     assert len(rows) == 1
     assert rows[0].is_online is True
-    assert len(errors) >= 5
+    assert len(errors) >= 7
+
+
+def test_price_import_rows_passes_through_regular_stock_rows_and_rejects_overflow():
+    from decimal import Decimal
+
+    from app.services import stock_csv
+
+    row, errors = stock_csv.parse_csv(
+        "card_name,set_code,collector_number,finish,condition,language,quantity,price,currency,is_online\n"
+        "Bolt,LEB,1,nonfoil,NM,en,1,1.00,RSD,true\n",
+        "RSD",
+    )
+    assert errors == []
+    assert (
+        stock_csv.price_purchase_rows(
+            row,
+            "RSD",
+            {},
+            {"threshold_minor": 0, "fixed_price_minor": 1, "markup_percent": 0},
+        )
+        == row
+    )
+
+    with pytest.raises(ValueError, match="supported range"):
+        stock_csv.calculate_sale_price(
+            2_147_483_647,
+            Decimal("1"),
+            {"threshold_minor": 0, "fixed_price_minor": 1, "markup_percent": 0},
+        )
 
 
 def test_parse_csv_row_limit(monkeypatch):

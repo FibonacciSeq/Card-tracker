@@ -39,7 +39,8 @@ desktop app is unchanged and still uses its own SQLite database.
   signed, stateless manage token; unsubscribe works with the token in the app,
   from the HTML confirmation page, or via an RFC 8058 one-click POST. Restock
   emails include a card deep link and `List-Unsubscribe` headers.
-- Expiry worker, Scryfall bulk importer, demo seed command.
+- Expiry, notification, and nightly Scryfall pricing workers; Scryfall bulk
+  importer and demo seed command.
 - Pytest suite running on SQLite for fast local/CI feedback, plus a
   PostgreSQL-only suite for RLS, tenant context, and last-copy locking.
 
@@ -117,6 +118,17 @@ Options:
 - `--store-raw` keep the full Scryfall object in `cards.raw`; default is off to
   keep the production database small.
 
+When automatic Scryfall pricing is enabled in **Settings → Stock pricing**,
+newly imported stock uses the matching finish's Scryfall market price. Prices
+below the configured minimum are set to that minimum; prices at or above it
+receive the configured percentage markup and round upward to the next whole
+shop-currency unit. The `scryfall-pricing` worker refreshes Scryfall default
+card prices nightly at 02:00 UTC and reapplies prices to configured shops.
+Rows without a Scryfall price are skipped during import, while existing stock
+keeps its last price when a market price is unavailable. Currency conversion
+uses the latest published daily reference rate when the shop currency has no
+matching Scryfall price currency.
+
 ## Postgres / Docker
 
 Copy `.env.example` to `.env`, change `CARDTRACKER_JWT_SECRET`, then:
@@ -129,14 +141,14 @@ docker compose up --build
 The API container runs `alembic upgrade head` before starting. The `worker`
 container releases expired reservations and quotes every 60 seconds; the
 `notifications` container drains the email and native-push outboxes every 10
-seconds.
+seconds; and `scryfall-pricing` refreshes catalog prices nightly.
 
 Compose separates database roles:
 
 - **`cardtracker_owner`** owns the schema and runs Alembic migrations via
   `CARDTRACKER_MIGRATION_DATABASE_URL`.
 - **`cardtracker_app`** is the non-owner/non-superuser role used by the API and
-  both workers through `CARDTRACKER_DATABASE_URL`. Postgres RLS is only
+  workers through `CARDTRACKER_DATABASE_URL`. Postgres RLS is only
   effective for this role.
 
 The role and default table/sequence grants are created by

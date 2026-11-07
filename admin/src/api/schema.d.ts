@@ -1959,6 +1959,12 @@ export interface components {
             directory_opt_in?: boolean | null;
             /** Notification Email */
             notification_email?: string | null;
+            /** Scryfall Pricing Enabled */
+            scryfall_pricing_enabled?: boolean | null;
+            /** Scryfall Min Price Minor */
+            scryfall_min_price_minor?: number | null;
+            /** Scryfall Markup Percent */
+            scryfall_markup_percent?: number | null;
         };
         /** ShopOut */
         ShopOut: {
@@ -2210,6 +2216,21 @@ export interface components {
             directory_opt_in: boolean;
             /** Notification Email */
             notification_email?: string | null;
+            /**
+             * Scryfall Pricing Enabled
+             * @default false
+             */
+            scryfall_pricing_enabled: boolean;
+            /**
+             * Scryfall Min Price Minor
+             * @default 0
+             */
+            scryfall_min_price_minor: number;
+            /**
+             * Scryfall Markup Percent
+             * @default 0
+             */
+            scryfall_markup_percent: number;
         };
         /** StaffStockListOut */
         StaffStockListOut: {

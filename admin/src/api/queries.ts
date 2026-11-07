@@ -11,8 +11,6 @@ import type {
   StaffReservation,
   ReservationSummary,
   SettingsUpdate,
-  StockImportPricing,
-  StockImportPricingUpdate,
   StaffShop,
   StaffStock,
   StaffStockList,
@@ -32,7 +30,6 @@ export const queryKeys = {
   reservations: (status: string) => ["reservations", status] as const,
   reservation: (id: string) => ["reservation", id] as const,
   settings: ["settings"] as const,
-  stockImportPricing: ["stock-import-pricing"] as const,
   team: ["team"] as const,
   audit: (action: string) => ["audit", action] as const,
   requests: (status: string) => ["requests", status] as const,
@@ -106,22 +103,6 @@ export function useImportStock() {
   });
 }
 
-export function useStockImportPricing() {
-  return useQuery({
-    queryKey: queryKeys.stockImportPricing,
-    queryFn: () => request<StockImportPricing>("/v1/staff/stock/import-pricing"),
-  });
-}
-
-export function useUpdateStockImportPricing() {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (pricing: StockImportPricingUpdate) =>
-      request<StockImportPricing>("/v1/staff/stock/import-pricing", { method: "PATCH", body: pricing }),
-    onSuccess: (pricing) => client.setQueryData(queryKeys.stockImportPricing, pricing),
-  });
-}
-
 export function useReservations(status: string) {
   return useQuery({
     queryKey: queryKeys.reservations(status),
@@ -179,6 +160,7 @@ export function useUpdateSettings() {
     onSuccess: (shop) => {
       client.setQueryData(queryKeys.settings, shop);
       client.invalidateQueries({ queryKey: queryKeys.dashboard });
+      client.invalidateQueries({ queryKey: ["stock"] });
     },
   });
 }

@@ -44,6 +44,7 @@ def _card_fields(obj: dict[str, Any], store_raw: bool) -> dict[str, Any]:
         "image_small": images.get("small"),
         "image_normal": images.get("normal"),
         "image_large": images.get("large"),
+        "scryfall_prices": obj.get("prices") if isinstance(obj.get("prices"), dict) else {},
         "raw": obj if store_raw else {},
     }
 

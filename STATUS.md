@@ -2,8 +2,10 @@
 
 Last updated: **2026-11-07**
 Latest commit: see `git log -1`
-Working tree: account lifecycle/session-safety work and ManaBox stock-import
-pricing are implemented and verified. The local platform database now contains
+Working tree: account lifecycle/session-safety work and Scryfall market-based
+stock pricing are implemented and verified. Shop Settings reprice existing
+stock from catalog market prices when rules change; the nightly worker refreshes
+prices and recalculates eligible stock. The local platform database contains
 the Scryfall catalog required for stock imports. Step 5 is in release-readiness
 work: finish offline/cache safety, validate production links and delivery, then
 run a signed-in multi-device smoke before a small pilot.
@@ -80,16 +82,15 @@ for the original single-shop workflow until the new stack replaces it.
 - ManaBox collection exports are also accepted. Header aliases, normal/foil
   finishes, and ManaBox condition names are normalized; distinct foil and
   nonfoil variants remain separate stock rows.
-- Shop workers can save persistent import pricing rules: after currency
-  conversion, purchase costs below a threshold use a fixed selling price,
-  while costs at or above the threshold receive a percentage markup and round
-  strictly upward to the next amount ending in 0. The app's own exported stock
-  prices continue to import unchanged.
-- Purchase-price currency conversion uses the latest published daily reference
-  rate from Exchange Rate API. Rates are cached for 23 hours, shown with their
-  publication date during CSV check/apply, and rate-provider failures stop the
-  import rather than silently using a stale or guessed rate. The pricing rules
-  are stored per shop in migration `0009_stock_import_pricing`.
+- Shop owners configure Scryfall pricing in Settings: prices below the minimum
+  use the minimum, while prices at or above it receive the configured markup
+  and round upward to a whole shop-currency unit.
+- With automatic pricing enabled, stock imports use the Scryfall price for the
+  matching finish; rows without a market price are skipped. The Scryfall
+  pricing worker refreshes the catalog nightly at 02:00 UTC and recalculates
+  existing shop stock from market data, never from its previous sale price.
+  Shops using currencies without a matching Scryfall price use the latest
+  published daily reference exchange rate.
 
 ### Step 3 — staff, audit, and rate limits
 
@@ -303,7 +304,7 @@ public HTTPS domain are configured but not yet validated in production.
 | Backend with PostgreSQL test URLs | **278 passed, 100%** (277 before the added per-device logout test) |
 | Backend PostgreSQL-only suite (RLS, customer claiming, notifications, locking) | **13 passed** |
 | Backend account/session tests | `tests/test_customer_accounts.py`: **22 passed**, including per-device logout |
-| Backend Ruff / format / mypy | Clean |
+| Backend Ruff lint / changed-file formatting / mypy | Clean |
 | Alembic `0008_customer_notifications` downgrade → upgrade | Verified on SQLite and PostgreSQL; notification customer RLS policy and push diagnostics recreated; `alembic_version` widened to 64 chars |
 | Admin ESLint / TypeScript / production build | Clean |
 | Admin Vitest logic/API-client coverage | **23 passed, 100% statements/branches/functions/lines** |
@@ -322,6 +323,16 @@ public HTTPS domain are configured but not yet validated in production.
 
 Latest stock-import validation (2026-11-07):
 
+- Scryfall-based stock pricing is configurable in Shop Settings and is applied
+  to existing stock immediately when rules change, then refreshed nightly.
+  Markups use Scryfall market prices as the baseline, so repricing does not
+  compound the previous sale price.
+- Backend SQLite suite passed with 100% statement and branch coverage; 13
+  PostgreSQL-only tests were skipped because their test URLs were not
+  configured. Backend Ruff lint, changed-file formatting, and mypy passed.
+- Admin typecheck, lint, production build, and Vitest coverage passed after
+  moving the pricing controls out of the stock-import panel: 23 tests and 100%
+  statement, branch, function, and line coverage.
 - Root cause of the “No catalog card” errors: the API database had only three
   catalog rows. Loaded the Scryfall default-cards dataset into the configured
   local API database (**120,042 cards**); `FRA` / `384` resolves to Plains.

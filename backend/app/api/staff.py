@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
-from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
@@ -17,7 +16,7 @@ from app.config import settings
 from app.db import get_db, set_tenant_context
 from app.deps import get_current_staff, require_owner
 from app.security import create_access_token, hash_password, verify_password
-from app.services import audit, notifications, ratelimit, restock, stock_csv
+from app.services import audit, notifications, ratelimit, restock, scryfall_pricing, stock_csv
 from app.services import card_requests as card_request_service
 from app.services import exchange_rates as exchange_rate_service
 from app.services import reservations as reservation_service
@@ -425,18 +424,6 @@ def _stock_import_pricing_out(tenant: models.Tenant) -> schemas.StockImportPrici
     )
 
 
-def _recalculate_stock_prices_for_import_pricing(db: Session, tenant: models.Tenant, pricing: dict[str, int]) -> None:
-    for stock in db.scalars(select(models.Stock).where(models.Stock.tenant_id == tenant.id)).all():
-        if stock.currency.upper() != tenant.currency.upper():
-            continue
-        if stock.price_minor <= 0:
-            continue
-        new_price = stock_csv.calculate_sale_price(stock.price_minor, Decimal("1"), pricing)
-        if new_price != stock.price_minor:
-            stock.price_minor = new_price
-            stock.updated_at = models.utcnow()
-
-
 @router.get("/stock/import-pricing", response_model=schemas.StockImportPricingOut)
 def get_stock_import_pricing(
     user: models.User = Depends(get_current_staff),
@@ -460,7 +447,6 @@ def update_stock_import_pricing(
 
     rules = payload.model_dump()
     settings_row.stock_import_pricing = rules
-    _recalculate_stock_prices_for_import_pricing(db, tenant, rules)
     audit.record(
         db,
         tenant_id=tenant.id,
@@ -503,6 +489,17 @@ def import_stock_csv(
         rows, parse_errors = stock_csv.parse_csv(text, tenant.currency)
     except stock_csv.CsvFormatError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    input_row_count = len(rows) + len(parse_errors)
+    scryfall_errors: list[stock_csv.RowError] = []
+    pricing = scryfall_pricing.pricing_settings(tenant.settings)
+    if pricing is not None:
+        try:
+            rows, scryfall_errors = scryfall_pricing.price_import_rows(db, tenant, rows, pricing)
+        except exchange_rate_service.ExchangeRateError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
 
     exchange_rate_rows: list[schemas.ExchangeRateOut] = []
     purchase_rows = [row for row in rows if row.uses_pricing_rules]
@@ -549,10 +546,10 @@ def import_stock_csv(
             )
         db.commit()
 
-    errors = parse_errors + apply_errors
+    errors = parse_errors + scryfall_errors + apply_errors
     return schemas.StockImportReportOut(
         dry_run=dry_run,
-        rows=len(rows) + len(parse_errors),
+        rows=input_row_count,
         created=created,
         updated=updated,
         unchanged=unchanged,
@@ -1161,8 +1158,49 @@ def update_settings(
         db.add(settings_row)
 
     changes = payload.model_dump(exclude_unset=True)
+    pricing_fields = {
+        "scryfall_pricing_enabled",
+        "scryfall_min_price_minor",
+        "scryfall_markup_percent",
+    }
+    pricing_changes = pricing_fields.intersection(changes)
+    if pricing_changes:
+        current = settings_row.scryfall_pricing if isinstance(settings_row.scryfall_pricing, dict) else {}
+        pricing = {
+            "enabled": current.get("enabled") is True,
+            "minimum_price_minor": current.get("minimum_price_minor", 0),
+            "markup_percent": current.get("markup_percent", 0),
+        }
+        if "scryfall_pricing_enabled" in changes:
+            pricing["enabled"] = changes.pop("scryfall_pricing_enabled")
+        if "scryfall_min_price_minor" in changes:
+            pricing["minimum_price_minor"] = changes.pop("scryfall_min_price_minor")
+        if "scryfall_markup_percent" in changes:
+            pricing["markup_percent"] = changes.pop("scryfall_markup_percent")
+        settings_row.scryfall_pricing = pricing
+        changes["scryfall_pricing"] = pricing
+
+        if pricing["enabled"]:
+            normalized = scryfall_pricing.pricing_settings(settings_row)
+            if normalized is None:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="A minimum price and markup percentage are required to enable Scryfall pricing.",
+                )
+            try:
+                updated, skipped = scryfall_pricing.reprice_tenant_stock(db, tenant, normalized)
+            except exchange_rate_service.ExchangeRateError as exc:
+                db.rollback()
+                raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+            except ValueError as exc:
+                db.rollback()
+                raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+            changes["repriced_stock"] = updated
+            changes["stock_without_scryfall_prices"] = skipped
+
     for field, value in changes.items():
-        setattr(settings_row, field, value)
+        if field not in ("scryfall_pricing", "repriced_stock", "stock_without_scryfall_prices"):
+            setattr(settings_row, field, value)
     if changes:
         audit.record(
             db,
