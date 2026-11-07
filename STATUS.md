@@ -3,9 +3,10 @@
 Last updated: **2026-11-07**
 Latest commit: see `git log -1`
 Working tree: account lifecycle/session-safety work and ManaBox stock-import
-pricing are implemented and verified. Step 5 is in release-readiness work:
-finish offline/cache safety, validate production links and delivery, then run a
-signed-in multi-device smoke before a small pilot.
+pricing are implemented and verified. The local platform database now contains
+the Scryfall catalog required for stock imports. Step 5 is in release-readiness
+work: finish offline/cache safety, validate production links and delivery, then
+run a signed-in multi-device smoke before a small pilot.
 
 This file is the quick, human-readable status of the multi-vendor platform.
 The full product/technical specification lives outside the repository in the
@@ -321,6 +322,12 @@ public HTTPS domain are configured but not yet validated in production.
 
 Latest stock-import validation (2026-11-07):
 
+- Root cause of the “No catalog card” errors: the API database had only three
+  catalog rows. Loaded the Scryfall default-cards dataset into the configured
+  local API database (**120,042 cards**); `FRA` / `384` resolves to Plains.
+- A stock-import dry run for `Plains,FRA,384` now reports one created row and no
+  errors. The backend setup guide now makes loading the catalog into the same
+  database used by the API a prerequisite.
 - The uploaded `bulk.csv` parses as **1,332 rows with no parse or duplicate
   variant errors**. Stock was not changed during validation.
 - `python3 -m pytest -q backend/tests`: passed; 13 PostgreSQL-only tests skipped

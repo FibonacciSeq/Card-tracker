@@ -92,13 +92,23 @@ notification address. It prints the shop slug and login details.
 
 ## Import Scryfall bulk data
 
-Download a Scryfall default-cards JSONL file after running the migration,
-then:
+Stock CSV imports match the global card catalog by set code and collector
+number. Load the Scryfall catalog into the same database used by the API before
+importing shop stock. This is a one-time initial setup; run the importer again
+when you want to refresh catalog data.
+
+After running the migration, download a Scryfall default-cards JSONL file and
+run the importer from `backend/`, using the API's database URL:
 
 ```bash
 cd backend
-../.venv/bin/python -m app.cli.import_scryfall --path scryfall_default_cards.jsonl
+CARDTRACKER_DATABASE_URL=sqlite+pysqlite:///./cardtracker_platform.db \
+  ../.venv/bin/python -m app.cli.import_scryfall --path ../scryfall_default_cards.jsonl
 ```
+
+For Postgres, set `CARDTRACKER_DATABASE_URL` to the same application database
+URL used by the API. Do not use the migration/owner URL. The importer is
+idempotent and can be rerun to update existing Scryfall records.
 
 Options:
 
