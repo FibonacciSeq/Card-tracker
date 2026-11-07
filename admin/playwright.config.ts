@@ -33,7 +33,7 @@ export default defineConfig({
       command: "bash e2e/api-server.sh",
       url: `${API_URL}/health`,
       reuseExistingServer: false,
-      timeout: 60_000,
+      timeout: 120_000,
       stdout: "pipe",
       stderr: "pipe",
       env: {

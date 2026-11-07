@@ -286,11 +286,9 @@ def calculate_sale_price(
         return pricing["fixed_price_minor"]
 
     marked_up_minor = int(
-        (
-            Decimal(converted_minor)
-            * Decimal(100 + pricing["markup_percent"])
-            / Decimal(100)
-        ).quantize(Decimal("1"), rounding=ROUND_CEILING)
+        (Decimal(converted_minor) * Decimal(100 + pricing["markup_percent"]) / Decimal(100)).quantize(
+            Decimal("1"), rounding=ROUND_CEILING
+        )
     )
     rounded_minor = (marked_up_minor // 1000 + 1) * 1000
     if rounded_minor > 2_147_483_647:
