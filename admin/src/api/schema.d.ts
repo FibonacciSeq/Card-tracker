@@ -1965,6 +1965,8 @@ export interface components {
             scryfall_min_price_minor?: number | null;
             /** Scryfall Markup Percent */
             scryfall_markup_percent?: number | null;
+            /** Scryfall Rounding Increment */
+            scryfall_rounding_increment?: number | null;
         };
         /** ShopOut */
         ShopOut: {
@@ -2231,6 +2233,11 @@ export interface components {
              * @default 0
              */
             scryfall_markup_percent: number;
+            /**
+             * Scryfall Rounding Increment
+             * @default 5
+             */
+            scryfall_rounding_increment: number;
             /** Repriced Stock */
             repriced_stock?: number | null;
             /** Stock Without Scryfall Prices */

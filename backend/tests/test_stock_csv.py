@@ -107,7 +107,7 @@ def test_markup_prices_equal_threshold_and_rounds_strictly_up():
 
 
 def test_scryfall_price_floor_and_threshold_markup():
-    rules = {"minimum_price_minor": 10_000, "markup_percent": 10}
+    rules = {"minimum_price_minor": 10_000, "markup_percent": 10, "rounding_increment_minor": 100}
     assert scryfall_pricing.calculate_sale_price(Decimal("0.99"), "USD", "RSD", rules, Decimal("100")) == 10_000
     assert scryfall_pricing.calculate_sale_price(Decimal("1.00"), "USD", "RSD", rules, Decimal("100")) == 11_100
 
@@ -227,7 +227,41 @@ def test_scryfall_pricing_settings_reprice_from_market_not_current_sale_price(
     db.expire_all()
     updated = db.get(models.Stock, stock.id)
     assert updated is not None
-    assert updated.price_minor == 22_100
+    assert updated.price_minor == 22_500
+    assert response.json()["scryfall_rounding_increment"] == 5
+
+
+def test_scryfall_rounding_increment_change_reprices_existing_stock(client, tenant, stock, card, auth, db, monkeypatch):
+    card.scryfall_prices = {"usd": "2.00"}
+    tenant.currency = "RSD"
+    db.commit()
+    monkeypatch.setattr(
+        "app.services.scryfall_pricing.exchange_rates.get_latest_rate",
+        lambda source, target: exchange_rates.ExchangeRate(source, target, Decimal("100"), date(2026, 11, 6)),
+    )
+    initial = client.patch(
+        "/v1/staff/settings",
+        headers=auth,
+        json={
+            "scryfall_pricing_enabled": True,
+            "scryfall_min_price_minor": 1_000,
+            "scryfall_markup_percent": 10,
+            "scryfall_rounding_increment": 5,
+        },
+    )
+    assert initial.status_code == 200, initial.text
+
+    updated = client.patch(
+        "/v1/staff/settings",
+        headers=auth,
+        json={"scryfall_rounding_increment": 10},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["scryfall_rounding_increment"] == 10
+    assert updated.json()["repriced_stock"] == 1
+
+    db.expire_all()
+    assert db.get(models.Stock, stock.id).price_minor == 23_000
 
 
 def test_scryfall_pricing_settings_reports_stock_without_market_data(client, tenant, stock, auth):
@@ -336,7 +370,7 @@ def test_scryfall_pricing_import_uses_finish_market_price_and_skips_missing(
     assert "No Scryfall market price" in data["errors"][0]["message"]
 
     db.expire_all()
-    assert db.get(models.Stock, stock.id).price_minor == 22_100
+    assert db.get(models.Stock, stock.id).price_minor == 22_500
 
 
 def test_purchase_price_import_applies_rules_and_daily_rate(client, tenant, stock, auth, monkeypatch):

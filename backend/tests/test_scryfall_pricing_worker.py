@@ -186,6 +186,7 @@ def test_reprice_configured_shops_updates_enabled_shop_stock(db, tenant, card, s
         "enabled": True,
         "minimum_price_minor": 1_000,
         "markup_percent": 10,
+        "rounding_increment_minor": 500,
     }
     card.scryfall_prices = {"usd": "10.00"}
     db.commit()
@@ -197,7 +198,7 @@ def test_reprice_configured_shops_updates_enabled_shop_stock(db, tenant, card, s
 
     assert worker.reprice_configured_shops() == (1, 0)
     db.expire_all()
-    assert db.get(models.Stock, stock.id).price_minor == 1_200
+    assert db.get(models.Stock, stock.id).price_minor == 1_500
 
 
 def test_reprice_configured_shops_logs_rate_failures_and_continues(db, tenant, card, stock, monkeypatch):
@@ -206,6 +207,7 @@ def test_reprice_configured_shops_logs_rate_failures_and_continues(db, tenant, c
         "enabled": True,
         "minimum_price_minor": 1_000,
         "markup_percent": 10,
+        "rounding_increment_minor": 500,
     }
     card.scryfall_prices = {"usd": "10.00"}
     db.commit()

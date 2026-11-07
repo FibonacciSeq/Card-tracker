@@ -38,12 +38,20 @@ def staff_shop_out(
         pricing = {}
     minimum_price = pricing.get("minimum_price_minor", 0)
     markup_percent = pricing.get("markup_percent", 0)
+    rounding_increment_minor = pricing.get("rounding_increment_minor", 500)
     return schemas.StaffShopOut(
         **base.model_dump(),
         notification_email=tenant.settings.notification_email if tenant.settings else None,
         scryfall_pricing_enabled=pricing.get("enabled") is True,
         scryfall_min_price_minor=minimum_price if type(minimum_price) is int else 0,
         scryfall_markup_percent=markup_percent if type(markup_percent) is int else 0,
+        scryfall_rounding_increment=(
+            rounding_increment_minor // 100
+            if type(rounding_increment_minor) is int
+            and 100 <= rounding_increment_minor <= 2_147_483_600
+            and rounding_increment_minor % 100 == 0
+            else 5
+        ),
         repriced_stock=repriced_stock,
         stock_without_scryfall_prices=stock_without_scryfall_prices,
     )

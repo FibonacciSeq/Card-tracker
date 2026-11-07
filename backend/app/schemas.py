@@ -41,6 +41,7 @@ class StaffShopOut(ShopOut):
     scryfall_pricing_enabled: bool = False
     scryfall_min_price_minor: int = 0
     scryfall_markup_percent: int = 0
+    scryfall_rounding_increment: int = 5
     repriced_stock: int | None = None
     stock_without_scryfall_prices: int | None = None
 
@@ -560,3 +561,4 @@ class SettingsUpdateIn(BaseModel):
     scryfall_pricing_enabled: bool | None = None
     scryfall_min_price_minor: int | None = Field(default=None, ge=0, le=2_147_483_647)
     scryfall_markup_percent: int | None = Field(default=None, ge=0, le=10_000)
+    scryfall_rounding_increment: int | None = Field(default=None, ge=1, le=21_474_836)

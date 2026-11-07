@@ -331,10 +331,15 @@ Latest stock-import validation (2026-11-07):
   refresh from the Scryfall worker or a full default-cards import. The Settings
   save response now reports how many stock prices changed and how many rows
   lacked a finish-specific market price.
+- Shop owners can configure the strict upward rounding increment in whole
+  currency units. It defaults to 5 (prices advance to amounts ending in 0 or 5)
+  and changing it immediately reprices existing eligible stock.
 - Diagnosed the local database: all 120,045 catalog cards lacked stored market
   prices. Re-imported 120,042 cards with prices, then repriced 1,330 existing
   stock rows; 5 rows had no matching market price and retained their prior
   prices.
+- Applied the new default 5-unit rounding to local stock: 455 prices changed;
+  all 1,335 stock rows now use whole-currency prices divisible by 5.
 - Backend SQLite suite passed with 100% statement and branch coverage; 13
   PostgreSQL-only tests were skipped because their test URLs were not
   configured. Backend Ruff lint, changed-file formatting, and mypy passed.

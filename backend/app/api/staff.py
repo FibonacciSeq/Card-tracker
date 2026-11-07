@@ -1164,6 +1164,7 @@ def update_settings(
         "scryfall_pricing_enabled",
         "scryfall_min_price_minor",
         "scryfall_markup_percent",
+        "scryfall_rounding_increment",
     }
     pricing_changes = pricing_fields.intersection(changes)
     if pricing_changes:
@@ -1172,6 +1173,7 @@ def update_settings(
             "enabled": current.get("enabled") is True,
             "minimum_price_minor": current.get("minimum_price_minor", 0),
             "markup_percent": current.get("markup_percent", 0),
+            "rounding_increment_minor": current.get("rounding_increment_minor", 500),
         }
         if "scryfall_pricing_enabled" in changes:
             pricing["enabled"] = changes.pop("scryfall_pricing_enabled")
@@ -1179,6 +1181,8 @@ def update_settings(
             pricing["minimum_price_minor"] = changes.pop("scryfall_min_price_minor")
         if "scryfall_markup_percent" in changes:
             pricing["markup_percent"] = changes.pop("scryfall_markup_percent")
+        if "scryfall_rounding_increment" in changes:
+            pricing["rounding_increment_minor"] = changes.pop("scryfall_rounding_increment") * 100
         settings_row.scryfall_pricing = pricing
         changes["scryfall_pricing"] = pricing
 

@@ -8,7 +8,7 @@ import pytest
 from app import models
 from app.services import exchange_rates, scryfall_pricing, stock_csv
 
-RULES = {"minimum_price_minor": 1_000, "markup_percent": 10}
+RULES = {"minimum_price_minor": 1_000, "markup_percent": 10, "rounding_increment_minor": 500}
 
 
 def test_pricing_settings_requires_valid_enabled_values():
@@ -42,9 +42,23 @@ def test_pricing_settings_requires_valid_enabled_values():
         )
         is None
     )
-    assert (
-        scryfall_pricing.pricing_settings(models.TenantSettings(scryfall_pricing={"enabled": True, **RULES})) == RULES
-    )
+    assert scryfall_pricing.pricing_settings(
+        models.TenantSettings(scryfall_pricing={"enabled": True, "minimum_price_minor": 0, "markup_percent": 0})
+    ) == {"minimum_price_minor": 0, "markup_percent": 0, "rounding_increment_minor": 500}
+    for invalid_increment in (True, 0, 99, 150, 2_147_483_700):
+        assert (
+            scryfall_pricing.pricing_settings(
+                models.TenantSettings(
+                    scryfall_pricing={
+                        "enabled": True,
+                        "minimum_price_minor": 0,
+                        "markup_percent": 0,
+                        "rounding_increment_minor": invalid_increment,
+                    }
+                )
+            )
+            is None
+        )
 
 
 def test_market_price_validation_and_finish_currency_selection():
@@ -93,8 +107,21 @@ def test_sale_price_checks_supported_integer_range():
             Decimal("21474836.47"),
             "USD",
             "USD",
-            {"minimum_price_minor": 0, "markup_percent": 100},
+            {"minimum_price_minor": 0, "markup_percent": 100, "rounding_increment_minor": 500},
         )
+
+
+def test_sale_price_rounds_up_by_configured_whole_currency_increment():
+    five_unit_increment = {
+        "minimum_price_minor": 0,
+        "markup_percent": 0,
+        "rounding_increment_minor": 500,
+    }
+    assert scryfall_pricing.calculate_sale_price(Decimal("121"), "USD", "USD", five_unit_increment) == 12_500
+    assert scryfall_pricing.calculate_sale_price(Decimal("125"), "USD", "USD", five_unit_increment) == 13_000
+
+    ten_unit_increment = {**five_unit_increment, "rounding_increment_minor": 1_000}
+    assert scryfall_pricing.calculate_sale_price(Decimal("121"), "USD", "USD", ten_unit_increment) == 13_000
 
 
 def test_price_for_card_and_stock_repricing_skip_missing_and_leave_unchanged(db, tenant, card, stock):
@@ -114,9 +141,9 @@ def test_price_for_card_and_stock_repricing_skip_missing_and_leave_unchanged(db,
     db.commit()
 
     assert scryfall_pricing.price_for_card(card, "foil", "USD", RULES) is None
-    assert scryfall_pricing.price_for_card(card, "nonfoil", "USD", RULES) == 1_200
+    assert scryfall_pricing.price_for_card(card, "nonfoil", "USD", RULES) == 1_500
     assert scryfall_pricing.reprice_tenant_stock(db, tenant, RULES) == (1, 1)
-    assert stock.price_minor == 1_200
+    assert stock.price_minor == 1_500
     assert missing_price_stock.price_minor == 500
     assert scryfall_pricing.reprice_tenant_stock(db, tenant, RULES) == (0, 1)
 

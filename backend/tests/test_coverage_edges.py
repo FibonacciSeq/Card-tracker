@@ -1070,7 +1070,11 @@ def test_price_import_rows_passes_through_regular_stock_rows_and_rejects_overflo
             row,
             "RSD",
             {},
-            {"threshold_minor": 0, "fixed_price_minor": 1, "markup_percent": 0},
+            {
+                "threshold_minor": 0,
+                "fixed_price_minor": 1,
+                "markup_percent": 0,
+            },
         )
         == row
     )
@@ -1079,7 +1083,11 @@ def test_price_import_rows_passes_through_regular_stock_rows_and_rejects_overflo
         stock_csv.calculate_sale_price(
             2_147_483_647,
             Decimal("1"),
-            {"threshold_minor": 0, "fixed_price_minor": 1, "markup_percent": 0},
+            {
+                "threshold_minor": 0,
+                "fixed_price_minor": 1,
+                "markup_percent": 0,
+            },
         )
 
 

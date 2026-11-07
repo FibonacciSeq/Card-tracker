@@ -27,6 +27,7 @@ type FormState = {
   scryfallPricingEnabled: boolean;
   scryfallMinimumPrice: string;
   scryfallMarkupPercent: string;
+  scryfallRoundingIncrement: string;
 }
 
 function toForm(shop: StaffShop): FormState {
@@ -47,6 +48,7 @@ function toForm(shop: StaffShop): FormState {
     scryfallPricingEnabled: shop.scryfall_pricing_enabled,
     scryfallMinimumPrice: (shop.scryfall_min_price_minor / 100).toFixed(2),
     scryfallMarkupPercent: String(shop.scryfall_markup_percent),
+    scryfallRoundingIncrement: String(shop.scryfall_rounding_increment),
   };
 }
 
@@ -177,12 +179,16 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
   const holdValid = Number.isInteger(holdHours) && holdHours >= 1 && holdHours <= 720;
   const minimumPriceMinor = parseMinorAmount(form.scryfallMinimumPrice);
   const markupPercent = Number(form.scryfallMarkupPercent);
+  const roundingIncrement = Number(form.scryfallRoundingIncrement);
   const pricingValid =
     minimumPriceMinor !== null &&
     form.scryfallMarkupPercent.trim() !== "" &&
     Number.isInteger(markupPercent) &&
     markupPercent >= 0 &&
-    markupPercent <= 10_000;
+    markupPercent <= 10_000 &&
+    Number.isInteger(roundingIncrement) &&
+    roundingIncrement >= 1 &&
+    roundingIncrement <= 21_474_836;
 
   function patch(next: Partial<FormState>) {
     setSaved(false);
@@ -208,6 +214,7 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
       scryfall_pricing_enabled: form.scryfallPricingEnabled,
       scryfall_min_price_minor: minimumPriceMinor ?? 0,
       scryfall_markup_percent: Number.isInteger(markupPercent) ? markupPercent : 0,
+      scryfall_rounding_increment: Number.isInteger(roundingIncrement) ? roundingIncrement : 5,
     };
     update.mutate(body, { onSuccess: () => setSaved(true) });
   }
@@ -351,10 +358,24 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
                 aria-invalid={!pricingValid}
               />
             </div>
+            <div className="field">
+              <label htmlFor="scryfall-rounding-increment">Round up to next multiple of ({shop.currency})</label>
+              <input
+                id="scryfall-rounding-increment"
+                type="number"
+                min="1"
+                max="21474836"
+                step="1"
+                value={form.scryfallRoundingIncrement}
+                onChange={(event) => patch({ scryfallRoundingIncrement: event.target.value })}
+                aria-invalid={!pricingValid}
+              />
+            </div>
           </div>
           <p className="hint">
             Below the minimum, the sale price is set to the minimum. At or above it, the configured percentage is added,
-            then the result rounds up to the next whole {shop.currency} unit. Scryfall prices refresh nightly at 02:00
+            then the result rounds strictly up to the next multiple of the configured whole-currency increment. For
+            example, an increment of 5 rounds 121 up to 125 and 125 up to 130. Scryfall prices refresh nightly at 02:00
             UTC and use the finish-specific market price. Cards without a reported market price are skipped during
             imports; existing stock keeps its last price.
           </p>

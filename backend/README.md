@@ -122,8 +122,10 @@ When automatic Scryfall pricing is enabled in **Settings → Stock pricing**,
 newly imported stock uses the matching finish's Scryfall market price. Prices
 below the configured minimum are set to that minimum; prices at or above it
 receive the configured percentage markup and round upward to the next whole
-shop-currency unit. The `scryfall-pricing` worker refreshes Scryfall default
-card prices nightly at 02:00 UTC and reapplies prices to configured shops.
+multiple of the owner-configured rounding increment (in whole shop-currency
+units; default 5, so 121 rounds to 125 and 125 rounds to 130). The
+`scryfall-pricing` worker refreshes Scryfall default card prices nightly at
+02:00 UTC and reapplies prices to configured shops.
 Rows without a Scryfall price are skipped during import, while existing stock
 keeps its last price when a market price is unavailable. Currency conversion
 uses the latest published daily reference rate when the shop currency has no

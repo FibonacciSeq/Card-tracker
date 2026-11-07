@@ -32,7 +32,15 @@ def pricing_settings(settings_row: models.TenantSettings | None) -> dict[str, in
         return None
     if not 0 <= config["markup_percent"] <= 10_000:
         return None
-    return {field: config[field] for field in fields}
+    rounding_increment_minor = config.get("rounding_increment_minor", 500)
+    if type(rounding_increment_minor) is not int or not 100 <= rounding_increment_minor <= 2_147_483_600:
+        return None
+    if rounding_increment_minor % 100 != 0:
+        return None
+    return {
+        **{field: config[field] for field in fields},
+        "rounding_increment_minor": rounding_increment_minor,
+    }
 
 
 def _market_price(prices: Any, finish: str, currency: str) -> tuple[Decimal, str] | None:
@@ -90,7 +98,8 @@ def calculate_sale_price(
             Decimal("1"), rounding=ROUND_CEILING
         )
     )
-    rounded_minor = (marked_up_minor // 100 + 1) * 100
+    rounding_increment_minor = pricing["rounding_increment_minor"]
+    rounded_minor = (marked_up_minor // rounding_increment_minor + 1) * rounding_increment_minor
     if rounded_minor > 2_147_483_647:
         raise ValueError("Calculated sale price exceeds the supported range.")
     return rounded_minor
