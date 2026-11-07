@@ -763,12 +763,11 @@ class OwnerApp:
             )
             if not confirmed:
                 return
-        elif new_status == "CANCELLED":
-            if not messagebox.askyesno(
-                "Otkazivanje",
-                f"Otkazati porudžbinu #{order.order_id}? Rezervisana roba se oslobađa.",
-            ):
-                return
+        elif new_status == "CANCELLED" and not messagebox.askyesno(
+            "Otkazivanje",
+            f"Otkazati porudžbinu #{order.order_id}? Rezervisana roba se oslobađa.",
+        ):
+            return
 
         try:
             self.shop.update_order_status(order.order_id, new_status)
