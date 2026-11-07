@@ -327,6 +327,14 @@ Latest stock-import validation (2026-11-07):
   to existing stock immediately when rules change, then refreshed nightly.
   Markups use Scryfall market prices as the baseline, so repricing does not
   compound the previous sale price.
+- Existing catalog databases created before market prices were saved need one
+  refresh from the Scryfall worker or a full default-cards import. The Settings
+  save response now reports how many stock prices changed and how many rows
+  lacked a finish-specific market price.
+- Diagnosed the local database: all 120,045 catalog cards lacked stored market
+  prices. Re-imported 120,042 cards with prices, then repriced 1,330 existing
+  stock rows; 5 rows had no matching market price and retained their prior
+  prices.
 - Backend SQLite suite passed with 100% statement and branch coverage; 13
   PostgreSQL-only tests were skipped because their test URLs were not
   configured. Backend Ruff lint, changed-file formatting, and mypy passed.

@@ -230,6 +230,21 @@ def test_scryfall_pricing_settings_reprice_from_market_not_current_sale_price(
     assert updated.price_minor == 22_100
 
 
+def test_scryfall_pricing_settings_reports_stock_without_market_data(client, tenant, stock, auth):
+    response = client.patch(
+        "/v1/staff/settings",
+        headers=auth,
+        json={
+            "scryfall_pricing_enabled": True,
+            "scryfall_min_price_minor": 1_000,
+            "scryfall_markup_percent": 10,
+        },
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["repriced_stock"] == 0
+    assert response.json()["stock_without_scryfall_prices"] == 1
+
+
 def test_scryfall_pricing_settings_accepts_partial_disable(client, tenant, auth):
     response = client.patch(
         "/v1/staff/settings",

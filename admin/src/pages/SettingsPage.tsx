@@ -430,7 +430,11 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
             {update.isPending ? "Saving…" : "Save settings"}
           </button>
           <span aria-live="polite" className="small tone--available">
-            {saved ? "Settings saved." : null}
+            {saved
+              ? update.data?.repriced_stock !== null && update.data?.repriced_stock !== undefined
+                ? `Settings saved. Updated ${update.data.repriced_stock} stock prices; ${update.data.stock_without_scryfall_prices ?? 0} rows had no Scryfall price and were left unchanged.`
+                : "Settings saved."
+              : null}
           </span>
         </div>
       </form>

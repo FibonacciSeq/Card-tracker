@@ -2231,6 +2231,10 @@ export interface components {
              * @default 0
              */
             scryfall_markup_percent: number;
+            /** Repriced Stock */
+            repriced_stock?: number | null;
+            /** Stock Without Scryfall Prices */
+            stock_without_scryfall_prices?: number | null;
         };
         /** StaffStockListOut */
         StaffStockListOut: {

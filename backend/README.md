@@ -129,6 +129,13 @@ keeps its last price when a market price is unavailable. Currency conversion
 uses the latest published daily reference rate when the shop currency has no
 matching Scryfall price currency.
 
+For an existing catalog, make sure market prices have been loaded before
+expecting a Settings change to affect stock. Run the `scryfall-pricing` worker
+at least once, or re-import the full default-cards JSONL file with the command
+above. Saving pricing settings reports how many stock prices were updated and
+how many rows were left unchanged because no finish-specific market price was
+available.
+
 ## Postgres / Docker
 
 Copy `.env.example` to `.env`, change `CARDTRACKER_JWT_SECRET`, then:

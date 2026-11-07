@@ -41,6 +41,8 @@ class StaffShopOut(ShopOut):
     scryfall_pricing_enabled: bool = False
     scryfall_min_price_minor: int = 0
     scryfall_markup_percent: int = 0
+    repriced_stock: int | None = None
+    stock_without_scryfall_prices: int | None = None
 
 
 class CardOut(BaseModel):

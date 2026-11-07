@@ -26,7 +26,11 @@ def shop_out(tenant: models.Tenant) -> schemas.ShopOut:
     )
 
 
-def staff_shop_out(tenant: models.Tenant) -> schemas.StaffShopOut:
+def staff_shop_out(
+    tenant: models.Tenant,
+    repriced_stock: int | None = None,
+    stock_without_scryfall_prices: int | None = None,
+) -> schemas.StaffShopOut:
     """Public shop profile plus settings only staff may see."""
     base = shop_out(tenant)
     pricing = tenant.settings.scryfall_pricing if tenant.settings else {}
@@ -40,6 +44,8 @@ def staff_shop_out(tenant: models.Tenant) -> schemas.StaffShopOut:
         scryfall_pricing_enabled=pricing.get("enabled") is True,
         scryfall_min_price_minor=minimum_price if type(minimum_price) is int else 0,
         scryfall_markup_percent=markup_percent if type(markup_percent) is int else 0,
+        repriced_stock=repriced_stock,
+        stock_without_scryfall_prices=stock_without_scryfall_prices,
     )
 
 

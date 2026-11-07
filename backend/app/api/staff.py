@@ -1158,6 +1158,8 @@ def update_settings(
         db.add(settings_row)
 
     changes = payload.model_dump(exclude_unset=True)
+    repriced_stock = None
+    stock_without_scryfall_prices = None
     pricing_fields = {
         "scryfall_pricing_enabled",
         "scryfall_min_price_minor",
@@ -1195,6 +1197,8 @@ def update_settings(
             except ValueError as exc:
                 db.rollback()
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+            repriced_stock = updated
+            stock_without_scryfall_prices = skipped
             changes["repriced_stock"] = updated
             changes["stock_without_scryfall_prices"] = skipped
 
@@ -1214,4 +1218,4 @@ def update_settings(
         )
     db.commit()
     db.refresh(tenant)
-    return serializers.staff_shop_out(tenant)
+    return serializers.staff_shop_out(tenant, repriced_stock, stock_without_scryfall_prices)
