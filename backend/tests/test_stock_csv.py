@@ -115,6 +115,20 @@ def test_purchase_price_csv_requires_pricing_rules(client, auth):
     assert "pricing rules" in response.json()["detail"]
 
 
+def test_stock_import_pricing_update_reprices_existing_stock(client, tenant, stock, auth, db):
+    response = client.patch(
+        "/v1/staff/stock/import-pricing",
+        headers=auth,
+        json={"threshold_minor": 10_000, "fixed_price_minor": 15_000, "markup_percent": 10},
+    )
+    assert response.status_code == 200, response.text
+
+    db.expire_all()
+    updated = db.get(models.Stock, stock.id)
+    assert updated is not None
+    assert updated.price_minor == 138000
+
+
 def test_purchase_price_import_applies_rules_and_daily_rate(client, tenant, stock, auth, monkeypatch):
     saved = client.patch(
         "/v1/staff/stock/import-pricing",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
@@ -424,6 +425,18 @@ def _stock_import_pricing_out(tenant: models.Tenant) -> schemas.StockImportPrici
     )
 
 
+def _recalculate_stock_prices_for_import_pricing(db: Session, tenant: models.Tenant, pricing: dict[str, int]) -> None:
+    for stock in db.scalars(select(models.Stock).where(models.Stock.tenant_id == tenant.id)).all():
+        if stock.currency.upper() != tenant.currency.upper():
+            continue
+        if stock.price_minor <= 0:
+            continue
+        new_price = stock_csv.calculate_sale_price(stock.price_minor, Decimal("1"), pricing)
+        if new_price != stock.price_minor:
+            stock.price_minor = new_price
+            stock.updated_at = models.utcnow()
+
+
 @router.get("/stock/import-pricing", response_model=schemas.StockImportPricingOut)
 def get_stock_import_pricing(
     user: models.User = Depends(get_current_staff),
@@ -447,6 +460,7 @@ def update_stock_import_pricing(
 
     rules = payload.model_dump()
     settings_row.stock_import_pricing = rules
+    _recalculate_stock_prices_for_import_pricing(db, tenant, rules)
     audit.record(
         db,
         tenant_id=tenant.id,
