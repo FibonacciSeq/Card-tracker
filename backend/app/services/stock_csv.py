@@ -13,8 +13,8 @@ from __future__ import annotations
 
 import csv
 import io
-from dataclasses import dataclass
-from decimal import Decimal, InvalidOperation
+from dataclasses import dataclass, replace
+from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal, InvalidOperation
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -36,10 +36,26 @@ COLUMNS = [
     "available",
 ]
 
-REQUIRED_COLUMNS = {"set_code", "collector_number", "quantity", "price"}
+REQUIRED_COLUMNS = {"set_code", "collector_number", "quantity"}
+
+HEADER_ALIASES = {
+    "name": "card_name",
+    "set code": "set_code",
+    "collector number": "collector_number",
+    "foil": "finish",
+    "purchase price": "purchase_price",
+    "purchase price currency": "currency",
+}
 
 FINISHES = {"nonfoil", "foil", "etched"}
 CONDITIONS = {"NM", "LP", "MP", "HP", "DMG"}
+CONDITION_ALIASES = {
+    "near_mint": "NM",
+    "lightly_played": "LP",
+    "moderately_played": "MP",
+    "heavily_played": "HP",
+    "damaged": "DMG",
+}
 TRUE_VALUES = {"true", "yes", "1", "y"}
 FALSE_VALUES = {"false", "no", "0", "n"}
 
@@ -59,6 +75,7 @@ class ImportRow:
     price_minor: int
     currency: str
     is_online: bool
+    uses_pricing_rules: bool = False
 
 
 @dataclass
@@ -113,13 +130,22 @@ def parse_csv(text: str, tenant_currency: str) -> tuple[list[ImportRow], list[Ro
     text = text.lstrip("\ufeff")
     try:
         reader = csv.DictReader(io.StringIO(text))
-        fieldnames = [(name or "").strip().lower() for name in (reader.fieldnames or [])]
+        fieldnames = []
+        for name in reader.fieldnames or []:
+            normalized = (name or "").strip().lower()
+            fieldnames.append(HEADER_ALIASES.get(normalized, normalized))
     except csv.Error as exc:
         raise CsvFormatError("The file is not readable as CSV.") from exc
 
     if not fieldnames:
         raise CsvFormatError("The file is empty. Export your stock first to get the template.")
+    if len(fieldnames) != len(set(fieldnames)):
+        raise CsvFormatError("The file contains duplicate columns after header normalization.")
     missing = REQUIRED_COLUMNS - set(fieldnames)
+    if "price" not in fieldnames and "purchase_price" not in fieldnames:
+        missing.add("price or purchase price")
+    if "price" in fieldnames and "purchase_price" in fieldnames:
+        raise CsvFormatError("Include either a stock price or a purchase price column, not both.")
     if missing:
         raise CsvFormatError(f"Missing required column(s): {', '.join(sorted(missing))}.")
 
@@ -169,10 +195,13 @@ def _parse_row(line: int, raw: dict[str, str | None], tenant_currency: str) -> t
         errors.append(RowError(line, "collector_number is required.", "collector_number"))
 
     finish = value("finish").lower() or "nonfoil"
+    if finish == "normal":
+        finish = "nonfoil"
     if finish not in FINISHES:
         errors.append(RowError(line, f"finish must be one of {', '.join(sorted(FINISHES))}.", "finish"))
 
-    condition = value("condition").upper() or "NM"
+    raw_condition = value("condition").lower().replace("-", "_").replace(" ", "_")
+    condition = CONDITION_ALIASES.get(raw_condition, raw_condition.upper()) or "NM"
     if condition not in CONDITIONS:
         errors.append(RowError(line, f"condition must be one of {', '.join(sorted(CONDITIONS))}.", "condition"))
 
@@ -190,7 +219,9 @@ def _parse_row(line: int, raw: dict[str, str | None], tenant_currency: str) -> t
         errors.append(RowError(line, "quantity must be a whole number of zero or more.", "quantity"))
 
     price_minor = 0
-    raw_price = value("price").replace(",", ".") if value("price") else ""
+    uses_pricing_rules = "purchase_price" in raw
+    price_field = "purchase_price" if uses_pricing_rules else "price"
+    raw_price = value(price_field).replace(",", ".") if value(price_field) else ""
     try:
         price = Decimal(raw_price)
         if price < 0:
@@ -198,11 +229,15 @@ def _parse_row(line: int, raw: dict[str, str | None], tenant_currency: str) -> t
         if -price.as_tuple().exponent > 2:  # type: ignore[operator]
             raise InvalidOperation
         price_minor = int(price * 100)
+        if price_minor > 2_147_483_647:
+            raise ValueError
     except (InvalidOperation, ValueError):
         errors.append(RowError(line, "price must be a positive amount with at most two decimals.", "price"))
 
     currency = (value("currency") or tenant_currency).upper()
-    if currency != tenant_currency.upper():
+    if len(currency) != 3 or not currency.isalpha():
+        errors.append(RowError(line, "currency must be a three-letter code such as EUR.", "currency"))
+    elif not uses_pricing_rules and currency != tenant_currency.upper():
         errors.append(RowError(line, f"currency must be {tenant_currency} for this shop.", "currency"))
 
     is_online = True
@@ -231,9 +266,60 @@ def _parse_row(line: int, raw: dict[str, str | None], tenant_currency: str) -> t
             price_minor=price_minor,
             currency=currency,
             is_online=is_online,
+            uses_pricing_rules=uses_pricing_rules,
         ),
         [],
     )
+
+
+def calculate_sale_price(
+    purchase_price_minor: int,
+    exchange_rate: Decimal,
+    pricing: dict[str, int],
+) -> int:
+    """Convert purchase cost, then apply the shop's fixed-price/markup rules."""
+    converted_minor = int(
+        (Decimal(purchase_price_minor) * exchange_rate).quantize(Decimal("1"), rounding=ROUND_HALF_UP)
+    )
+    threshold_minor = pricing["threshold_minor"]
+    if converted_minor < threshold_minor:
+        return pricing["fixed_price_minor"]
+
+    marked_up_minor = int(
+        (
+            Decimal(converted_minor)
+            * Decimal(100 + pricing["markup_percent"])
+            / Decimal(100)
+        ).quantize(Decimal("1"), rounding=ROUND_CEILING)
+    )
+    rounded_minor = (marked_up_minor // 1000 + 1) * 1000
+    if rounded_minor > 2_147_483_647:
+        raise ValueError("Calculated sale price exceeds the supported range.")
+    return rounded_minor
+
+
+def price_purchase_rows(
+    rows: list[ImportRow],
+    target_currency: str,
+    rates: dict[str, Decimal],
+    pricing: dict[str, int],
+) -> list[ImportRow]:
+    priced_rows: list[ImportRow] = []
+    for row in rows:
+        if not row.uses_pricing_rules:
+            priced_rows.append(row)
+            continue
+        rate = rates[row.currency.upper()]
+        price_minor = calculate_sale_price(row.price_minor, rate, pricing)
+        priced_rows.append(
+            replace(
+                row,
+                price_minor=price_minor,
+                currency=target_currency.upper(),
+                uses_pricing_rules=False,
+            )
+        )
+    return priced_rows
 
 
 def apply_rows(

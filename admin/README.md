@@ -26,6 +26,17 @@ Stock numbers always pair colour with a text label (available / reserved / out)
 so they remain readable without colour vision. A "N waiting" badge on a stock
 row shows how many customers asked for a restock alert on that exact variant.
 
+Stock CSV import accepts both the app's exported stock template and ManaBox
+collection exports. ManaBox purchase prices are converted from their source
+currency using the latest published daily reference rate, then shop-wide rules
+set the selling price: costs below a threshold use a fixed amount, while costs
+at or above it receive a percentage markup and round strictly upward to the
+next amount ending in 0. Workers can edit and save these rules in the import
+panel. The app's own exported stock prices remain unchanged by these rules.
+The daily exchange rate is provided by
+[Exchange Rate API](https://www.exchangerate-api.com). Use **Check file** to
+preview catalog issues and see the rate used before changing stock.
+
 Owner-only actions: saving settings uses `PATCH /v1/staff/settings`, which the
 API restricts to the `owner` role. Staff get a clear message instead of a crash.
 

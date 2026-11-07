@@ -20,10 +20,13 @@ export default function AlertsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const { token } = useAuth();
+  const { isAuthenticated, token } = useAuth();
   const { alerts, getToken, hydrated, remove } = useRestockAlerts();
   const accountAlerts = useMyRestockAlerts(token);
-  const allAlerts = mergeRestockAlerts(accountAlerts.data?.items ?? [], alerts);
+  const allAlerts = mergeRestockAlerts(
+    isAuthenticated ? (accountAlerts.data?.items ?? []) : [],
+    alerts,
+  );
   const [confirming, setConfirming] = useState<AlertListItem | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

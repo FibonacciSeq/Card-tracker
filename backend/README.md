@@ -282,13 +282,13 @@ cd backend
 ../.venv/bin/python -m pytest --cov=app --cov-branch --cov-report=term-missing
 ```
 
-The current local result is **264 passed, 13 PostgreSQL tests skipped, 100%
+The current local result is **265 passed, 13 PostgreSQL tests skipped, 100%
 line and branch coverage**. The coverage floor is 100% in `pyproject.toml`, so
 any new uncovered line or branch fails the command.
 
 With the Postgres URLs exported, the same run includes the isolation,
-customer-account, notification, and locking tests and reports **277 passed,
-100% coverage**.
+customer-account, notification, and locking tests and reports **278 passed,
+100% coverage** (277 before the added per-device logout test).
 The repository helper starts the portable server and applies the URLs for you:
 
 ```bash
@@ -335,11 +335,21 @@ Public:
 - `POST /v1/card-requests/{id}/accept` with the same headers
 - `POST /v1/card-requests/{id}/cancel` with the same headers
 
-Customer account (Bearer customer token; auth endpoints are public):
+Customer account (Bearer customer token unless noted; OTP request/verify and
+refresh are public):
 
 - `POST /v1/auth/otp/request`
 - `POST /v1/auth/otp/verify`
-- `GET /v1/me`
+- `POST /v1/auth/refresh`
+- `POST /v1/auth/logout` — optional `{"refresh_token": "..."}` body; with a token
+  only that device's session is revoked, while an empty body keeps the legacy
+  account-wide revocation
+- `POST /v1/me/sessions/revoke-all`
+- `GET|PATCH /v1/me`
+- `DELETE /v1/me` — soft-close the account, revoke every session, and stop
+  notification delivery while keeping shop history
+- `POST /v1/me/email`
+- `POST /v1/me/email/verify`
 - `GET /v1/me/reservations`
 - `GET /v1/me/reservations/{id}`
 - `POST /v1/me/reservations/{id}/cancel`
@@ -381,16 +391,25 @@ local cart, guest or signed-in reservation create/lookup/cancel, hold history,
 restock alerts, special-order request/quote/cancel flows, and email OTP
 sign-in. Account data is fetched from `/v1/me` and combined with device-local
 guest rows. Access and refresh tokens are persisted with SecureStore on native
-platforms and AsyncStorage for the web preview; sign-out revokes the server
-session and clears account queries. See [`mobile/README.md`](../mobile/README.md)
-for setup and current scope.
+platforms and AsyncStorage for the web preview. Sign-out sends the current
+refresh token to revoke only this device; sign-out-all revokes every session;
+both clear account queries. Deleting the account is a soft close that keeps shop
+history. See [`mobile/README.md`](../mobile/README.md) for setup and current
+scope.
 
 ## Phase 0 gaps / before pilot
 
 - Customer accounts are optional and use email OTP only. Refresh-token rotation,
-  logout / revoke-all sessions, profile editing, email change with OTP
-  re-validation, and account deletion are implemented. Account emails are
-  global per verified email across shops.
+  per-device logout, revoke-all sessions, profile editing, email change with OTP
+  re-validation, and account deletion are implemented. Logout without a refresh
+  token still revokes every session for older clients; the mobile app sends its
+  current token. Account emails are global per verified email across shops.
+- Deleting an account is a soft close: it deactivates the customer, revokes every
+  refresh session, stops notification delivery, and keeps reservations, special
+  orders, and restock alerts with their shops. An already-issued access token is
+  rejected on the next request because `is_active` is checked.
+- Special-order quotes are indicative. Conversion creates the linked reservation
+  at the stock row's current shelf price, not at the quoted price.
 - Native FCM/APNs delivery is implemented, but a real end-to-end send needs a
   Firebase service-account JSON, an APNs `.p8` key, provider project setup, and
   a physical device. Staff in-app notifications still exist only in the outbox;

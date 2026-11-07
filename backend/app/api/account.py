@@ -50,8 +50,14 @@ def refresh_customer_token(
 def logout_customer(
     customer: models.User = Depends(get_current_customer),
     db: Session = Depends(get_db),
+    payload: schemas.CustomerLogoutIn | None = None,
 ):
-    accounts.revoke_customer_refresh_tokens(db, customer.id, action="account.logout")
+    accounts.revoke_customer_refresh_tokens(
+        db,
+        customer.id,
+        payload.refresh_token if payload else None,
+        action="account.logout",
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

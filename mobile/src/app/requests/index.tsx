@@ -15,10 +15,13 @@ import { colors, radii, spacing, type } from "../../theme";
 export default function RequestsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { token } = useAuth();
+  const { isAuthenticated, token } = useAuth();
   const { hydrated, requests } = useSpecialOrders();
   const accountRequests = useMyCardRequests(token);
-  const allRequests = mergeCardRequests(accountRequests.data?.items ?? [], requests);
+  const allRequests = mergeCardRequests(
+    isAuthenticated ? (accountRequests.data?.items ?? []) : [],
+    requests,
+  );
 
   if (!hydrated || (token && accountRequests.isLoading)) {
     return <LoadingState label="Loading special orders…" />;

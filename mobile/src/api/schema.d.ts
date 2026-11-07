@@ -1286,6 +1286,17 @@ export interface components {
              */
             phone: string;
         };
+        /**
+         * CustomerLogoutIn
+         * @description Optional body for a single-device logout.
+         *
+         *     Omitting the refresh token keeps the legacy account-wide logout behavior for
+         *     old clients. The mobile app always sends the current device's token.
+         */
+        CustomerLogoutIn: {
+            /** Refresh Token */
+            refresh_token?: string | null;
+        };
         /** CustomerOut */
         CustomerOut: {
             /**
@@ -3147,7 +3158,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CustomerLogoutIn"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {
@@ -3155,6 +3170,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };

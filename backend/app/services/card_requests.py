@@ -297,6 +297,8 @@ def convert(
             409,
         )
 
+    # Quotes are indicative: create_staff_hold prices the reservation from the
+    # stock row's current shelf price, never from row.quote_price_minor.
     reservation, _token = reservation_service.create_staff_hold(
         db,
         tenant,

@@ -58,10 +58,13 @@ persisted offline query cache; sign-out removes account queries from that cache.
 ## Mobile app tokens
 
 - Customer account access tokens are 12-hour JWTs. The backend also issues an
-  opaque 7-day refresh token that rotates on use and supports logout /
-  revoke-all session actions. The mobile app persists both tokens with SecureStore
-  on native platforms and AsyncStorage on web, restores the session on cold
-  launch, and clears local session state on a failed refresh or sign-out.
+  opaque 7-day refresh token that rotates on use and supports per-device logout
+  and revoke-all session actions. The mobile app persists both tokens with
+  SecureStore on native platforms and AsyncStorage on web, restores the session
+  on cold launch, and clears local session state on a failed refresh or sign-out.
+  Normal sign-out sends the current refresh token so only that device is
+  revoked; a body-less `/v1/auth/logout` keeps the legacy account-wide behavior
+  for older clients.
 - Guest reservation, restock-alert manage, and special-order tokens are
   credentials. Native builds store them in Expo SecureStore; the web preview
   falls back to AsyncStorage because SecureStore has no web implementation. Do
@@ -89,11 +92,19 @@ persisted offline query cache; sign-out removes account queries from that cache.
   alerts, and special orders that use that email. This is the intended
   cross-device recovery rule and the reason the OTP is required. Rows already
   linked to another customer are never reassigned.
-- Disabling a customer account blocks new OTP verification and takes effect on
-  the next account request because `is_active` is checked while resolving the
-  token. The backend revokes refresh-token rows on logout, revoke-all, email
-  change, and deletion. An already-issued access token remains valid until its
-  12-hour expiry, as with any JWT; refresh rotation controls continuation.
+- Disabling or deleting a customer account blocks new OTP verification and
+  takes effect on the next account request because `is_active` is checked while
+  resolving the token. The backend revokes refresh-token rows on logout (the
+  current device when its token is supplied), revoke-all, email change, and
+  deletion. Sign-out and revoke-all cannot invalidate an already-copied access
+  JWT before its 12-hour expiry; deletion and deactivation do, because the
+  account status is checked on every request. Refresh rotation controls
+  continuation in the normal case.
+- Account deletion is a soft close, not a full erasure: the customer row is
+  deactivated, every refresh session is revoked, notification delivery stops,
+  and shop history plus profile/audit rows are retained. Device-local guest data
+  is not removed. A full data-deletion request still needs a support-assisted
+  process.
 - Global customer account/session audit rows are written to
   `customer_audit_events` and scoped by PostgreSQL RLS. They store action
   metadata, never OTPs or token secrets.

@@ -50,7 +50,7 @@ export default function ReservationScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { get, getToken, hydrated, update } = useReservations();
-  const { token: accountToken } = useAuth();
+  const { isAuthenticated, token: accountToken } = useAuth();
   const saved = get(id);
   const [token, setToken] = useState<string | null>(null);
   const [tokenLoaded, setTokenLoaded] = useState(false);
@@ -60,7 +60,7 @@ export default function ReservationScreen() {
   const now = useNow();
 
   const accountQuery = useMyReservation(id, accountToken);
-  const accountReservation = accountQuery.data;
+  const accountReservation = isAuthenticated ? accountQuery.data : undefined;
   const info = accountReservation
     ? shopInfo(accountReservation)
     : saved

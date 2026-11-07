@@ -9,8 +9,9 @@ a signed-in notification delivery log with push-device diagnostics.
 
 The API is the source of truth. Guest checkout works without an account; the
 app keeps a local cart and the guest tokens/metadata needed to reopen a hold,
-manage a restock alert, or track a special order. An account session is held
-in memory only and combines `/v1/me` rows with device-local guest rows.
+manage a restock alert, or track a special order. An account session is
+persisted in secure device storage, restored on cold launch, and combines
+`/v1/me` rows with device-local guest rows.
 
 ## What works
 
@@ -31,7 +32,8 @@ in memory only and combines `/v1/me` rows with device-local guest rows.
   price, and contact validation; local request list and detail screen.
 - Special-order detail refreshes from the API with an account or guest token.
   Customers can accept or cancel a quote, and see when the shop converts it
-  into a hold.
+  into a hold. A quote is shown as indicative: conversion reserves the card at
+  its current shelf price, not at the quoted price.
 - Optional native push notifications for signed-in customers. The account
   screen asks for permission in context, registers the raw FCM/APNs device
   token with the API, refreshes rolled tokens, unregisters on sign-out, and
@@ -48,8 +50,8 @@ in memory only and combines `/v1/me` rows with device-local guest rows.
 - Guest tokens are stored with Expo SecureStore on native platforms. Customer
   access and refresh tokens are persisted the same way (AsyncStorage on web), so
   a cold launch restores the session and rotates the access token through the
-  refresh endpoint. Signing out revokes the server session and clears account
-  queries.
+  refresh endpoint. Signing out revokes only this device's refresh session and
+  clears account queries; **Sign out all devices** revokes every session.
 - In-store QR scanning with `expo-camera`: a shop code opens the storefront and a
   card code opens that card. Manual shop-code entry is always available, which
   is also how the web preview works.
@@ -148,8 +150,9 @@ For production builds set `EXPO_PUBLIC_API_BASE_URL` to the public HTTPS API.
 3. On any card, choose **Need a different copy?** to open the special-order
    form. The request is tracked locally with its guest token.
 4. Open **Special orders** from the home screen to track status, accept a quote,
-   or cancel the request. Accepting does not take payment; the shop converts
-   the request into a normal hold at the shelf price.
+   or cancel the request. Accepting does not take payment; the quote is
+   indicative and the shop converts the request into a normal hold at the card's
+   current shelf price.
 
 ### Optional account
 
@@ -161,10 +164,18 @@ For production builds set `EXPO_PUBLIC_API_BASE_URL` to the public HTTPS API.
 4. While signed in, the home screen, alerts, and special orders show account
    data for all shops, plus any remaining device-local guest rows. Detail
    screens use account actions where possible and fall back to guest tokens.
-5. **Sign out** revokes the active session and clears stored tokens plus the
-   account query cache. Local guest data stays on the device. A cold launch
-   restores a valid persisted session and refreshes the access token when
-   needed.
+5. **Sign out** revokes this device's refresh session and clears stored tokens
+   plus the account query cache; other devices stay signed in. **Sign out all
+   devices** revokes every refresh session. Both actions keep local guest data
+   on the device. A cold launch restores a valid persisted session and refreshes
+   the access token when needed.
+6. **Delete account** closes the account instead of erasing it: the email can no
+   longer sign in, every device is signed out, notification delivery stops, shop
+   history stays with the vendors, and guest data saved on this device remains.
+   Contact support for reactivation or a full data-deletion request.
+
+Each destructive action opens a confirmation before anything is sent, and a
+failed request keeps the current session and shows the error.
 
 Guest checkout remains available at every step. Signed-in create forms lock the
 email to the account address and still return the normal guest token for local
@@ -298,9 +309,13 @@ exercises the manual-entry fallback. Device E2E is still not wired up.
 
 - The customer account access token is a 12-hour bearer credential. The app
   also stores a 7-day refresh token that rotates on use; both live in
-  SecureStore on native platforms and AsyncStorage on web. Sign-out revokes the
-  server session and clears local tokens and account queries. Keep that
-  sign-out/cache-clearing path intact if session handling changes.
+  SecureStore on native platforms and AsyncStorage on web. Sign-out sends the
+  device's refresh token so only that server session is revoked, then clears
+  local tokens and account queries. Sign-out-all revokes every refresh session.
+  Already-issued access JWTs remain valid until their 12-hour expiry; deleting
+  the account is enforced immediately because the API checks `is_active` on
+  every request. Keep this sign-out/cache-clearing path intact if session
+  handling changes.
 - The guest reservation token is a credential. Native builds store it in
   SecureStore; the web preview falls back to AsyncStorage because SecureStore
   has no web implementation. Do not treat the web preview as a production

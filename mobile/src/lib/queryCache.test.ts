@@ -67,6 +67,41 @@ describe("queryCache", () => {
     expect(client.getQueryCache().findAll()).toHaveLength(0);
   });
 
+  it("serializes writes so the newest snapshot wins", async () => {
+    const client = new QueryClient();
+    client.setQueryData(["shops", ""], ["cached"]);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    vi.mocked(AsyncStorage.setItem).mockImplementationOnce(async () => {
+      await gate;
+    });
+
+    const first = persistQueryCache(client);
+    client.setQueryData(["shops", ""], ["fresh"]);
+    const second = persistQueryCache(client);
+    release();
+    await Promise.all([first, second]);
+
+    const raw = await AsyncStorage.getItem(QUERY_CACHE_STORAGE_KEY);
+    expect(JSON.parse(raw ?? "{}")[JSON.stringify(["shops", ""])]).toEqual(["fresh"]);
+  });
+
+  it("keeps the write queue usable after a storage failure", async () => {
+    const client = new QueryClient();
+    client.setQueryData(["shops", ""], ["cached"]);
+    vi.mocked(AsyncStorage.setItem).mockRejectedValueOnce(new Error("disk full"));
+
+    await expect(persistQueryCache(client)).resolves.toBeUndefined();
+
+    client.setQueryData(["shops", ""], ["fresh"]);
+    await persistQueryCache(client);
+
+    const raw = await AsyncStorage.getItem(QUERY_CACHE_STORAGE_KEY);
+    expect(JSON.parse(raw ?? "{}")[JSON.stringify(["shops", ""])]).toEqual(["fresh"]);
+  });
+
   it("ignores non-object payloads and non-array query keys", async () => {
     const client = new QueryClient();
 

@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { ApiError, requestBlob } from "../api/client";
-import { useAdjustStock, useImportStock, useSellStock, useStock, useUpdateStock } from "../api/queries";
-import type { StaffStock, StockImportReport } from "../api/types";
+import {
+  useAdjustStock,
+  useImportStock,
+  useSellStock,
+  useStock,
+  useStockImportPricing,
+  useUpdateStock,
+  useUpdateStockImportPricing,
+} from "../api/queries";
+import type { StaffStock, StockImportPricing, StockImportReportWithRates } from "../api/types";
 import { StockLevels } from "../components/StockLevels";
 import { formatDateTime, formatMoney } from "../lib/format";
 import { useDebounced } from "../lib/useDebounced";
@@ -138,6 +146,15 @@ export function StockPage() {
       </div>
     </div>
   );
+}
+
+function parseMinorAmount(value: string): number | null {
+  if (!value.trim()) return null;
+  const amount = Number(value);
+  const minor = Math.round(amount * 100);
+  return Number.isFinite(amount) && amount >= 0 && Number.isSafeInteger(minor) && minor <= 2_147_483_647
+    ? minor
+    : null;
 }
 
 function StockRow({ item, expanded, onToggle }: { item: StaffStock; expanded: boolean; onToggle: () => void }) {
@@ -390,8 +407,16 @@ function StockEditor({ item, onClose }: { item: StaffStock; onClose: () => void 
 function StockImport({ onClose }: { onClose: () => void }) {
   const [file, setFile] = useState<File | null>(null);
   const [checked, setChecked] = useState(false);
-  const [report, setReport] = useState<StockImportReport | null>(null);
+  const [report, setReport] = useState<StockImportReportWithRates | null>(null);
   const mutation = useImportStock();
+  const pricingQuery = useStockImportPricing();
+  const [pricingSaving, setPricingSaving] = useState(false);
+  const [pricingChanged, setPricingChanged] = useState(false);
+
+  function invalidateCheck() {
+    setChecked(false);
+    setReport(null);
+  }
 
   function run(dryRun: boolean) {
     if (!file) return;
@@ -412,13 +437,37 @@ function StockImport({ onClose }: { onClose: () => void }) {
         <div>
           <h2 id="import-title">Import stock from CSV</h2>
           <p className="muted small">
-            Export first to get the template. The file is checked without changing anything, then applied.
+            Upload a stock CSV or ManaBox collection export. Check the file before applying any changes.
           </p>
         </div>
         <button type="button" className="btn btn--ghost btn--small" onClick={onClose}>
           Close
         </button>
       </div>
+
+      {pricingQuery.data ? (
+        <StockImportPricingForm
+          key={pricingQuery.data.currency}
+          pricing={pricingQuery.data}
+          saving={pricingSaving}
+          onSavingChange={setPricingSaving}
+          onSaved={() => {
+            setPricingChanged(false);
+            invalidateCheck();
+          }}
+          onEdited={() => {
+            setPricingChanged(true);
+            invalidateCheck();
+          }}
+        />
+      ) : pricingQuery.isPending ? (
+        <p className="muted small">Loading shop pricing rules…</p>
+      ) : null}
+      {pricingQuery.error ? (
+        <p className="alert alert--error" role="alert">
+          {pricingQuery.error instanceof ApiError ? pricingQuery.error.message : String(pricingQuery.error)}
+        </p>
+      ) : null}
 
       <div className="inline-form">
         <label htmlFor="import-file">CSV file</label>
@@ -429,14 +478,13 @@ function StockImport({ onClose }: { onClose: () => void }) {
           data-testid="import-file"
           onChange={(event) => {
             setFile(event.target.files?.[0] ?? null);
-            setChecked(false);
-            setReport(null);
+            invalidateCheck();
           }}
         />
         <button
           type="button"
           className="btn btn--small"
-          disabled={!file || mutation.isPending}
+          disabled={!file || mutation.isPending || pricingSaving || pricingChanged}
           onClick={() => run(true)}
           data-testid="import-check"
         >
@@ -445,7 +493,7 @@ function StockImport({ onClose }: { onClose: () => void }) {
         <button
           type="button"
           className="btn btn--small btn--primary"
-          disabled={!file || !checked || mutation.isPending}
+          disabled={!file || !checked || mutation.isPending || pricingSaving || pricingChanged}
           onClick={() => run(false)}
           data-testid="import-apply"
         >
@@ -467,6 +515,17 @@ function StockImport({ onClose }: { onClose: () => void }) {
             {report.unchanged} unchanged, {report.errors.length} problem
             {report.errors.length === 1 ? "" : "s"}.
           </p>
+          {report.exchange_rates.length > 0 ? (
+            <p className="muted small">
+              Daily rate used:{" "}
+              {report.exchange_rates
+                .map(
+                  (rate) =>
+                    `1 ${rate.source_currency} = ${rate.rate} ${rate.target_currency} (${rate.rate_date})`,
+                )
+                .join("; ")}
+            </p>
+          ) : null}
           {report.errors.length > 0 ? (
             <table className="table table--tight">
               <caption className="sr-only">Rows that will be skipped</caption>
@@ -491,5 +550,131 @@ function StockImport({ onClose }: { onClose: () => void }) {
         </div>
       ) : null}
     </section>
+  );
+}
+
+function StockImportPricingForm({
+  pricing,
+  saving,
+  onSavingChange,
+  onSaved,
+  onEdited,
+}: {
+  pricing: StockImportPricing;
+  saving: boolean;
+  onSavingChange: (saving: boolean) => void;
+  onSaved: () => void;
+  onEdited: () => void;
+}) {
+  const updatePricing = useUpdateStockImportPricing();
+  const [threshold, setThreshold] = useState(
+    typeof pricing.threshold_minor !== "number" ? "" : (pricing.threshold_minor / 100).toFixed(2),
+  );
+  const [fixedPrice, setFixedPrice] = useState(
+    typeof pricing.fixed_price_minor !== "number" ? "" : (pricing.fixed_price_minor / 100).toFixed(2),
+  );
+  const [markupPercent, setMarkupPercent] = useState(
+    typeof pricing.markup_percent !== "number" ? "" : String(pricing.markup_percent),
+  );
+  const [saved, setSaved] = useState(false);
+  const thresholdMinor = parseMinorAmount(threshold);
+  const fixedPriceMinor = parseMinorAmount(fixedPrice);
+  const markup = Number(markupPercent);
+  const valid =
+    thresholdMinor !== null &&
+    fixedPriceMinor !== null &&
+    markupPercent.trim() !== "" &&
+    Number.isInteger(markup) &&
+    markup >= 0 &&
+    markup <= 10_000;
+
+  function save() {
+    if (!valid || thresholdMinor === null || fixedPriceMinor === null) return;
+    onSavingChange(true);
+    updatePricing.mutate(
+      { threshold_minor: thresholdMinor, fixed_price_minor: fixedPriceMinor, markup_percent: markup },
+      {
+        onSuccess: () => {
+          setSaved(true);
+          onSaved();
+        },
+        onSettled: () => onSavingChange(false),
+      },
+    );
+  }
+
+  return (
+    <div className="editor__group" aria-labelledby="import-pricing-title">
+      <h3 id="import-pricing-title">ManaBox selling-price rules</h3>
+      <p className="hint">
+        Purchase costs convert to {pricing.currency} using the latest published daily reference rate. After conversion,
+        costs below the threshold use the fixed price; costs at or above it get the markup and round strictly upward
+        to the next amount ending in 0. Rates by{" "}
+        <a href="https://www.exchangerate-api.com" target="_blank" rel="noreferrer">
+          Exchange Rate API
+        </a>
+        . The app stock template's existing prices are used as-is.
+      </p>
+      {updatePricing.error ? (
+        <p className="alert alert--error" role="alert">
+          {updatePricing.error instanceof ApiError ? updatePricing.error.message : String(updatePricing.error)}
+        </p>
+      ) : null}
+      <div className="inline-form">
+        <label htmlFor="import-price-threshold">Threshold ({pricing.currency})</label>
+        <input
+          id="import-price-threshold"
+          type="number"
+          min="0"
+          step="0.01"
+          value={threshold}
+          disabled={saving}
+          onChange={(event) => {
+            setThreshold(event.target.value);
+            setSaved(false);
+            onEdited();
+          }}
+        />
+        <label htmlFor="import-price-fixed">Fixed price below threshold</label>
+        <input
+          id="import-price-fixed"
+          type="number"
+          min="0"
+          step="0.01"
+          value={fixedPrice}
+          disabled={saving}
+          onChange={(event) => {
+            setFixedPrice(event.target.value);
+            setSaved(false);
+            onEdited();
+          }}
+        />
+        <label htmlFor="import-price-markup">Markup at/above threshold (%)</label>
+        <input
+          id="import-price-markup"
+          type="number"
+          min="0"
+          max="10000"
+          step="1"
+          value={markupPercent}
+          disabled={saving}
+          onChange={(event) => {
+            setMarkupPercent(event.target.value);
+            setSaved(false);
+            onEdited();
+          }}
+        />
+        <button
+          type="button"
+          className="btn btn--small"
+          disabled={!valid || saving}
+          onClick={save}
+          data-testid="save-import-pricing"
+        >
+          {saving ? "Saving…" : "Save shop rules"}
+        </button>
+      </div>
+      {saved ? <p className="tone--available small" role="status">Shop pricing rules saved.</p> : null}
+    </div>
   );
 }

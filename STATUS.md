@@ -1,12 +1,11 @@
 # Card Tracker platform — status
 
-Last updated: **2026-11-06**
-Latest commit: **`cc9af97` — Add customer email account audit**
-Working tree: the customer notification delivery log, push-token diagnostics,
-backend migration and regression tests, signed-in mobile notification screen,
-generated API types, and documentation are implemented and verified but not
-yet committed. Step 5 is now focused on release QA and the signed-in
-multi-device smoke.
+Last updated: **2026-11-07**
+Latest commit: see `git log -1`
+Working tree: account lifecycle/session-safety work and ManaBox stock-import
+pricing are implemented and verified. Step 5 is in release-readiness work:
+finish offline/cache safety, validate production links and delivery, then run a
+signed-in multi-device smoke before a small pilot.
 
 This file is the quick, human-readable status of the multi-vendor platform.
 The full product/technical specification lives outside the repository in the
@@ -77,6 +76,19 @@ for the original single-shop workflow until the new stack replaces it.
   variant (finish/condition/language), treats quantity as absolute on-hand,
   refuses to break existing holds, and records `IMPORT` movements.
 - Check-then-apply UI in the admin with per-row validation feedback.
+- ManaBox collection exports are also accepted. Header aliases, normal/foil
+  finishes, and ManaBox condition names are normalized; distinct foil and
+  nonfoil variants remain separate stock rows.
+- Shop workers can save persistent import pricing rules: after currency
+  conversion, purchase costs below a threshold use a fixed selling price,
+  while costs at or above the threshold receive a percentage markup and round
+  strictly upward to the next amount ending in 0. The app's own exported stock
+  prices continue to import unchanged.
+- Purchase-price currency conversion uses the latest published daily reference
+  rate from Exchange Rate API. Rates are cached for 23 hours, shown with their
+  publication date during CSV check/apply, and rate-provider failures stop the
+  import rather than silently using a stale or guessed rate. The pricing rules
+  are stored per shop in migration `0009_stock_import_pricing`.
 
 ### Step 3 — staff, audit, and rate limits
 
@@ -237,9 +249,20 @@ email-OTP accounts on top:
   unowned guest rows with the same email across shops; rows owned by another
   customer are never reassigned.
 - Account access tokens are short-lived and paired with a rotated refresh token.
-  The app persists both in secure device storage, rehydrates the session on cold
-  launch, and revokes the refresh token on logout. `POST
-  /v1/me/sessions/revoke-all` ends every active refresh session.
+  The app persists both in secure device storage and rehydrates the session on
+  cold launch. Logout sends the current device's refresh token so only that
+  session is revoked; an empty logout body keeps the legacy account-wide
+  revocation for older clients. `POST /v1/me/sessions/revoke-all` ends every
+  active refresh session. Mobile provides **Sign out** and **Sign out all
+  devices** with confirmation copy that matches the 12-hour access-token limit.
+- Account deletion is a soft close: it deactivates the customer, revokes every
+  refresh session, stops notification delivery, and keeps shop history with its
+  tenants. The same email cannot sign in again without support, and device-local
+  guest data remains. The full lifecycle matrix is in
+  [`docs/product-decisions.md`](docs/product-decisions.md).
+- Special-order quotes are explicitly indicative. Conversion creates the linked
+  reservation at the stock row's current shelf price; customer and staff copy no
+  longer implies a price lock.
 - Email changes require an OTP sent to the new address. Verification rejects a
   target address already owned by another account, revokes existing refresh
   sessions, issues a fresh token pair to the current device, and claims unowned
@@ -275,15 +298,17 @@ public HTTPS domain are configured but not yet validated in production.
 | Check | Result |
 | --- | --- |
 | Root Python suite (`pytest --cov --cov-branch`) | **351 passed, 100% line/branch** |
-| Backend SQLite suite | **264 passed, 13 PostgreSQL tests skipped, 100%** |
-| Backend with PostgreSQL test URLs | **277 passed, 100%** |
+| Backend SQLite suite | **265 passed, 13 PostgreSQL tests skipped, 100%** |
+| Backend with PostgreSQL test URLs | **278 passed, 100%** (277 before the added per-device logout test) |
 | Backend PostgreSQL-only suite (RLS, customer claiming, notifications, locking) | **13 passed** |
+| Backend account/session tests | `tests/test_customer_accounts.py`: **22 passed**, including per-device logout |
 | Backend Ruff / format / mypy | Clean |
 | Alembic `0008_customer_notifications` downgrade → upgrade | Verified on SQLite and PostgreSQL; notification customer RLS policy and push diagnostics recreated; `alembic_version` widened to 64 chars |
 | Admin ESLint / TypeScript / production build | Clean |
 | Admin Vitest logic/API-client coverage | **23 passed, 100% statements/branches/functions/lines** |
 | Admin production source maps | **0** `.map` files in `dist/` |
 | Admin Playwright suite | **8 passed** |
+| Generated API snapshot/types | `admin/openapi.json` and admin/mobile `schema.d.ts` regenerated; optional logout body present, no manual type edits |
 | Mobile TypeScript / ESLint | Clean |
 | Mobile Vitest `src/lib/**` coverage | **42 passed, 100% statements/branches/functions/lines** |
 | Mobile `expo-doctor` | **20/20** |
@@ -293,6 +318,22 @@ public HTTPS domain are configured but not yet validated in production.
 | SQL Server Docker schema/E2E | Wired in CI/Makefile; 21/21 assertions pass locally; skips cleanly without Docker |
 | Alembic downgrade base → upgrade head | Verified on PostgreSQL |
 | RLS enabled + forced | All 10 tenant tables, plus customer-scoped `push_tokens`, `customer_audit_events`, and customer-readable `notifications` |
+
+Latest stock-import validation (2026-11-07):
+
+- The uploaded `bulk.csv` parses as **1,332 rows with no parse or duplicate
+  variant errors**. Stock was not changed during validation.
+- `python3 -m pytest -q backend/tests`: passed; 13 PostgreSQL-only tests skipped
+  because their test URLs were not configured.
+- `python3 -m ruff check` on the changed backend files: passed.
+- Alembic upgrade through `0009_stock_import_pricing`: passed on a temporary
+  SQLite database; the new settings column was verified.
+- Admin ESLint, TypeScript, Vitest (**23 passed**), and production build:
+  passed.
+- Admin Playwright smoke suite: **8 passed**, run on alternate port 5174
+  because port 5173 was already occupied.
+- The daily-rate provider returned a valid EUR/RSD quote for the current
+  published date.
 
 The Python coverage floors are 100% line and branch for both the root and
 backend suites. Admin and mobile keep their explicitly included logic/API
@@ -339,7 +380,7 @@ admin and non-owner app URLs as described in `backend/README.md`, or use
 `./scripts/test_backend_postgres.sh`, which starts the portable server and
 applies the URLs. Without those variables the SQLite run reports 13
 PostgreSQL-test skips; with the local server and both URLs exported it reports
-277 passed. CI supplies a real non-owner role.
+278 passed. CI supplies a real non-owner role.
 
 CI runs four workflows: legacy (`ci.yml`), backend (`backend.yml`), admin
 (`admin.yml`), and mobile (`mobile.yml`). The legacy workflow now includes the
@@ -378,30 +419,29 @@ per-channel toggles, and the account now exposes per-channel delivery status,
 sanitized failures, and push-token diagnostics. A disabled profile cannot
 receive delivery while still keeping the rest of the flow intact.
 
-Remaining app work is focused and mostly product/QA action items:
+Account lifecycle and special-order pricing decisions are closed as of
+2026-11-07 in [`docs/product-decisions.md`](docs/product-decisions.md): logout
+is per-device with an account-wide fallback for older clients, revoke-all ends
+every session, delete is a documented soft close, and conversion uses the
+current shelf price rather than the indicative quote. The next app task is
+offline/cache safety.
 
-1. Finalize the signed-in account UX polish on the mobile screens and confirm
-   the delete/revocation messaging fits the intended product semantics.
-2. Run a signed-in multi-device smoke on a development build and then move on to
-   pilot-shop onboarding.
-3. Validate the remaining release-checklist items for production app links and
-   pilot rollout.
+### Recommended next steps — small, ordered tasks
 
-### Recommended gap-filling sequence (non-payment)
+Complete these in order. Each step has a concrete deliverable or pass condition;
+do not begin a vendor pilot until the pre-pilot gates below pass.
 
-Use this order so the app moves from correctness to product readiness without
-adding churn. Items 1–5 are implemented or mostly implemented; the remaining
-work is release QA, real-device smoke, and pilot rollout.
-
-1. Account lifecycle and session safety — **implemented 2026-11-04**
-   - Refresh tokens rotate on use; logout and revoke-all revoke server-side
-     sessions.
+1. Account lifecycle and session safety — **implemented 2026-11-07**
+   - Refresh tokens rotate on use; logout revokes only this device when its
+     refresh token is sent, while revoke-all ends every session.
    - Email changes require an OTP sent to the new address, reject addresses
      owned by another account, rotate sessions, and re-claim matching guest rows.
+   - Account deletion is a documented soft close that revokes every session,
+     stops delivery, and keeps shop history.
    - Customer audit rows cover logins, refreshes, profile updates, email changes,
      deletion, logout, and session revocation.
-   - Acceptance met: sessions survive restarts without a security gap, and a
-     revoked session cannot keep refreshing.
+   - Acceptance met: behavior and customer-facing copy agree, and a revoked
+     session cannot keep refreshing.
 
 2. Account profile and notifications settings — **implemented**
    - Dedicated profile settings cover display name, phone, push/email toggles,
@@ -412,8 +452,7 @@ work is release QA, real-device smoke, and pilot rollout.
 3. Universal links and install flow — **configured; production validation remains**
    - Canonical HTTPS app links and the custom-scheme fallback are wired through
      the admin QR panel and mobile parser.
-   - Remaining: validate the production domain, store links, and browser install
-     cues on real devices.
+   - Remaining production checks are split into steps 3.1–3.4 below.
 
 4. Push/email notification quality — **implemented 2026-11-06**
    - `/v1/me/notifications` exposes per-channel delivery status, rendered
@@ -428,46 +467,87 @@ work is release QA, real-device smoke, and pilot rollout.
 
 5. Offline and sync reliability — **mostly implemented**
    - Persisted query cache and account/guest merge are in place.
-   - Remaining: conflict handling for guest rows edited offline and an explicit
-     stale-cache invalidation strategy.
-   - Acceptance: the app remains usable offline without silently showing stale or
-     conflicting account data.
+   - Remaining work: define how offline edits are handled and which cached
+     account data must be invalidated after account changes; then add focused
+     tests for those rules.
 
-6. Release QA and pilot shop rollout
-   - Run a signed-in multi-device smoke on a development build.
-   - Validate QR entry, deep links, push permissions, profile update, email
-     change, and delete flows on real devices.
-   - Run a pilot with 1–2 vendors and an owner + customer test path.
-   - Acceptance: the app is stable enough for a limited live rollout without
-     severe customer or tenant data issues.
+Implementation and QA task list (in order):
 
-7. Post-pilot hardening
-   - Add monitoring for notification failures, token expiration, and rate-limit events.
-   - Review operational edge cases before broader onboarding.
-   - Keep the roadmap aligned to the product plan and avoid feature creep beyond the
-     pilot scope.
-   - Acceptance: the system can support a small customer cohort without manual
-     firefighting.
+1. **Close product and account-UX decisions — implemented 2026-11-07**
+   - 1.1 `docs/product-decisions.md` records sign-out, sign-out-everywhere,
+     delete-account, email-change, and session-restoration behavior.
+   - 1.2 Mobile uses confirmation modals with copy that matches the actual
+     behavior; failure paths keep the session and show the error.
+   - 1.3 Special-order conversion explicitly uses the current shelf price; the
+     quote is documented and labelled as indicative in mobile and admin.
+   - **Acceptance met:** behavior and customer-facing copy agree, and the
+     pricing rule is explicit.
 
-### Pilot readiness (after the app)
+2. **Finish offline/cache safety**
+   - 2.1 Document which screens are usable offline and which changes require a
+     live connection.
+   - 2.2 Define what happens when offline guest data overlaps with a signed-in
+     account row; do not silently overwrite either copy.
+   - 2.3 Check cache clearing/invalidation on sign-out, account switch, email
+     change, account deletion, and successful guest-row claiming.
+   - 2.4 Add or update tests for each rule, then run mobile lint, typecheck, and
+     coverage.
+   - **Done when:** stale account data cannot appear after identity changes,
+     and offline edits have a predictable outcome.
 
-- Onboard 1–2 real vendors and run manual billing.
-- Configure a production SMTP provider; monitor delivery failures from the
-  worker (`attempts`, `error`, `next_attempt_at`).
-- Deployment runbook: managed PostgreSQL, backups, monitoring, and the
-  owner/migration vs non-owner application role split already wired into
-  Compose.
-- Apply `admin/public/_headers` (or equivalent CSP/security headers) at the
-  production static host; the Vite headers only cover dev/preview.
-- Run the PostgreSQL-only suite against the production-like database role and
-  migration round trip before onboarding.
-- Configure universal/app links (`https://…/shop/…`) on the production domain
-  before printing QR codes at scale; today's codes use `cardtracker://`.
-- Move rate limiting to Redis if the API runs more than one worker.
-- Decide whether converting a special order should apply the quoted price
-  instead of the current shelf price (today the shelf price wins).
-- Surface staff in-app notifications in the admin, or remove the unused
-  in-app channel; customer email is the only external channel today.
+3. **Prepare production app links and delivery**
+   - 3.1 Choose and configure the public HTTPS app domain and hosting for the
+     mobile web page and platform association files.
+   - 3.2 Deploy the admin with `admin/public/_headers` (or equivalent CSP and
+     security headers) enabled.
+   - 3.3 Verify QR links and app links on a real Android and iOS device both
+     with the app installed and from a fresh browser; record the tested URLs
+     and results.
+   - 3.4 Configure production SMTP and push-provider credentials; send and
+     verify OTP, email, and push notifications, including opt-out behavior.
+   - **Done when:** real-device links route correctly and the production
+     notification path is exercised end to end.
+
+4. **Run the signed-in multi-device smoke**
+   - 4.1 Build/install the development app on two devices and sign into the
+     same test customer account.
+   - 4.2 Check session restore, refresh, sign-out, revoke-all, and email-change
+     behavior across both devices.
+   - 4.3 Check profile/preferences, notification history, push-device
+     diagnostics, and one customer action visible across devices.
+   - 4.4 Record failures, fix blockers, and repeat the failed cases.
+   - **Done when:** both devices show consistent account state, revoked refresh
+     sessions cannot refresh, and a deleted account is rejected on the next
+     protected request.
+
+5. **Complete pre-pilot operational checks**
+   - 5.1 Run the PostgreSQL-only suite and migration round trip using the
+     production-like non-owner application role.
+   - 5.2 Confirm managed-database backups and a restore procedure; document
+     deployment, rollback, and support contacts.
+   - 5.3 Verify notification failures and retries can be inspected, and define
+     who responds to a delivery or account-access incident.
+   - **Done when:** the deployment has a tested recovery path and an owner for
+     operational follow-up.
+
+6. **Pilot with one shop, then expand**
+   - 6.1 Onboard one vendor first; verify its owner login, stock setup, contact
+     details, and notification settings.
+   - 6.2 Complete an owner + customer test path: browse, reserve, process the
+     reservation, cancel/complete as appropriate, and verify customer updates.
+   - 6.3 Review issues and operational effort before onboarding a second shop;
+     use manual billing during this limited pilot.
+   - **Done when:** the first shop completes the end-to-end path without a
+     tenant-isolation, data-loss, or severe customer-notification issue.
+
+7. **Scale only after pilot evidence**
+   - Add monitoring for notification failures, token expiration, and
+     rate-limit events; review operational edge cases with pilot feedback.
+   - Move in-process rate limiting to Redis before running multiple API workers.
+   - Revisit staff in-app notifications only if pilot workflows require them;
+     customer email and push remain the supported delivery channels today.
+   - **Done when:** observed pilot needs are addressed and multi-worker behavior
+     is deliberately supported before scaling.
 
 ### Later roadmap
 
@@ -481,14 +561,22 @@ work is release QA, real-device smoke, and pilot rollout.
 ## 5. Current limitations
 
 - Customer accounts are optional and OTP-only. The backend issues rotating
-  refresh tokens, supports logout / revoke-all session actions, requires an OTP
-  to the new address before changing email, and writes customer-scoped account
-  audit rows. The mobile app persists and rehydrates the session across app
-  restarts. A customer-facing audit/activity screen is not exposed yet.
+  refresh tokens, supports per-device logout and revoke-all session actions,
+  requires an OTP to the new address before changing email, and writes
+  customer-scoped account audit rows. The mobile app persists and rehydrates the
+  session across app restarts. A customer-facing audit/activity screen is not
+  exposed yet.
+- Sign-out and revoke-all stop refresh immediately but cannot invalidate an
+  already-issued access JWT before its 12-hour expiry. Deleting or deactivating
+  the account is enforced on the next request because `is_active` is checked.
+- Delete account is a soft close, not a full erasure: the customer row,
+  profile, audit rows, and shop history are retained, while delivery stops and
+  every session is revoked. A support-assisted erasure process is still needed
+  for full data-deletion requests.
 - Guest rows are still device-local until a customer verifies the same email.
-  Push delivery, offline cache, localization, and device smoke coverage are all
-  implemented in the mobile app, and the signed-in UX has reached release QA
-  polish rather than greenfield feature work.
+  Push delivery, persisted offline caching, localization, and browser smoke
+  coverage are implemented. Offline conflict/cache invalidation rules and the
+  signed-in native multi-device smoke remain to be completed before pilot.
 - Printed QR codes can use the canonical HTTPS public app URL and still fall
   back to the `cardtracker://` custom scheme, but production domain
   configuration and app-store install paths still need final deploy-time setup.
@@ -511,7 +599,9 @@ work is release QA, real-device smoke, and pilot rollout.
   `admin/public/_headers`; Vite only applies them in dev/preview.
 - On web, the mobile preview stores guest tokens in AsyncStorage because
   SecureStore has no web implementation; native builds use SecureStore.
-- Special-order quotes are informational; conversion holds stock at the current
-  shelf price.
+- Special-order quotes are explicitly indicative, not price locks; conversion
+  holds stock at the stock row's current shelf price. This is documented in
+  `docs/product-decisions.md` and reflected in mobile and admin copy. Price
+  locks remain a possible post-pilot feature.
 - Not in v1: online payments, shipping, tax, refunds, white-label apps,
   additional games, and Pi integration.

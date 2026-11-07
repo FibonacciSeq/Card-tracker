@@ -11,6 +11,8 @@ import type {
   StaffReservation,
   ReservationSummary,
   SettingsUpdate,
+  StockImportPricing,
+  StockImportPricingUpdate,
   StaffShop,
   StaffStock,
   StaffStockList,
@@ -19,7 +21,7 @@ import type {
   StaffUserUpdate,
   StatusUpdate,
   StockAdjust,
-  StockImportReport,
+  StockImportReportWithRates,
   StockSell,
   StockUpdate,
 } from "./types";
@@ -30,6 +32,7 @@ export const queryKeys = {
   reservations: (status: string) => ["reservations", status] as const,
   reservation: (id: string) => ["reservation", id] as const,
   settings: ["settings"] as const,
+  stockImportPricing: ["stock-import-pricing"] as const,
   team: ["team"] as const,
   audit: (action: string) => ["audit", action] as const,
   requests: (status: string) => ["requests", status] as const,
@@ -95,11 +98,27 @@ export function useImportStock() {
       const form = new FormData();
       form.append("file", file);
       form.append("dry_run", String(dryRun));
-      return request<StockImportReport>("/v1/staff/stock/import", { method: "POST", body: form });
+      return request<StockImportReportWithRates>("/v1/staff/stock/import", { method: "POST", body: form });
     },
     onSuccess: (report) => {
       if (!report.dry_run) refreshStock(client);
     },
+  });
+}
+
+export function useStockImportPricing() {
+  return useQuery({
+    queryKey: queryKeys.stockImportPricing,
+    queryFn: () => request<StockImportPricing>("/v1/staff/stock/import-pricing"),
+  });
+}
+
+export function useUpdateStockImportPricing() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (pricing: StockImportPricingUpdate) =>
+      request<StockImportPricing>("/v1/staff/stock/import-pricing", { method: "PATCH", body: pricing }),
+    onSuccess: (pricing) => client.setQueryData(queryKeys.stockImportPricing, pricing),
   });
 }
 

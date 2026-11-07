@@ -16,13 +16,14 @@ import {
   refreshCustomerToken,
   requestEmailChange as requestEmailChangeApi,
   requestOtp,
+  revokeAllCustomerSessions,
   setAccountRefreshHandler,
   setAccountUnauthorizedHandler,
   updateMe,
   verifyEmailChange as verifyEmailChangeApi,
   verifyOtp,
 } from "../api/client";
-import { accountKeys } from "../api/queries";
+import { clearAccountCache } from "../lib/accountCache";
 import { readAuthToken, removeAuthToken, writeAuthToken } from "../lib/tokenStore";
 import type {
   ClaimedCounts,
@@ -51,7 +52,8 @@ type AuthContextValue = {
   requestEmailChange: (email: string) => Promise<OtpRequestResult>;
   verifyEmailChange: (email: string, code: string) => Promise<CustomerToken>;
   deleteAccount: () => Promise<void>;
-  signOut: () => void;
+  signOut: () => Promise<void>;
+  signOutEverywhere: () => Promise<void>;
 };
 
 const ACCESS_TOKEN_KEY = "cardtracker.customer.access.token";
@@ -80,28 +82,46 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const signOut = useCallback(async () => {
-    const currentAccess = token;
+  /** Clear this device without calling the API. */
+  const clearLocalSession = useCallback(async () => {
     setToken(null);
     setRefreshToken(null);
     setCustomer(null);
     setLastClaimed(null);
+    await persistTokens(null, null);
+    await clearAccountCache(queryClient);
+  }, [persistTokens, queryClient]);
+
+  /**
+   * Sign out this device. The refresh token is sent so the backend revokes only
+   * this session; other devices stay signed in. Local state is cleared even if
+   * the network call fails, and the server token then expires on its own.
+   */
+  const signOut = useCallback(async () => {
+    const currentAccess = token;
+    const currentRefresh = refreshToken;
+    await clearLocalSession();
     if (currentAccess) {
       try {
-        await logoutCustomerSession(currentAccess);
+        await logoutCustomerSession(currentAccess, currentRefresh);
       } catch {
         // Ignore network issues when clearing a stale local session.
       }
     }
-    await persistTokens(null, null);
-    void queryClient.cancelQueries({ queryKey: accountKeys.all });
-    queryClient.removeQueries({ queryKey: accountKeys.all });
-  }, [persistTokens, queryClient, token]);
+  }, [clearLocalSession, refreshToken, token]);
+
+  /** Revoke every refresh session, then clear this device. */
+  const signOutEverywhere = useCallback(async () => {
+    if (token) {
+      await revokeAllCustomerSessions(token);
+    }
+    await clearLocalSession();
+  }, [clearLocalSession, token]);
 
   const handleRefreshFailure = useCallback(async () => {
-    await signOut();
+    await clearLocalSession();
     return false;
-  }, [signOut]);
+  }, [clearLocalSession]);
 
   const handleSessionRefresh = useCallback(async () => {
     if (!refreshToken) {
@@ -123,11 +143,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     setAccountUnauthorizedHandler(() => {
-      void signOut();
+      void clearLocalSession();
     });
     setAccountRefreshHandler(async () => {
       if (!refreshToken) {
-        await signOut();
+        await clearLocalSession();
         return false;
       }
       return handleSessionRefresh();
@@ -136,7 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAccountUnauthorizedHandler(null);
       setAccountRefreshHandler(null);
     };
-  }, [handleSessionRefresh, refreshToken, signOut]);
+  }, [clearLocalSession, handleSessionRefresh, refreshToken]);
 
   useEffect(() => {
     let active = true;
@@ -199,13 +219,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const verifyCode = useCallback(async (email: string, code: string) => {
     const result = await verifyOtp(email.trim(), code.trim());
+    // Verification can be an account switch or a first sign-in that claims
+    // guest rows. Drop the previous identity's cached rows before exposing the
+    // new session; guest stores and the cart stay untouched.
+    await clearAccountCache(queryClient);
     setToken(result.access_token);
     setRefreshToken(result.refresh_token ?? null);
     setCustomer(result.customer);
     setLastClaimed(result.claimed);
     await persistTokens(result.access_token, result.refresh_token ?? null);
     return result;
-  }, [persistTokens]);
+  }, [persistTokens, queryClient]);
 
   const refreshCustomer = useCallback(async () => {
     if (!refreshToken) {
@@ -243,8 +267,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const deleteAccount = useCallback(async () => {
     if (!token) return;
     await deleteMe(token);
-    signOut();
-  }, [signOut, token]);
+    // The DELETE endpoint already revokes every refresh token and deactivates
+    // the account, so only local cleanup remains.
+    await clearLocalSession();
+  }, [clearLocalSession, token]);
 
   const requestEmailChange = useCallback(
     async (email: string) => {
@@ -258,6 +284,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     async (email: string, code: string) => {
       if (!token) throw new Error("Not signed in.");
       const result = await verifyEmailChangeApi(token, email.trim(), code.trim());
+      // The address and claimed rows changed, even though the account id did
+      // not. Clear the account cache so no pre-change rows can render after the
+      // new token is applied.
+      await clearAccountCache(queryClient);
       setToken(result.access_token);
       setRefreshToken(result.refresh_token ?? null);
       setCustomer(result.customer);
@@ -265,7 +295,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await persistTokens(result.access_token, result.refresh_token ?? null);
       return result;
     },
-    [persistTokens, token],
+    [persistTokens, queryClient, token],
   );
 
   const value = useMemo<AuthContextValue>(
@@ -283,6 +313,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       verifyEmailChange,
       deleteAccount,
       signOut,
+      signOutEverywhere,
     }),
     [
       customer,
@@ -293,6 +324,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requestCode,
       requestEmailChange,
       signOut,
+      signOutEverywhere,
       token,
       updateProfile,
       verifyCode,

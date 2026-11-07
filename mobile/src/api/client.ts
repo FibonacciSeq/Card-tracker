@@ -309,8 +309,20 @@ export function refreshCustomerToken(refreshToken: string): Promise<CustomerToke
   });
 }
 
-export function logoutCustomerSession(token: string): Promise<void> {
+export function logoutCustomerSession(
+  token: string,
+  refreshToken?: string | null,
+): Promise<void> {
   return request<void>("/v1/auth/logout", {
+    method: "POST",
+    body: refreshToken ? { refresh_token: refreshToken } : undefined,
+    headers: bearer(token),
+    auth: true,
+  });
+}
+
+export function revokeAllCustomerSessions(token: string): Promise<void> {
+  return request<void>("/v1/me/sessions/revoke-all", {
     method: "POST",
     headers: bearer(token),
     auth: true,

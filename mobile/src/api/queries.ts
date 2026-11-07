@@ -16,6 +16,7 @@ import {
   getStock,
   getStockItem,
 } from "./client";
+import { ACCOUNT_QUERY_ROOT } from "../lib/accountCache";
 import type { StockSort } from "./types";
 
 export const queryKeys = {
@@ -29,14 +30,14 @@ export const queryKeys = {
 };
 
 export const accountKeys = {
-  all: ["account"] as const,
-  reservations: ["account", "reservations"] as const,
-  reservation: (id: string) => ["account", "reservation", id] as const,
-  cardRequests: ["account", "card-requests"] as const,
-  cardRequest: (id: string) => ["account", "card-request", id] as const,
-  restockAlerts: ["account", "restock-alerts"] as const,
-  notifications: ["account", "notifications"] as const,
-  pushTokens: ["account", "push-tokens"] as const,
+  all: [ACCOUNT_QUERY_ROOT] as const,
+  reservations: [ACCOUNT_QUERY_ROOT, "reservations"] as const,
+  reservation: (id: string) => [ACCOUNT_QUERY_ROOT, "reservation", id] as const,
+  cardRequests: [ACCOUNT_QUERY_ROOT, "card-requests"] as const,
+  cardRequest: (id: string) => [ACCOUNT_QUERY_ROOT, "card-request", id] as const,
+  restockAlerts: [ACCOUNT_QUERY_ROOT, "restock-alerts"] as const,
+  notifications: [ACCOUNT_QUERY_ROOT, "notifications"] as const,
+  pushTokens: [ACCOUNT_QUERY_ROOT, "push-tokens"] as const,
 };
 
 export function useShops(search: string) {

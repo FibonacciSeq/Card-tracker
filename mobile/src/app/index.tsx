@@ -44,12 +44,17 @@ export default function HomeScreen() {
   const accountRequests = useMyCardRequests(token);
   const accountAlerts = useMyRestockAlerts(token);
 
-  const allReservations = mergeReservations(
-    accountReservations.data?.items ?? [],
-    reservations,
-  );
-  const allRequests = mergeCardRequests(accountRequests.data?.items ?? [], requests);
-  const allAlerts = mergeRestockAlerts(accountAlerts.data?.items ?? [], alerts);
+  // Never render cached account rows while the session is absent. The query
+  // cache can hold the last signed-in account across a restart; the guest
+  // stores are the only rows that belong to a signed-out device.
+  const accountReservationRows = isAuthenticated
+    ? (accountReservations.data?.items ?? [])
+    : [];
+  const accountRequestRows = isAuthenticated ? (accountRequests.data?.items ?? []) : [];
+  const accountAlertRows = isAuthenticated ? (accountAlerts.data?.items ?? []) : [];
+  const allReservations = mergeReservations(accountReservationRows, reservations);
+  const allRequests = mergeCardRequests(accountRequestRows, requests);
+  const allAlerts = mergeRestockAlerts(accountAlertRows, alerts);
   const accountRefreshing =
     accountReservations.isRefetching ||
     accountRequests.isRefetching ||

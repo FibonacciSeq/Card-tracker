@@ -392,6 +392,46 @@ def test_refresh_tokens_rotate_and_logout_revokes_all_sessions(client, db):
     assert newest.json()["detail"] == "Refresh token expired"
 
 
+def test_logout_with_refresh_token_revokes_only_that_device(client, db):
+    _request_code(client)
+    verified = _verify(client, db)
+    assert verified.status_code == 200, verified.text
+    body = verified.json()
+    customer_id = uuid.UUID(body["customer"]["id"])
+
+    other_refresh = "o" * 32
+    db.add(
+        models.CustomerRefreshToken(
+            user_id=customer_id,
+            token_hash=accounts._refresh_token_hash(other_refresh),
+            issued_at=datetime.now(UTC),
+            expires_at=datetime.now(UTC) + timedelta(days=1),
+        )
+    )
+    db.commit()
+
+    logout = client.post(
+        "/v1/auth/logout",
+        headers=_headers(body["access_token"]),
+        json={"refresh_token": body["refresh_token"]},
+    )
+    assert logout.status_code == 204, logout.text
+
+    assert client.post("/v1/auth/refresh", json={"refresh_token": body["refresh_token"]}).status_code == 401
+    still_active = client.post("/v1/auth/refresh", json={"refresh_token": other_refresh})
+    assert still_active.status_code == 200, still_active.text
+
+    db.expire_all()
+    event = db.scalar(
+        select(models.CustomerAuditEvent).where(
+            models.CustomerAuditEvent.user_id == customer_id,
+            models.CustomerAuditEvent.action == "account.logout",
+        )
+    )
+    assert event is not None
+    assert event.data == {"token_count": 1, "single_token": True}
+
+
 def test_customer_notification_preferences_block_delivery(client, db, tenant):
     _request_code(client)
     verified = _verify(client, db)

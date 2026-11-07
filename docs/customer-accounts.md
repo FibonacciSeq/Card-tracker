@@ -2,7 +2,9 @@
 
 Status: **implemented** on 2026-10-29; extended 2026-11-06 with refresh
 sessions, revoke-all, email change, customer account audit events, a customer
-notification delivery log, and push-token diagnostics.
+notification delivery log, and push-token diagnostics. Account lifecycle copy
+and special-order pricing were settled on 2026-11-07 in
+[`product-decisions.md`](product-decisions.md).
 
 This records the Step 5 account slice: optional customer accounts, email OTP
 login, `/v1/me`, and automatic claiming of guest reservations, restock alerts,
@@ -28,11 +30,13 @@ and special orders. Guest checkout remains the default path.
 | OTP delivery | Existing notification worker drains OTP challenges; no synchronous SMTP call |
 | OTP storage | No plaintext code at rest; code is derived from the challenge id and server secret |
 | Session token | HS256 JWT, 12 hours, persisted in secure device storage |
-| Refresh token | Opaque server-side token, 7 days, rotates on use; revoked on logout / revoke-all |
+| Refresh token | Opaque server-side token, 7 days, rotates on use; logout revokes the current device's token when supplied, revoke-all revokes every session |
 | Email change | New address must prove ownership with an OTP before the account email changes |
 | Account audit | Customer-scoped rows in `customer_audit_events`, separate from tenant audit |
 | Mobile account data | Fetched from `/v1/me` and held in React Query; not merged into guest AsyncStorage |
-| Sign-out | Remove account tokens and account query cache; leave device-local guest rows alone |
+| Sign-out | Revoke this device's refresh session, remove account tokens and query cache; leave other devices and device-local guest rows alone |
+| Sign out everywhere | Revoke every refresh session, then remove this device's tokens and account cache |
+| Delete account | Soft-close the account, revoke every session, keep shop history and device-local guest rows; see the lifecycle matrix |
 | App launch | Restore the persisted session, then refresh or return to sign-in if it is invalid |
 
 ### Why global identity
@@ -299,7 +303,8 @@ token. Customer endpoints cannot accept a staff token.
 
 Token lifetime is 12 hours. The backend also issues a server-side opaque refresh
 token with a 7-day lifetime; refresh tokens rotate on use and are revoked on
-logout, `POST /v1/me/sessions/revoke-all`, account deletion, and email change.
+logout (the current device when its token is supplied), `POST
+/v1/me/sessions/revoke-all`, account deletion, and email change.
 The mobile app persists both tokens in secure device storage, restores the
 session on cold launch, and swaps in the rotated pair after a refresh. A failed
 refresh clears the stored session. Disabling an account takes effect on the next
@@ -417,10 +422,14 @@ is rejected. Requesting a new OTP does not revoke existing sessions.
 
 ```http
 POST /v1/auth/logout
+{ "refresh_token": "..." }
+
 204
 ```
 
-Requires a customer token and revokes that customer's refresh tokens.
+Requires a customer token. With a refresh token in the body, only that device's
+session is revoked. Omitting the body keeps the legacy account-wide behavior
+and revokes every refresh token.
 
 ```http
 POST /v1/me/sessions/revoke-all
@@ -449,8 +458,11 @@ DELETE /v1/me
 204
 ```
 
-Deactivates the account, revokes refresh tokens, and records a customer audit
-event.
+Deactivates the account (soft close), revokes every refresh token, stops
+notification delivery, records a customer audit event, and leaves shop records
+intact. The same email cannot sign in again unless support reactivates the
+account. The full outcome matrix is in
+[`product-decisions.md`](product-decisions.md#13-delete-account).
 
 ```http
 POST /v1/me/email
@@ -660,8 +672,16 @@ Add `AuthProvider` inside `QueryClientProvider`:
   out and clears local session state;
 - `requestCode(email)` / `verifyCode(email, code)`;
 - `requestEmailChange(email)` / `verifyEmailChange(email, code)`;
-- `signOut()` revokes the server session, removes both tokens, and removes the
-  account query cache;
+- `signOut()` sends the current refresh token, revokes this device's server
+  session, removes both tokens, and removes the account query cache; local state
+  is cleared even when the network call fails, and the server token then expires
+  on its normal schedule;
+- `signOutEverywhere()` calls `/v1/me/sessions/revoke-all`, then clears this
+  device; if the request fails, the user stays signed in and sees the error;
+- access tokens already issued to a signed-out device remain valid until their
+  12-hour expiry because access JWTs are stateless; a deleted account is rejected
+  on the next request because `is_active` is checked while resolving the
+  customer;
 - expose `customer`, `token`, `hydrated`, `isAuthenticated`.
 
 ### Account screen
@@ -674,8 +694,10 @@ Add `/account`:
   be linked;
 - after verification, show claimed counts;
 - signed in: account email, linked-data counts, profile and notification
-  preferences, email change with a new-address code, "Refresh", "Delete account",
-  and "Sign out";
+  preferences, email change with a new-address code, "Refresh", "Sign out all
+  devices", "Delete account", and "Sign out";
+- destructive actions use a confirmation modal that states which devices and
+  data are affected; a failure keeps the user signed in and shows the error;
 - a "Notification delivery" card opens the delivery log and push-device status;
 - development-only debug code display for login and email-change codes.
 
@@ -753,6 +775,17 @@ or OTP data.
 - Rate limiting remains in-process; Redis is still a production hardening item.
 - Refresh token secrets are stored hashed; the table supports per-session
   revocation and rotation. A replayed or expired refresh token is rejected.
+- Logout with the current device's refresh token revokes only that row. A
+  body-less logout keeps the legacy account-wide behavior for older clients.
+- Access JWTs are stateless, so sign-out, sign-out-everywhere, and email change
+  stop refresh immediately but cannot invalidate an already-copied access token
+  before its 12-hour expiry. Account deletion and deactivation are stronger:
+  `is_active` is checked while resolving the customer, so old access tokens are
+  rejected on the next request.
+- Account deletion is a soft close. It deactivates the customer row, revokes
+  every refresh token, and stops notification delivery; shop history and
+  profile/audit rows remain for operational and accounting needs. It is not a
+  full erasure mechanism and does not remove device-local guest data.
 - Email change requires control of both the current session and the new email.
   A target address owned by another account is rejected before a confirmation
   code is sent; the unauthenticated OTP request path stays deliberately generic.
@@ -787,8 +820,13 @@ Backend:
 - account cancel/accept/unsubscribe works;
 - claimed restock alerts still work with the guest unsubscribe token;
 - inactive accounts are rejected;
-- refresh tokens rotate, reject replay, and are revoked by logout, revoke-all,
-  deletion, and email change;
+- refresh tokens rotate and reject replay;
+- logout with the current device's refresh token revokes only that session and
+  leaves another device able to refresh; a body-less logout still revokes every
+  session;
+- revoke-all, deletion, and email change revoke every existing refresh session;
+- a deleted or deactivated account is rejected on the next protected request,
+  even with an otherwise valid access token;
 - email change sends a challenge to the new address, rejects addresses owned by
   another account, handles expiry/attempts/cooldown, issues a fresh token pair,
   and re-claims matching guest rows;
@@ -816,6 +854,8 @@ Mobile:
   - guest hold -> sign in -> claim -> sign out -> guest still visible;
   - cold launch restores the session and rotates an expired access token;
   - second browser/device sign-in sees the same account data;
+  - signing out one device leaves the other able to refresh; sign-out-all and
+    account deletion stop both devices from refreshing;
   - account-only hold detail/cancel works;
   - account alert unsubscribe and special-order accept/cancel work;
   - email change signs out other devices, applies the new address, and keeps

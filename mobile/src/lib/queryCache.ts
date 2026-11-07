@@ -11,7 +11,22 @@ function isSerializableQueryKey(value: unknown): value is unknown[] {
   return Array.isArray(value);
 }
 
-export async function persistQueryCache(client: QueryClient): Promise<void> {
+/**
+ * Writes are serialized so an older snapshot cannot finish after a newer one and
+ * resurrect stale account data. Each caller captures its snapshot synchronously.
+ */
+let persistQueue: Promise<void> = Promise.resolve();
+
+async function writeSnapshot(snapshot: Record<string, unknown>): Promise<void> {
+  if (Object.keys(snapshot).length === 0) {
+    await AsyncStorage.removeItem(QUERY_CACHE_STORAGE_KEY);
+    return;
+  }
+
+  await AsyncStorage.setItem(QUERY_CACHE_STORAGE_KEY, JSON.stringify(snapshot));
+}
+
+export function persistQueryCache(client: QueryClient): Promise<void> {
   const snapshot = Object.fromEntries(
     client
       .getQueryCache()
@@ -20,12 +35,11 @@ export async function persistQueryCache(client: QueryClient): Promise<void> {
       .map((query) => [JSON.stringify(query.queryKey), query.state.data]),
   );
 
-  if (Object.keys(snapshot).length === 0) {
-    await AsyncStorage.removeItem(QUERY_CACHE_STORAGE_KEY);
-    return;
-  }
-
-  await AsyncStorage.setItem(QUERY_CACHE_STORAGE_KEY, JSON.stringify(snapshot));
+  // Cache persistence is best-effort: a failed device write must never block a
+  // sign-out, identity switch, or deletion that is also clearing the session.
+  const next = persistQueue.then(() => writeSnapshot(snapshot)).catch(() => undefined);
+  persistQueue = next;
+  return next;
 }
 
 export async function hydrateQueryClient(client: QueryClient): Promise<void> {

@@ -4,6 +4,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -26,6 +27,7 @@ import { colors, radii, spacing, type } from "../theme";
 
 type Step = "email" | "code";
 type EmailChangeStep = "idle" | "code";
+type AccountAction = "delete" | "sign-out" | "sign-out-all" | null;
 
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
@@ -41,6 +43,7 @@ export default function AccountScreen() {
     requestCode,
     requestEmailChange,
     signOut,
+    signOutEverywhere,
     token,
     updateProfile,
     verifyCode,
@@ -64,6 +67,8 @@ export default function AccountScreen() {
   const [emailDebugCode, setEmailDebugCode] = useState<string | null>(null);
   const [emailResendIn, setEmailResendIn] = useState(0);
   const [changingEmail, setChangingEmail] = useState(false);
+  const [accountAction, setAccountAction] = useState<AccountAction>(null);
+  const [accountActionError, setAccountActionError] = useState<string | null>(null);
 
   const reservations = useMyReservations(token);
   const requests = useMyCardRequests(token);
@@ -92,15 +97,56 @@ export default function AccountScreen() {
     }
   }
 
-  async function deleteCurrentAccount() {
+  function openAccountAction(action: Exclude<AccountAction, null>) {
     setError(null);
     setNotice(null);
+    setAccountActionError(null);
+    setAccountAction(action);
+  }
+
+  function resetSignInForm() {
+    setStep("email");
+    setCode("");
+    setDebugCode(null);
+    setEmailStep("idle");
+    setNewEmail("");
+    setEmailCode("");
+    setEmailDebugCode(null);
+    setEmailResendIn(0);
+  }
+
+  async function performAccountAction() {
+    if (!accountAction) return;
+    setError(null);
+    setNotice(null);
+    setAccountActionError(null);
     setBusy(true);
     try {
-      await deleteAccount();
-      setNotice("Your account has been removed.");
+      if (accountAction === "delete") {
+        await deleteAccount();
+        setNotice(
+          "Your account is closed and every device is signed out. Guest items saved on this device remain available.",
+        );
+      } else if (accountAction === "sign-out-all") {
+        await signOutEverywhere();
+        resetSignInForm();
+        setNotice("Signed out on every device that was using this account.");
+      } else {
+        await signOut();
+        resetSignInForm();
+        setNotice("Signed out on this device. Other devices stay signed in.");
+      }
+      setAccountAction(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not delete your account.");
+      setAccountActionError(
+        caught instanceof Error
+          ? caught.message
+          : accountAction === "delete"
+            ? "Could not delete your account."
+            : accountAction === "sign-out-all"
+              ? "Could not sign out every device."
+              : "Could not sign out this device.",
+      );
     } finally {
       setBusy(false);
     }
@@ -136,11 +182,7 @@ export default function AccountScreen() {
       setEmailDebugCode(null);
       setEmailResendIn(0);
       setNotice(emailChangeMessage(result.claimed));
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: accountKeys.reservations }),
-        queryClient.invalidateQueries({ queryKey: accountKeys.cardRequests }),
-        queryClient.invalidateQueries({ queryKey: accountKeys.restockAlerts }),
-      ]);
+      await queryClient.invalidateQueries({ queryKey: accountKeys.all });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not confirm the new email.");
     } finally {
@@ -182,11 +224,7 @@ export default function AccountScreen() {
       const result = await verifyCode(email, code);
       setDebugCode(null);
       setNotice(claimMessage(result.claimed));
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: accountKeys.reservations }),
-        queryClient.invalidateQueries({ queryKey: accountKeys.cardRequests }),
-        queryClient.invalidateQueries({ queryKey: accountKeys.restockAlerts }),
-      ]);
+      await queryClient.invalidateQueries({ queryKey: accountKeys.all });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Could not verify this code.");
     } finally {
@@ -207,20 +245,6 @@ export default function AccountScreen() {
     }
   }
 
-  function handleSignOut() {
-    setNotice(null);
-    setError(null);
-    setStep("email");
-    setCode("");
-    setDebugCode(null);
-    setEmailStep("idle");
-    setNewEmail("");
-    setEmailCode("");
-    setEmailDebugCode(null);
-    setEmailResendIn(0);
-    signOut();
-  }
-
   if (!hydrated) return <LoadingState label="Loading your account…" />;
 
   if (isAuthenticated && customer) {
@@ -230,14 +254,15 @@ export default function AccountScreen() {
       alerts: alerts.data?.items.length ?? 0,
     };
     return (
-      <ScrollView
-        contentContainerStyle={{
-          padding: spacing.lg,
-          paddingBottom: insets.bottom + spacing.xxl,
-          gap: spacing.lg,
-        }}
-        showsVerticalScrollIndicator={false}
-      >
+      <>
+        <ScrollView
+          contentContainerStyle={{
+            padding: spacing.lg,
+            paddingBottom: insets.bottom + spacing.xxl,
+            gap: spacing.lg,
+          }}
+          showsVerticalScrollIndicator={false}
+        >
         <View style={styles.hero}>
           <View style={styles.heroIcon}>
             <Ionicons name="person-outline" size={22} color={colors.primary} />
@@ -402,8 +427,13 @@ export default function AccountScreen() {
 
         <Text style={styles.note}>
           This signed-in session is kept in secure device storage so you can stay signed in across
-          app restarts. Signing out revokes the active refresh token, while guest holds on this device
-          remain available.
+          app restarts. Signing out revokes this device&apos;s refresh session; other devices stay
+          signed in. Guest holds saved on this device remain available.
+        </Text>
+        <Text style={styles.note}>
+          Deleting your account closes it for this email and signs out every device. Your hold,
+          special-order, and restock-alert history stays with the shops, and guest data saved on
+          this device is not removed.
         </Text>
 
         <PrimaryButton
@@ -413,13 +443,52 @@ export default function AccountScreen() {
           variant="secondary"
         />
         <PrimaryButton
+          label="Sign out all devices"
+          onPress={() => openAccountAction("sign-out-all")}
+          variant="secondary"
+        />
+        <PrimaryButton
           label="Delete account"
-          loading={busy}
-          onPress={() => void deleteCurrentAccount()}
+          onPress={() => openAccountAction("delete")}
           variant="danger"
         />
-        <PrimaryButton label="Sign out" onPress={handleSignOut} variant="danger" />
-      </ScrollView>
+        <PrimaryButton label="Sign out" onPress={() => openAccountAction("sign-out")} variant="danger" />
+        </ScrollView>
+        <Modal
+          animationType="fade"
+          onRequestClose={() => setAccountAction(null)}
+          transparent
+          visible={accountAction !== null}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalCard}>
+              <View style={styles.modalIcon}>
+                <Ionicons
+                  name={accountAction === "delete" ? "trash-outline" : "log-out-outline"}
+                  size={24}
+                  color={colors.danger}
+                />
+              </View>
+              <Text style={styles.modalTitle}>{accountActionTitle(accountAction)}</Text>
+              <Text style={styles.modalBody}>{accountActionBody(accountAction)}</Text>
+              {accountActionError ? (
+                <Text style={styles.modalError}>{accountActionError}</Text>
+              ) : null}
+              <PrimaryButton
+                label={accountActionCancelLabel(accountAction)}
+                onPress={() => setAccountAction(null)}
+                variant="secondary"
+              />
+              <PrimaryButton
+                label={accountActionConfirmLabel(accountAction)}
+                loading={busy}
+                onPress={() => void performAccountAction()}
+                variant="danger"
+              />
+            </View>
+          </View>
+        </Modal>
+      </>
     );
   }
 
@@ -583,6 +652,32 @@ function emailChangeMessage(claimed: ClaimedCounts): string {
   const total = totalClaimed(claimed);
   if (total === 0) return "Email updated. Other devices were signed out.";
   return `Email updated and linked ${total} earlier item${total === 1 ? "" : "s"}. Other devices were signed out.`;
+}
+
+function accountActionTitle(action: AccountAction): string {
+  if (action === "delete") return "Delete this account?";
+  if (action === "sign-out-all") return "Sign out on every device?";
+  return "Sign out on this device?";
+}
+
+function accountActionBody(action: AccountAction): string {
+  if (action === "delete") {
+    return "This closes your account and stops sign-in with this email. Every device is signed out. Your shop history is kept, and guest data saved on this device is not removed.";
+  }
+  if (action === "sign-out-all") {
+    return "Every device using this account is signed out and can no longer refresh its session. Guest items saved on this device remain available.";
+  }
+  return "This device's session is revoked. Other devices stay signed in. Guest items saved on this device remain available.";
+}
+
+function accountActionCancelLabel(action: AccountAction): string {
+  return action === "delete" ? "Keep my account" : "Stay signed in";
+}
+
+function accountActionConfirmLabel(action: AccountAction): string {
+  if (action === "delete") return "Delete account";
+  if (action === "sign-out-all") return "Sign out everywhere";
+  return "Sign out";
 }
 
 function CountCard({
@@ -948,4 +1043,30 @@ const styles = StyleSheet.create({
   },
   switchThumbOn: { marginLeft: 20 },
   note: { color: colors.inkMuted, fontSize: type.small, lineHeight: 19 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: colors.overlay,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.xl,
+  },
+  modalCard: {
+    width: "100%",
+    maxWidth: 420,
+    backgroundColor: colors.surface,
+    borderRadius: radii.lg,
+    padding: spacing.xl,
+    gap: spacing.md,
+  },
+  modalIcon: {
+    width: 46,
+    height: 46,
+    borderRadius: 16,
+    backgroundColor: colors.dangerSoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalTitle: { color: colors.ink, fontSize: type.heading, fontWeight: "900" },
+  modalBody: { color: colors.inkMuted, fontSize: type.small, lineHeight: 20 },
+  modalError: { color: colors.danger, fontSize: type.small, lineHeight: 19 },
 });

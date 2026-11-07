@@ -199,7 +199,8 @@ export function RequestsPage() {
 
       <p className="hint">
         No stock is held while a card is being sourced. Converting requires the exact card, finish, condition, and
-        language to be in stock.
+        language to be in stock, and creates the hold at the current shelf price. Quotes shown to customers are
+        indicative, not price locks.
       </p>
     </div>
   );
@@ -285,7 +286,9 @@ function QuoteForm({ item, onDone }: { item: StaffCardRequest; onDone: () => voi
             data-testid="quote-price"
             required
           />
-          <span className="hint">Shown to the customer in the shop currency.</span>
+          <span className="hint">
+            Indicative price in the shop currency. Conversion uses the shelf price.
+          </span>
         </div>
         <div className="field">
           <label htmlFor={`quote-expires-${item.id}`}>Quote expires (optional)</label>

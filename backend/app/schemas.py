@@ -184,6 +184,16 @@ class CustomerRefreshIn(BaseModel):
     refresh_token: str = Field(min_length=16, max_length=512)
 
 
+class CustomerLogoutIn(BaseModel):
+    """Optional body for a single-device logout.
+
+    Omitting the refresh token keeps the legacy account-wide logout behavior for
+    old clients. The mobile app always sends the current device's token.
+    """
+
+    refresh_token: str | None = Field(default=None, min_length=16, max_length=512)
+
+
 class CustomerOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -489,6 +499,13 @@ class StockImportErrorOut(BaseModel):
     field: str | None = None
 
 
+class ExchangeRateOut(BaseModel):
+    source_currency: str
+    target_currency: str
+    rate: str
+    rate_date: str
+
+
 class StockImportReportOut(BaseModel):
     dry_run: bool
     rows: int
@@ -496,6 +513,21 @@ class StockImportReportOut(BaseModel):
     updated: int
     unchanged: int
     errors: list[StockImportErrorOut]
+    exchange_rates: list[ExchangeRateOut]
+
+
+class StockImportPricingIn(BaseModel):
+    threshold_minor: int = Field(ge=0, le=2_147_483_647)
+    fixed_price_minor: int = Field(ge=0, le=2_147_483_647)
+    markup_percent: int = Field(ge=0, le=10000)
+
+
+class StockImportPricingOut(BaseModel):
+    currency: str
+    configured: bool
+    threshold_minor: int | None = None
+    fixed_price_minor: int | None = None
+    markup_percent: int | None = None
 
 
 class DashboardOut(BaseModel):

@@ -48,7 +48,7 @@ export default function CardDetailScreen() {
     );
   }
 
-  if (itemQuery.isError || !item) {
+  if (!item) {
     const notFound = (itemQuery.error as { status?: number } | null)?.status === 404;
     return (
       <View style={styles.screen}>
@@ -92,6 +92,15 @@ export default function CardDetailScreen() {
         <CardHero item={item} shopName={shopName} />
 
         <View style={styles.body}>
+          {itemQuery.isError ? (
+            <View style={styles.syncNote}>
+              <Ionicons name="cloud-offline-outline" size={16} color={colors.inkMuted} />
+              <Text style={styles.syncNoteText}>
+                Showing the copy saved on this device. Pull to refresh when you are back online.
+              </Text>
+            </View>
+          ) : null}
+
           <View style={styles.priceRow}>
             <View>
               <Text style={styles.kicker}>PRICE</Text>
@@ -335,6 +344,15 @@ const styles = StyleSheet.create({
   },
   atShop: { color: colors.primary, fontSize: type.small, fontWeight: "700", marginTop: spacing.xs },
   body: { paddingHorizontal: spacing.lg, gap: spacing.lg },
+  syncNote: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: spacing.sm,
+    backgroundColor: colors.surfaceMuted,
+    borderRadius: radii.md,
+    padding: spacing.md,
+  },
+  syncNoteText: { flex: 1, color: colors.inkMuted, fontSize: type.tiny, lineHeight: 17 },
   priceRow: {
     flexDirection: "row",
     alignItems: "center",

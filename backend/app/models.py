@@ -66,6 +66,7 @@ class TenantSettings(Base):
     directory_opt_in: Mapped[bool] = mapped_column(Boolean, default=True)
     notification_email: Mapped[str | None] = mapped_column(String(320))
     features: Mapped[dict] = mapped_column(JSON, default=dict)
+    stock_import_pricing: Mapped[dict | None] = mapped_column(JSON)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     tenant: Mapped[Tenant] = relationship(back_populates="settings")

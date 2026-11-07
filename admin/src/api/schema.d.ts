@@ -781,6 +781,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/staff/stock/import-pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Stock Import Pricing */
+        get: operations["get_stock_import_pricing_v1_staff_stock_import_pricing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Stock Import Pricing */
+        patch: operations["update_stock_import_pricing_v1_staff_stock_import_pricing_patch"];
+        trace?: never;
+    };
     "/v1/staff/stock/import": {
         parameters: {
             query?: never;
@@ -1286,6 +1304,17 @@ export interface components {
              */
             phone: string;
         };
+        /**
+         * CustomerLogoutIn
+         * @description Optional body for a single-device logout.
+         *
+         *     Omitting the refresh token keeps the legacy account-wide logout behavior for
+         *     old clients. The mobile app always sends the current device's token.
+         */
+        CustomerLogoutIn: {
+            /** Refresh Token */
+            refresh_token?: string | null;
+        };
         /** CustomerOut */
         CustomerOut: {
             /**
@@ -1415,6 +1444,17 @@ export interface components {
             email: string;
             /** Code */
             code: string;
+        };
+        /** ExchangeRateOut */
+        ExchangeRateOut: {
+            /** Source Currency */
+            source_currency: string;
+            /** Target Currency */
+            target_currency: string;
+            /** Rate */
+            rate: string;
+            /** Rate Date */
+            rate_date: string;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -2336,6 +2376,28 @@ export interface components {
             /** Field */
             field?: string | null;
         };
+        /** StockImportPricingIn */
+        StockImportPricingIn: {
+            /** Threshold Minor */
+            threshold_minor: number;
+            /** Fixed Price Minor */
+            fixed_price_minor: number;
+            /** Markup Percent */
+            markup_percent: number;
+        };
+        /** StockImportPricingOut */
+        StockImportPricingOut: {
+            /** Currency */
+            currency: string;
+            /** Configured */
+            configured: boolean;
+            /** Threshold Minor */
+            threshold_minor?: number | null;
+            /** Fixed Price Minor */
+            fixed_price_minor?: number | null;
+            /** Markup Percent */
+            markup_percent?: number | null;
+        };
         /** StockImportReportOut */
         StockImportReportOut: {
             /** Dry Run */
@@ -2350,6 +2412,8 @@ export interface components {
             unchanged: number;
             /** Errors */
             errors: components["schemas"]["StockImportErrorOut"][];
+            /** Exchange Rates */
+            exchange_rates: components["schemas"]["ExchangeRateOut"][];
         };
         /** StockItemOut */
         StockItemOut: {
@@ -3147,7 +3211,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["CustomerLogoutIn"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             204: {
@@ -3155,6 +3223,15 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
             };
         };
     };
@@ -3959,6 +4036,59 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+        };
+    };
+    get_stock_import_pricing_v1_staff_stock_import_pricing_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockImportPricingOut"];
+                };
+            };
+        };
+    };
+    update_stock_import_pricing_v1_staff_stock_import_pricing_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StockImportPricingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockImportPricingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

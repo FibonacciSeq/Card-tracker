@@ -37,7 +37,7 @@ export default function RequestScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { get, getToken, hydrated, update } = useSpecialOrders();
-  const { token: accountToken } = useAuth();
+  const { isAuthenticated, token: accountToken } = useAuth();
   const saved = get(id);
   const [token, setToken] = useState<string | null>(null);
   const [tokenLoaded, setTokenLoaded] = useState(false);
@@ -47,7 +47,7 @@ export default function RequestScreen() {
   const now = useNow();
 
   const accountQuery = useMyCardRequest(id, accountToken);
-  const accountRequest = accountQuery.data;
+  const accountRequest = isAuthenticated ? accountQuery.data : undefined;
   const requestQuery = useGuestCardRequest(id, saved?.shopSlug ?? "", token);
   const accountShop = accountRequest ? readShop(accountRequest.shop) : null;
   const shopName = accountShop?.name ?? saved?.shopName ?? "Shop";
@@ -229,6 +229,10 @@ export default function RequestScreen() {
             {request.vendor_note ? (
               <Text style={styles.vendorNote}>{request.vendor_note}</Text>
             ) : null}
+            <Text style={styles.quotePricingNote}>
+              This is an indicative quote. When the shop converts it, the hold uses the card&apos;s
+              current shelf price.
+            </Text>
           </View>
         ) : null}
 
@@ -236,7 +240,8 @@ export default function RequestScreen() {
           <View style={styles.infoCard}>
             <Ionicons name="checkmark-circle-outline" size={20} color={colors.success} />
             <Text style={styles.infoText}>
-              Quote accepted. The shop will reserve the card and let you know when it is ready.
+              Quote accepted. The shop will reserve the card at its current shelf price and let you
+              know when it is ready.
             </Text>
           </View>
         ) : null}
@@ -445,6 +450,7 @@ const styles = StyleSheet.create({
   quoteExpiryText: { color: colors.accent, fontSize: type.small, fontWeight: "700" },
   quoteExpiredText: { color: colors.danger },
   vendorNote: { color: colors.ink, fontSize: type.small, lineHeight: 19 },
+  quotePricingNote: { color: colors.inkMuted, fontSize: type.tiny, lineHeight: 18 },
   infoCard: {
     flexDirection: "row",
     alignItems: "flex-start",

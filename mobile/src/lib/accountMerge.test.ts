@@ -149,4 +149,42 @@ describe("account merge helpers", () => {
     expect(merged.map((row) => row.id)).toEqual(["new", "same", "old"]);
     expect(merged[1].source).toBe("account");
   });
+
+  it("keeps the guest copy intact when an account row shares its id", () => {
+    const accountReservationRow = reservation("same", "2026-11-01T10:00:00Z");
+    const guestReservationRow = {
+      ...reservation("same", "2026-01-01T00:00:00Z"),
+      shop: { slug: "guest-shop", name: "Guest Shop" },
+    } as unknown as SavedReservation;
+    const reservationRows = [accountReservationRow];
+    const guestReservationRows = [guestReservationRow];
+
+    const reservations = mergeReservations(reservationRows, guestReservationRows);
+    expect(reservations).toHaveLength(1);
+    expect(reservations[0].shop).toEqual({ slug: "bolt", name: "Bolt" });
+    expect(reservationRows).toHaveLength(1);
+    expect(guestReservationRows[0]).toBe(guestReservationRow);
+
+    const accountRequestRow = cardRequest("same", "2026-11-01T10:00:00Z");
+    const guestRequestRow = guestRequest("same", "2026-01-01T00:00:00Z");
+    const requestRows = [accountRequestRow];
+    const guestRequestRows = [guestRequestRow];
+
+    const requests = mergeCardRequests(requestRows, guestRequestRows);
+    expect(requests).toHaveLength(1);
+    expect(requests[0].shopSlug).toBe("bolt");
+    expect(requestRows).toHaveLength(1);
+    expect(guestRequestRows[0]).toBe(guestRequestRow);
+
+    const accountAlertRow = accountAlert("same", "2026-11-01T10:00:00Z");
+    const guestAlertRow = guestAlert("same", "2026-01-01T00:00:00Z");
+    const alertRows = [accountAlertRow];
+    const guestAlertRows = [guestAlertRow];
+
+    const alerts = mergeRestockAlerts(alertRows, guestAlertRows);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0].source).toBe("account");
+    expect(alertRows).toHaveLength(1);
+    expect(guestAlertRows[0]).toBe(guestAlertRow);
+  });
 });

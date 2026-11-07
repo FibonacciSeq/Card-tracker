@@ -18,6 +18,7 @@ from app.deps import get_current_staff, require_owner
 from app.security import create_access_token, hash_password, verify_password
 from app.services import audit, notifications, ratelimit, restock, stock_csv
 from app.services import card_requests as card_request_service
+from app.services import exchange_rates as exchange_rate_service
 from app.services import reservations as reservation_service
 
 router = APIRouter(prefix="/v1/staff", tags=["staff"])
@@ -404,6 +405,63 @@ def export_stock_csv(
     )
 
 
+def _stock_import_pricing(tenant: models.Tenant) -> dict[str, int] | None:
+    rules = tenant.settings.stock_import_pricing if tenant.settings else None
+    fields = ("threshold_minor", "fixed_price_minor", "markup_percent")
+    if not isinstance(rules, dict) or not all(type(rules.get(field)) is int for field in fields):
+        return None
+    return {field: rules[field] for field in fields}
+
+
+def _stock_import_pricing_out(tenant: models.Tenant) -> schemas.StockImportPricingOut:
+    rules = _stock_import_pricing(tenant)
+    return schemas.StockImportPricingOut(
+        currency=tenant.currency,
+        configured=rules is not None,
+        threshold_minor=rules.get("threshold_minor") if rules else None,
+        fixed_price_minor=rules.get("fixed_price_minor") if rules else None,
+        markup_percent=rules.get("markup_percent") if rules else None,
+    )
+
+
+@router.get("/stock/import-pricing", response_model=schemas.StockImportPricingOut)
+def get_stock_import_pricing(
+    user: models.User = Depends(get_current_staff),
+    db: Session = Depends(get_db),
+):
+    return _stock_import_pricing_out(_tenant(db, user))
+
+
+@router.patch("/stock/import-pricing", response_model=schemas.StockImportPricingOut)
+def update_stock_import_pricing(
+    payload: schemas.StockImportPricingIn,
+    user: models.User = Depends(get_current_staff),
+    db: Session = Depends(get_db),
+):
+    tenant = _tenant(db, user)
+    settings_row = tenant.settings
+    if settings_row is None:
+        settings_row = models.TenantSettings(tenant_id=tenant.id)
+        tenant.settings = settings_row
+        db.add(settings_row)
+
+    rules = payload.model_dump()
+    settings_row.stock_import_pricing = rules
+    audit.record(
+        db,
+        tenant_id=tenant.id,
+        actor_id=user.id,
+        action="stock.import_pricing.update",
+        entity_type="shop",
+        entity_id=tenant.id,
+        summary="Updated shop stock import pricing rules",
+        data=rules,
+    )
+    db.commit()
+    db.refresh(tenant)
+    return _stock_import_pricing_out(tenant)
+
+
 @router.post("/stock/import", response_model=schemas.StockImportReportOut)
 def import_stock_csv(
     file: UploadFile = File(...),
@@ -432,6 +490,34 @@ def import_stock_csv(
     except stock_csv.CsvFormatError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
+    exchange_rate_rows: list[schemas.ExchangeRateOut] = []
+    purchase_rows = [row for row in rows if row.uses_pricing_rules]
+    if purchase_rows:
+        pricing = _stock_import_pricing(tenant)
+        if pricing is None:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Set shop stock import pricing rules before checking a ManaBox purchase-price CSV.",
+            )
+        rates = {}
+        try:
+            for source_currency in sorted({row.currency.upper() for row in purchase_rows}):
+                quote = exchange_rate_service.get_latest_rate(source_currency, tenant.currency)
+                rates[source_currency] = quote.rate
+                exchange_rate_rows.append(
+                    schemas.ExchangeRateOut(
+                        source_currency=quote.source_currency,
+                        target_currency=quote.target_currency,
+                        rate=str(quote.rate),
+                        rate_date=quote.rate_date.isoformat(),
+                    )
+                )
+            rows = stock_csv.price_purchase_rows(rows, tenant.currency, rates, pricing)
+        except exchange_rate_service.ExchangeRateError as exc:
+            raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from exc
+
     created, updated, unchanged, apply_errors = stock_csv.apply_rows(db, tenant, user.id, rows, dry_run=dry_run)
     if dry_run:
         db.rollback()
@@ -459,6 +545,7 @@ def import_stock_csv(
         errors=[
             schemas.StockImportErrorOut(row=error.row, message=error.message, field=error.field) for error in errors
         ],
+        exchange_rates=exchange_rate_rows,
     )
 
 
