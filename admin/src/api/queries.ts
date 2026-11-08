@@ -19,6 +19,7 @@ import type {
   StaffUserUpdate,
   StatusUpdate,
   StockAdjust,
+  StockArchiveResult,
   StockImportReportWithRates,
   StockSell,
   StockUpdate,
@@ -26,7 +27,8 @@ import type {
 
 export const queryKeys = {
   dashboard: ["dashboard"] as const,
-  stock: (query: string, onlyOnline: boolean) => ["stock", query, onlyOnline] as const,
+  stock: (query: string, onlyOnline: boolean, archived: boolean) =>
+    ["stock", query, onlyOnline, archived] as const,
   reservations: (status: string) => ["reservations", status] as const,
   reservation: (id: string) => ["reservation", id] as const,
   settings: ["settings"] as const,
@@ -43,14 +45,38 @@ export function useDashboard() {
   });
 }
 
-export function useStock(query: string, onlyOnline: boolean) {
+export function useStock(query: string, onlyOnline: boolean, archived = false) {
   return useQuery({
-    queryKey: queryKeys.stock(query, onlyOnline),
+    queryKey: queryKeys.stock(query, onlyOnline, archived),
     queryFn: ({ signal }) => {
       const params = new URLSearchParams({ limit: "200" });
       if (query.trim()) params.set("query", query.trim());
-      if (onlyOnline) params.set("only_online", "true");
+      if (archived) params.set("archived", "true");
+      else if (onlyOnline) params.set("only_online", "true");
       return request<StaffStockList>(`/v1/staff/stock?${params.toString()}`, { signal });
+    },
+  });
+}
+
+export function useArchiveAllStock() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => request<StockArchiveResult>("/v1/staff/stock/archive", { method: "POST" }),
+    onSuccess: () => {
+      refreshStock(client);
+      client.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+}
+
+export function useRestoreStock() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<StaffStock>(`/v1/staff/stock/${id}/restore`, { method: "POST" }),
+    onSuccess: () => {
+      refreshStock(client);
+      client.invalidateQueries({ queryKey: ["audit"] });
     },
   });
 }

@@ -323,11 +323,17 @@ class StaffStockOut(BaseModel):
     restock_waiting: int = 0
     price: Money
     is_online: bool
+    archived_at: datetime | None = None
     updated_at: datetime
 
 
 class StaffStockListOut(BaseModel):
     items: list[StaffStockOut]
+
+
+class StockArchiveResultOut(BaseModel):
+    archived: int
+    reserved: int
 
 
 class StockCreateIn(BaseModel):

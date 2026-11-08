@@ -2,7 +2,9 @@ import { useState } from "react";
 import { ApiError, requestBlob } from "../api/client";
 import {
   useAdjustStock,
+  useArchiveAllStock,
   useImportStock,
+  useRestoreStock,
   useSellStock,
   useStock,
   useUpdateStock,
@@ -15,24 +17,37 @@ import { useDebounced } from "../lib/useDebounced";
 export function StockPage() {
   const [search, setSearch] = useState("");
   const [onlyOnline, setOnlyOnline] = useState(false);
+  const [archivedView, setArchivedView] = useState(false);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
+  const [archiveOpen, setArchiveOpen] = useState(false);
+  const [archiveNotice, setArchiveNotice] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const query = useDebounced(search.trim());
-  const { data, isPending, error, refetch, isFetching } = useStock(query, onlyOnline);
+  const { data, isPending, error, refetch, isFetching } = useStock(query, onlyOnline, archivedView);
+  const archive = useArchiveAllStock();
 
   const items = data?.items ?? [];
+
+  function showView(archived: boolean) {
+    setArchivedView(archived);
+    setExpanded(null);
+    setImportOpen(false);
+    setArchiveOpen(false);
+    setArchiveNotice(null);
+  }
 
   async function downloadCsv() {
     setExportError(null);
     setExporting(true);
     try {
-      const blob = await requestBlob("/v1/staff/stock/export.csv");
+      const suffix = archivedView ? "?archived=true" : "";
+      const blob = await requestBlob(`/v1/staff/stock/export.csv${suffix}`);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href = url;
-      link.download = "stock.csv";
+      link.download = archivedView ? "stock-archived.csv" : "stock.csv";
       link.click();
       URL.revokeObjectURL(url);
     } catch (cause) {
@@ -42,17 +57,60 @@ export function StockPage() {
     }
   }
 
+  function confirmArchive() {
+    archive.mutate(undefined, {
+      onSuccess: (result) => {
+        setArchiveOpen(false);
+        setExpanded(null);
+        showView(true);
+        setArchiveNotice(
+          result.reserved > 0
+            ? `Archived ${result.archived} stock item${result.archived === 1 ? "" : "s"}. ` +
+                `${result.reserved} reserved cop${result.reserved === 1 ? "y is" : "ies are"} still held for customers.`
+            : `Archived ${result.archived} stock item${result.archived === 1 ? "" : "s"}.`,
+        );
+      },
+    });
+  }
+
   return (
     <div className="page">
       <header className="page__header">
         <div>
           <h1>Stock</h1>
-          <p className="muted">Only online stock is visible to customers in the app.</p>
+          <p className="muted">
+            {archivedView
+              ? "Archived stock is hidden from the customer app. Import a matching card or restore a row to bring it back."
+              : "Only online stock is visible to customers in the app."}
+          </p>
         </div>
         <button type="button" className="btn btn--ghost" onClick={() => void refetch()} disabled={isFetching}>
           {isFetching ? "Refreshing…" : "Refresh"}
         </button>
       </header>
+
+      <div className="tabs" role="tablist" aria-label="Stock view">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!archivedView}
+          className={`tab${!archivedView ? " tab--active" : ""}`}
+          onClick={() => showView(false)}
+          data-testid="stock-tab-active"
+        >
+          Active stock
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={archivedView}
+          className={`tab${archivedView ? " tab--active" : ""}`}
+          onClick={() => showView(true)}
+          data-testid="stock-tab-archived"
+        >
+          Archived
+        </button>
+      </div>
 
       <div className="toolbar">
         <div className="field field--inline">
@@ -66,30 +124,50 @@ export function StockPage() {
             data-testid="stock-search"
           />
         </div>
-        <label className="checkbox">
-          <input
-            type="checkbox"
-            checked={onlyOnline}
-            onChange={(event) => setOnlyOnline(event.target.checked)}
-          />
-          Online only
-        </label>
+        {!archivedView ? (
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={onlyOnline}
+              onChange={(event) => setOnlyOnline(event.target.checked)}
+            />
+            Online only
+          </label>
+        ) : null}
         <span className="muted small" aria-live="polite">
-          {isPending ? "Loading…" : `${items.length} card${items.length === 1 ? "" : "s"}`}
+          {isPending
+            ? "Loading…"
+            : `${items.length} ${archivedView ? "archived " : ""}card${items.length === 1 ? "" : "s"}`}
         </span>
         <div className="toolbar__actions">
           <button type="button" className="btn btn--small" onClick={() => void downloadCsv()} disabled={exporting}>
             {exporting ? "Exporting…" : "Export CSV"}
           </button>
-          <button
-            type="button"
-            className="btn btn--small"
-            onClick={() => setImportOpen((open) => !open)}
-            aria-expanded={importOpen}
-            data-testid="import-toggle"
-          >
-            Import CSV
-          </button>
+          {!archivedView ? (
+            <>
+              <button
+                type="button"
+                className="btn btn--small"
+                onClick={() => setImportOpen((open) => !open)}
+                aria-expanded={importOpen}
+                data-testid="import-toggle"
+              >
+                Import CSV
+              </button>
+              <button
+                type="button"
+                className="btn btn--small btn--danger"
+                onClick={() => {
+                  setArchiveNotice(null);
+                  archive.reset();
+                  setArchiveOpen(true);
+                }}
+                data-testid="archive-all"
+              >
+                Archive all stock
+              </button>
+            </>
+          ) : null}
         </div>
       </div>
 
@@ -99,7 +177,55 @@ export function StockPage() {
         </p>
       ) : null}
 
-      {importOpen ? <StockImport onClose={() => setImportOpen(false)} /> : null}
+      {archiveNotice ? (
+        <p className="alert alert--success" role="status" data-testid="archive-notice">
+          {archiveNotice}
+        </p>
+      ) : null}
+
+      {archiveOpen ? (
+        <section className="card import-panel" aria-labelledby="archive-title" data-testid="archive-panel">
+          <div className="import-panel__header">
+            <div>
+              <h2 id="archive-title">Archive all stock?</h2>
+              <p className="muted small">
+                This hides every active stock row for this shop from the customer app. Existing reservations stay
+                valid. Re-importing a matching card automatically restores its row.
+              </p>
+            </div>
+            <button type="button" className="btn btn--ghost btn--small" onClick={() => setArchiveOpen(false)}>
+              Cancel
+            </button>
+          </div>
+          {archive.error ? (
+            <p className="alert alert--error" role="alert">
+              {archive.error instanceof ApiError ? archive.error.message : String(archive.error)}
+            </p>
+          ) : null}
+          <div className="inline-form">
+            <button
+              type="button"
+              className="btn btn--danger"
+              onClick={confirmArchive}
+              disabled={archive.isPending}
+              data-testid="archive-confirm"
+            >
+              {archive.isPending ? "Archiving…" : "Archive all stock"}
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setArchiveOpen(false)}
+              disabled={archive.isPending}
+              data-testid="archive-cancel"
+            >
+              Keep stock active
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {importOpen && !archivedView ? <StockImport onClose={() => setImportOpen(false)} /> : null}
 
       {error ? (
         <p className="alert alert--error" role="alert">
@@ -109,13 +235,15 @@ export function StockPage() {
 
       <div className="table-wrap">
         <table className="table" data-testid="stock-table">
-          <caption className="sr-only">Stock with on-hand, reserved, and available counts</caption>
+          <caption className="sr-only">
+            {archivedView ? "Archived stock" : "Stock"} with on-hand, reserved, and available counts
+          </caption>
           <thead>
             <tr>
               <th scope="col">Card</th>
               <th scope="col">Availability</th>
               <th scope="col">Price</th>
-              <th scope="col">Updated</th>
+              <th scope="col">{archivedView ? "Archived" : "Updated"}</th>
               <th scope="col">
                 <span className="sr-only">Actions</span>
               </th>
@@ -135,9 +263,13 @@ export function StockPage() {
 
         {!isPending && items.length === 0 ? (
           <div className="empty">
-            <h2>No stock found</h2>
+            <h2>{archivedView ? "No archived stock" : "No stock found"}</h2>
             <p className="muted">
-              {query ? `Nothing matches “${query}”.` : "Add cards from the catalog to start selling them."}
+              {archivedView
+                ? "Archive all stock from the active view to move it here. Importing a matching card restores it automatically."
+                : query
+                  ? `Nothing matches “${query}”.`
+                  : "Add cards from the catalog to start selling them."}
             </p>
           </div>
         ) : null}
@@ -147,6 +279,9 @@ export function StockPage() {
 }
 
 function StockRow({ item, expanded, onToggle }: { item: StaffStock; expanded: boolean; onToggle: () => void }) {
+  const restore = useRestoreStock();
+  const archived = item.archived_at != null;
+
   return (
     <>
       <tr className={expanded ? "row--open" : undefined}>
@@ -170,7 +305,8 @@ function StockRow({ item, expanded, onToggle }: { item: StaffStock; expanded: bo
                 {item.card.set_code.toUpperCase()} #{item.card.collector_number} · {item.condition} ·{" "}
                 {item.finish} · {item.language}
               </div>
-              {!item.is_online ? <span className="badge badge--offline">Not online</span> : null}
+              {archived ? <span className="badge badge--offline">Archived</span> : null}
+              {!archived && !item.is_online ? <span className="badge badge--offline">Not online</span> : null}
               {item.restock_waiting > 0 ? (
                 <span
                   className="badge badge--requested"
@@ -180,6 +316,11 @@ function StockRow({ item, expanded, onToggle }: { item: StaffStock; expanded: bo
                   {item.restock_waiting} waiting
                 </span>
               ) : null}
+              {restore.error ? (
+                <div className="tone--danger small" role="alert">
+                  {restore.error instanceof ApiError ? restore.error.message : String(restore.error)}
+                </div>
+              ) : null}
             </div>
           </div>
         </td>
@@ -187,14 +328,26 @@ function StockRow({ item, expanded, onToggle }: { item: StaffStock; expanded: bo
           <StockLevels onHand={item.on_hand} reserved={item.reserved} available={item.available} />
         </td>
         <td className="num">{formatMoney(item.price.amount_minor, item.price.currency)}</td>
-        <td className="muted small">{formatDateTime(item.updated_at)}</td>
+        <td className="muted small">{formatDateTime(item.archived_at ?? item.updated_at)}</td>
         <td>
-          <button type="button" className="btn btn--small" onClick={onToggle} aria-expanded={expanded}>
-            {expanded ? "Close" : "Manage"}
-          </button>
+          {archived ? (
+            <button
+              type="button"
+              className="btn btn--small"
+              onClick={() => restore.mutate(item.stock_id)}
+              disabled={restore.isPending}
+              data-testid="stock-restore"
+            >
+              {restore.isPending ? "Restoring…" : "Restore"}
+            </button>
+          ) : (
+            <button type="button" className="btn btn--small" onClick={onToggle} aria-expanded={expanded}>
+              {expanded ? "Close" : "Manage"}
+            </button>
+          )}
         </td>
       </tr>
-      {expanded ? (
+      {expanded && !archived ? (
         <tr>
           <td colSpan={5} className="row-editor">
             <StockEditor item={item} onClose={onToggle} />

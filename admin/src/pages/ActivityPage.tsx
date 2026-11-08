@@ -17,6 +17,8 @@ const ACTION_LABELS: Record<string, string> = {
   "stock.adjust": "Stock adjusted",
   "stock.sell": "Sold in store",
   "stock.import": "CSV import",
+  "stock.archive_all": "Stock archived",
+  "stock.restore": "Stock restored",
   "reservation.status": "Reservation updated",
   "reservation.complete": "Reservation completed",
   "settings.update": "Settings changed",

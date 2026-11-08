@@ -274,6 +274,7 @@ def convert(
         select(models.Stock)
         .where(
             models.Stock.tenant_id == tenant.id,
+            models.Stock.archived_at.is_(None),
             models.Stock.card_id == row.card_id,
             models.Stock.finish == row.finish,
             models.Stock.condition == row.condition,

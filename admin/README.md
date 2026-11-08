@@ -15,7 +15,7 @@ staff-only.
 | --- | --- |
 | `/login` | Shop address + email + password (staff JWT) |
 | `/` | Dashboard: pending requests, active holds, sold today, low/stale stock |
-| `/stock` | Search, on-hand/price/visibility edits, adjustments, in-store sales |
+| `/stock` | Search, on-hand/price/visibility edits, adjustments, in-store sales, CSV import/export, archive-all and archived-view restore |
 | `/reservations` | Queue by status, accept/ready/cancel, complete with per-line quantities |
 | `/requests` | Special orders: quote, decline, and convert an accepted request into a reservation |
 | `/team` | Owner-only: add staff, change roles, deactivate accounts |
@@ -25,6 +25,14 @@ staff-only.
 Stock numbers always pair colour with a text label (available / reserved / out)
 so they remain readable without colour vision. A "N waiting" badge on a stock
 row shows how many customers asked for a restock alert on that exact variant.
+
+The stock page has **Active stock** and **Archived** tabs. **Archive all stock**
+moves every active row for the current shop into the archived tab after a
+confirmation step. Archived rows are hidden from the customer app and from new
+holds, keep existing reservation history, and can be restored one row at a time.
+Importing or creating the same card and variant again restores the matching
+archived row automatically. The archived tab has its own CSV export
+(`?archived=true`); the normal export excludes archived rows.
 
 Stock CSV import accepts both the app's exported stock template and ManaBox
 collection exports. ManaBox purchase prices are converted from their source

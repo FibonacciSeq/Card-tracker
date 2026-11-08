@@ -819,6 +819,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/staff/stock/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive All Stock
+         * @description Move every active stock row for this shop into the archived view.
+         */
+        post: operations["archive_all_stock_v1_staff_stock_archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/stock/{stock_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Stock */
+        post: operations["restore_stock_v1_staff_stock__stock_id__restore_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/staff/stock/{stock_id}": {
         parameters: {
             query?: never;
@@ -2278,6 +2315,8 @@ export interface components {
             price: components["schemas"]["Money"];
             /** Is Online */
             is_online: boolean;
+            /** Archived At */
+            archived_at?: string | null;
             /**
              * Updated At
              * Format: date-time
@@ -2356,6 +2395,13 @@ export interface components {
              * @default manual adjustment
              */
             reason: string;
+        };
+        /** StockArchiveResultOut */
+        StockArchiveResultOut: {
+            /** Archived */
+            archived: number;
+            /** Reserved */
+            reserved: number;
         };
         /** StockCreateIn */
         StockCreateIn: {
@@ -3991,6 +4037,7 @@ export interface operations {
             query?: {
                 query?: string | null;
                 only_online?: boolean;
+                archived?: boolean;
                 limit?: number;
             };
             header?: never;
@@ -4054,7 +4101,9 @@ export interface operations {
     };
     export_stock_csv_v1_staff_stock_export_csv_get: {
         parameters: {
-            query?: never;
+            query?: {
+                archived?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -4068,6 +4117,15 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4145,6 +4203,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StockImportReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_all_stock_v1_staff_stock_archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockArchiveResultOut"];
+                };
+            };
+        };
+    };
+    restore_stock_v1_staff_stock__stock_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                stock_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffStockOut"];
                 };
             };
             /** @description Validation Error */

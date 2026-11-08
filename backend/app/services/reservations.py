@@ -58,7 +58,10 @@ def _lock_stocks(db: Session, tenant_id: uuid.UUID, stock_ids: set[uuid.UUID]) -
         return {}
     stmt = (
         select(models.Stock)
-        .where(models.Stock.tenant_id == tenant_id, models.Stock.id.in_(stock_ids))
+        .where(
+            models.Stock.tenant_id == tenant_id,
+            models.Stock.id.in_(stock_ids),
+        )
         .order_by(models.Stock.id)
         .with_for_update()
         .execution_options(populate_existing=True)
@@ -136,7 +139,11 @@ def create_reservation(
     try:
         stocks = _lock_stocks(db, tenant.id, set(quantities))
 
-        missing = [str(stock_id) for stock_id in quantities if stock_id not in stocks]
+        missing = [
+            str(stock_id)
+            for stock_id in quantities
+            if stock_id not in stocks or stocks[stock_id].archived_at is not None
+        ]
         if missing:
             raise ReservationError(
                 "stock_not_found",
@@ -330,6 +337,7 @@ def create_staff_hold(
         .where(
             models.Stock.id == stock.id,
             models.Stock.tenant_id == tenant.id,
+            models.Stock.archived_at.is_(None),
         )
         .with_for_update()
         .execution_options(populate_existing=True)

@@ -1,14 +1,16 @@
 # Card Tracker platform — status
 
-Last updated: **2026-11-07**
+Last updated: **2026-11-08**
 Latest commit: see `git log -1`
-Working tree: account lifecycle/session-safety work and Scryfall market-based
-stock pricing are implemented and verified. Shop Settings reprice existing
-stock from catalog market prices when rules change; the nightly worker refreshes
-prices and recalculates eligible stock. The local platform database contains
-the Scryfall catalog required for stock imports. Step 5 is in release-readiness
-work: finish offline/cache safety, validate production links and delivery, then
-run a signed-in multi-device smoke before a small pilot.
+Working tree: account lifecycle/session-safety work, offline/cache safety,
+Scryfall market-based stock pricing, and stock archiving are implemented and
+verified. Shop Settings reprice existing stock from catalog market prices when
+rules change; the nightly worker refreshes prices and recalculates eligible
+stock. Staff can archive all stock for a shop in one action, inspect it in a
+separate archived view, and restore it manually or by importing a matching card
+again. The local platform database contains the Scryfall catalog required for
+stock imports. Step 5 is in release-readiness work: validate production links
+and delivery, then run a signed-in multi-device smoke before a small pilot.
 
 This file is the quick, human-readable status of the multi-vendor platform.
 The full product/technical specification lives outside the repository in the
@@ -91,6 +93,32 @@ for the original single-shop workflow until the new stack replaces it.
   existing shop stock from market data, never from its previous sale price.
   Shops using currencies without a matching Scryfall price use the latest
   published daily reference exchange rate.
+
+### Stock archiving — 2026-11-08
+
+- Staff can archive every active stock row for the current shop with
+  **Archive all stock** in the admin. Rows are soft-archived with
+  `stock.archived_at`, so reservation lines, stock movements, and history keep
+  their foreign keys.
+- Archived rows disappear from the active admin stock list, the public
+  storefront (list, detail, facets, and search), new customer and staff holds,
+  special-order conversion, restock alerts, Scryfall repricing, dashboard
+  low/stale counts, and the default CSV export.
+- The admin has a separate **Archived** stock tab with a per-row **Restore**
+  action. The API exposes `GET /v1/staff/stock?archived=true` and
+  `GET /v1/staff/stock/export.csv?archived=true`.
+- Re-importing the same card and variant through CSV, or creating it through
+  the staff stock API, automatically clears `archived_at` and restores the
+  existing row instead of rejecting it as a duplicate. A restore is refused if
+  the new quantity would fall below the row's reserved copies.
+- Existing reservations remain valid. Completion and cancellation can still
+  change archived rows, and the archive response reports how many reserved
+  copies remain held. New holds treat archived stock as unavailable.
+- Archiving does not change `is_online`; restoring a row preserves its previous
+  visibility setting. Audit actions are `stock.archive_all` and
+  `stock.restore`.
+- Migration `0011_stock_archive` adds `stock.archived_at` and the
+  `(tenant_id, archived_at)` index.
 
 ### Step 3 — staff, audit, and rate limits
 
@@ -197,7 +225,7 @@ Pages:
 | --- | --- |
 | `/login` | Shop slug + email + password |
 | `/` | Dashboard: pending holds, active holds, special orders, sold today, low/stale stock |
-| `/stock` | Search, counts, price/visibility, adjustments, in-store sales, CSV import/export, waiting-demand badge |
+| `/stock` | Search, counts, price/visibility, adjustments, in-store sales, CSV import/export, archive-all and archived-view restore, waiting-demand badge |
 | `/reservations` | Status queue, confirm/ready/cancel, partial completion; auto-refreshes every 20 s |
 | `/requests` | Special orders: quote, decline, convert to reservation |
 | `/team` | Owner-only staff management |
@@ -300,7 +328,7 @@ public HTTPS domain are configured but not yet validated in production.
 | Check | Result |
 | --- | --- |
 | Root Python suite (`pytest --cov --cov-branch`) | **351 passed, 100% line/branch** |
-| Backend SQLite suite | **265 passed, 13 PostgreSQL tests skipped, 100%** |
+| Backend SQLite suite | **333 passed, 13 PostgreSQL tests skipped, 100%** |
 | Backend with PostgreSQL test URLs | **278 passed, 100%** (277 before the added per-device logout test) |
 | Backend PostgreSQL-only suite (RLS, customer claiming, notifications, locking) | **13 passed** |
 | Backend account/session tests | `tests/test_customer_accounts.py`: **22 passed**, including per-device logout |
@@ -309,10 +337,10 @@ public HTTPS domain are configured but not yet validated in production.
 | Admin ESLint / TypeScript / production build | Clean |
 | Admin Vitest logic/API-client coverage | **23 passed, 100% statements/branches/functions/lines** |
 | Admin production source maps | **0** `.map` files in `dist/` |
-| Admin Playwright suite | **8 passed** |
-| Generated API snapshot/types | `admin/openapi.json` and admin/mobile `schema.d.ts` regenerated; optional logout body present, no manual type edits |
+| Admin Playwright suite | **9 passed** |
+| Generated API snapshot/types | `admin/openapi.json` and admin/mobile `schema.d.ts` regenerated; archive/restore endpoints and archived stock fields present, no manual type edits |
 | Mobile TypeScript / ESLint | Clean |
-| Mobile Vitest `src/lib/**` coverage | **42 passed, 100% statements/branches/functions/lines** |
+| Mobile Vitest `src/lib/**` coverage | **49 passed, 100% statements/branches/functions/lines** |
 | Mobile `expo-doctor` | **20/20** |
 | Mobile production web export | Passed |
 | Mobile browser smoke test (local API) | Passed: scan entry → storefront → card detail → add to hold; restock subscribe/unsubscribe; special-order create → staff quote → customer accept |
@@ -365,6 +393,26 @@ Latest stock-import validation (2026-11-07):
   because port 5173 was already occupied.
 - The daily-rate provider returned a valid EUR/RSD quote for the current
   published date.
+
+Latest stock-archive validation (2026-11-08):
+
+- Backend suite: **333 passed, 13 PostgreSQL-only skipped**, 100% statement and
+  branch coverage. The new `tests/test_stock_archive.py` covers archive-all,
+  tenant scoping, reserved-copy reporting, reservation completion after
+  archiving, blocked new holds/edits and special-order conversion, manual
+  restore, create/import restore, archived export, dashboard counts, repricing,
+  and restock suppression.
+- Backend Ruff check and formatting: clean.
+- Alembic `0011_stock_archive` upgrade → downgrade to `0010` → upgrade verified
+  on a temporary SQLite database; `archived_at` and
+  `ix_stock_tenant_archived` appear and disappear with the revision.
+- Admin ESLint, TypeScript, Vitest (**23 passed**, 100% logic coverage), and
+  production build: clean. Playwright smoke suite: **9 passed**, including the
+  archive confirmation and archived-view navigation.
+- Mobile TypeScript and ESLint: clean; Vitest **49 passed**, 100%
+  statements/branches/functions/lines.
+- `admin/openapi.json` and both generated `schema.d.ts` files were regenerated
+  from the running app; no manual API type edits.
 
 The Python coverage floors are 100% line and branch for both the root and
 backend suites. Admin and mobile keep their explicitly included logic/API
@@ -496,11 +544,21 @@ do not begin a vendor pilot until the pre-pilot gates below pass.
    - Acceptance met: a user can see notification status and safely opt out or
      re-enable delivery.
 
-5. Offline and sync reliability — **mostly implemented**
-   - Persisted query cache and account/guest merge are in place.
-   - Remaining work: define how offline edits are handled and which cached
-     account data must be invalidated after account changes; then add focused
-     tests for those rules.
+5. Offline and sync reliability — **implemented 2026-11-08**
+   - The app hydrates a persisted React Query snapshot on cold launch, so
+     previously loaded shop, card, hold, alert, and account data can render
+     without a live request.
+   - Guest rows remain device-local. When a signed-in account exposes a row with
+     the same id, the account copy wins for display while the guest copy stays
+     intact in local storage and is never silently overwritten.
+   - Sign-out, account switch, email change, deletion, and successful guest-row
+     claiming cancel account-scoped queries and rewrite or remove the persisted
+     snapshot. Guest data and the cart are deliberately kept.
+   - Writes are not queued as offline edits; create/accept/cancel actions still
+     require a live API request.
+   - Focused Vitest coverage exists for snapshot persistence, malformed-payload
+     handling, serialized writes, account-cache clearing, and guest/account
+     merge rules.
 
 Implementation and QA task list (in order):
 
@@ -514,17 +572,19 @@ Implementation and QA task list (in order):
    - **Acceptance met:** behavior and customer-facing copy agree, and the
      pricing rule is explicit.
 
-2. **Finish offline/cache safety**
-   - 2.1 Document which screens are usable offline and which changes require a
-     live connection.
-   - 2.2 Define what happens when offline guest data overlaps with a signed-in
-     account row; do not silently overwrite either copy.
-   - 2.3 Check cache clearing/invalidation on sign-out, account switch, email
-     change, account deletion, and successful guest-row claiming.
-   - 2.4 Add or update tests for each rule, then run mobile lint, typecheck, and
-     coverage.
+2. **Finish offline/cache safety — implemented 2026-11-08**
+   - 2.1 Mobile documents cached-read behavior and that writes are not queued
+     offline.
+   - 2.2 Guest data stays device-local; account rows win id conflicts without
+     deleting or overwriting the guest copy.
+   - 2.3 Account-scoped caches are cleared and the persisted snapshot rewritten
+     on sign-out, account switch, email change, deletion, and guest-row claiming.
+   - 2.4 Vitest covers snapshot persistence, malformed payloads, serialized
+     writes, account-cache clearing, and guest/account merge rules.
    - **Done when:** stale account data cannot appear after identity changes,
-     and offline edits have a predictable outcome.
+     and offline edits have a predictable outcome. **Met:** cached reads are
+     available, and writes are never presented as saved without a live API
+     response.
 
 3. **Prepare production app links and delivery**
    - 3.1 Choose and configure the public HTTPS app domain and hosting for the
@@ -606,8 +666,9 @@ Implementation and QA task list (in order):
   for full data-deletion requests.
 - Guest rows are still device-local until a customer verifies the same email.
   Push delivery, persisted offline caching, localization, and browser smoke
-  coverage are implemented. Offline conflict/cache invalidation rules and the
-  signed-in native multi-device smoke remain to be completed before pilot.
+  coverage are implemented. Cached reads work offline, but writes are not
+  queued as offline edits and still require a live API request. The signed-in
+  native multi-device smoke remains before pilot.
 - Printed QR codes can use the canonical HTTPS public app URL and still fall
   back to the `cardtracker://` custom scheme, but production domain
   configuration and app-store install paths still need final deploy-time setup.

@@ -781,6 +781,24 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/staff/stock/import-pricing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Stock Import Pricing */
+        get: operations["get_stock_import_pricing_v1_staff_stock_import_pricing_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Update Stock Import Pricing */
+        patch: operations["update_stock_import_pricing_v1_staff_stock_import_pricing_patch"];
+        trace?: never;
+    };
     "/v1/staff/stock/import": {
         parameters: {
             query?: never;
@@ -795,6 +813,43 @@ export interface paths {
          * @description Import a stock CSV. Defaults to a dry run so a bad file changes nothing.
          */
         post: operations["import_stock_csv_v1_staff_stock_import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/stock/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive All Stock
+         * @description Move every active stock row for this shop into the archived view.
+         */
+        post: operations["archive_all_stock_v1_staff_stock_archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/stock/{stock_id}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Restore Stock */
+        post: operations["restore_stock_v1_staff_stock__stock_id__restore_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1427,6 +1482,17 @@ export interface components {
             /** Code */
             code: string;
         };
+        /** ExchangeRateOut */
+        ExchangeRateOut: {
+            /** Source Currency */
+            source_currency: string;
+            /** Target Currency */
+            target_currency: string;
+            /** Rate */
+            rate: string;
+            /** Rate Date */
+            rate_date: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -1930,6 +1996,14 @@ export interface components {
             directory_opt_in?: boolean | null;
             /** Notification Email */
             notification_email?: string | null;
+            /** Scryfall Pricing Enabled */
+            scryfall_pricing_enabled?: boolean | null;
+            /** Scryfall Min Price Minor */
+            scryfall_min_price_minor?: number | null;
+            /** Scryfall Markup Percent */
+            scryfall_markup_percent?: number | null;
+            /** Scryfall Rounding Increment */
+            scryfall_rounding_increment?: number | null;
         };
         /** ShopOut */
         ShopOut: {
@@ -2181,6 +2255,30 @@ export interface components {
             directory_opt_in: boolean;
             /** Notification Email */
             notification_email?: string | null;
+            /**
+             * Scryfall Pricing Enabled
+             * @default false
+             */
+            scryfall_pricing_enabled: boolean;
+            /**
+             * Scryfall Min Price Minor
+             * @default 0
+             */
+            scryfall_min_price_minor: number;
+            /**
+             * Scryfall Markup Percent
+             * @default 0
+             */
+            scryfall_markup_percent: number;
+            /**
+             * Scryfall Rounding Increment
+             * @default 5
+             */
+            scryfall_rounding_increment: number;
+            /** Repriced Stock */
+            repriced_stock?: number | null;
+            /** Stock Without Scryfall Prices */
+            stock_without_scryfall_prices?: number | null;
         };
         /** StaffStockListOut */
         StaffStockListOut: {
@@ -2217,6 +2315,8 @@ export interface components {
             price: components["schemas"]["Money"];
             /** Is Online */
             is_online: boolean;
+            /** Archived At */
+            archived_at?: string | null;
             /**
              * Updated At
              * Format: date-time
@@ -2296,6 +2396,13 @@ export interface components {
              */
             reason: string;
         };
+        /** StockArchiveResultOut */
+        StockArchiveResultOut: {
+            /** Archived */
+            archived: number;
+            /** Reserved */
+            reserved: number;
+        };
         /** StockCreateIn */
         StockCreateIn: {
             /**
@@ -2347,6 +2454,28 @@ export interface components {
             /** Field */
             field?: string | null;
         };
+        /** StockImportPricingIn */
+        StockImportPricingIn: {
+            /** Threshold Minor */
+            threshold_minor: number;
+            /** Fixed Price Minor */
+            fixed_price_minor: number;
+            /** Markup Percent */
+            markup_percent: number;
+        };
+        /** StockImportPricingOut */
+        StockImportPricingOut: {
+            /** Currency */
+            currency: string;
+            /** Configured */
+            configured: boolean;
+            /** Threshold Minor */
+            threshold_minor?: number | null;
+            /** Fixed Price Minor */
+            fixed_price_minor?: number | null;
+            /** Markup Percent */
+            markup_percent?: number | null;
+        };
         /** StockImportReportOut */
         StockImportReportOut: {
             /** Dry Run */
@@ -2361,6 +2490,8 @@ export interface components {
             unchanged: number;
             /** Errors */
             errors: components["schemas"]["StockImportErrorOut"][];
+            /** Exchange Rates */
+            exchange_rates: components["schemas"]["ExchangeRateOut"][];
         };
         /** StockItemOut */
         StockItemOut: {
@@ -3906,6 +4037,7 @@ export interface operations {
             query?: {
                 query?: string | null;
                 only_online?: boolean;
+                archived?: boolean;
                 limit?: number;
             };
             header?: never;
@@ -3969,7 +4101,9 @@ export interface operations {
     };
     export_stock_csv_v1_staff_stock_export_csv_get: {
         parameters: {
-            query?: never;
+            query?: {
+                archived?: boolean;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -3983,6 +4117,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": unknown;
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_stock_import_pricing_v1_staff_stock_import_pricing_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockImportPricingOut"];
+                };
+            };
+        };
+    };
+    update_stock_import_pricing_v1_staff_stock_import_pricing_patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["StockImportPricingIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockImportPricingOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -4007,6 +4203,57 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StockImportReportOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    archive_all_stock_v1_staff_stock_archive_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockArchiveResultOut"];
+                };
+            };
+        };
+    };
+    restore_stock_v1_staff_stock__stock_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                stock_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffStockOut"];
                 };
             };
             /** @description Validation Error */

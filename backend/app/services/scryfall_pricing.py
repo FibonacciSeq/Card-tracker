@@ -136,7 +136,10 @@ def reprice_tenant_stock(
     rows = db.execute(
         select(models.Stock, models.Card)
         .join(models.Card, models.Card.id == models.Stock.card_id)
-        .where(models.Stock.tenant_id == tenant.id)
+        .where(
+            models.Stock.tenant_id == tenant.id,
+            models.Stock.archived_at.is_(None),
+        )
     ).all()
     markets = [_market_price(card.scryfall_prices, stock.finish, currency) for stock, card in rows]
     rates = _rates_for_markets(currency, markets)

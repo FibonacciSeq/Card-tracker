@@ -328,6 +328,7 @@ def _sold_30d(db: Session, tenant_id: uuid.UUID) -> dict[uuid.UUID, int]:
 def list_stock(
     query: str | None = Query(default=None, max_length=200),
     only_online: bool = Query(default=False),
+    archived: bool = Query(default=False),
     limit: int = Query(default=200, ge=1, le=500),
     user: models.User = Depends(get_current_staff),
     db: Session = Depends(get_db),
@@ -349,8 +350,12 @@ def list_stock(
                 func.lower(models.Card.collector_number).like(needle),
             )
         )
-    if only_online:
-        stmt = stmt.where(models.Stock.is_online.is_(True))
+    if archived:
+        stmt = stmt.where(models.Stock.archived_at.is_not(None))
+    else:
+        stmt = stmt.where(models.Stock.archived_at.is_(None))
+        if only_online:
+            stmt = stmt.where(models.Stock.is_online.is_(True))
 
     sold = _sold_30d(db, _staff_tenant(user))
     waiting_rows = db.execute(
@@ -392,16 +397,18 @@ MAX_IMPORT_BYTES = 5 * 1024 * 1024
 
 @router.get("/stock/export.csv")
 def export_stock_csv(
+    archived: bool = Query(default=False),
     user: models.User = Depends(get_current_staff),
     db: Session = Depends(get_db),
 ):
     """Download stock in the same shape the importer accepts."""
     tenant = _tenant(db, user)
-    body = stock_csv.render_csv(stock_csv.export_rows(db, _staff_tenant(user)))
+    body = stock_csv.render_csv(stock_csv.export_rows(db, _staff_tenant(user), archived=archived))
+    suffix = "-archived" if archived else ""
     return Response(
         content=body,
         media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="stock-{tenant.slug}.csv"'},
+        headers={"Content-Disposition": f'attachment; filename="stock-{tenant.slug}{suffix}.csv"'},
     )
 
 
@@ -560,7 +567,49 @@ def import_stock_csv(
     )
 
 
-def _get_stock(db: Session, tenant_id: uuid.UUID, stock_id: uuid.UUID) -> models.Stock:
+@router.post("/stock/archive", response_model=schemas.StockArchiveResultOut)
+def archive_all_stock(
+    user: models.User = Depends(get_current_staff),
+    db: Session = Depends(get_db),
+):
+    """Move every active stock row for this shop into the archived view."""
+    tenant_id = _staff_tenant(user)
+    rows = list(
+        db.scalars(
+            select(models.Stock).where(
+                models.Stock.tenant_id == tenant_id,
+                models.Stock.archived_at.is_(None),
+            )
+        ).all()
+    )
+    now = _now()
+    reserved = 0
+    for stock in rows:
+        reserved += stock.reserved
+        stock.archived_at = now
+        stock.updated_at = now
+    if rows:
+        audit.record(
+            db,
+            tenant_id=tenant_id,
+            actor_id=user.id,
+            action="stock.archive_all",
+            entity_type="stock",
+            entity_id="batch",
+            summary=f"Archived all stock ({len(rows)} rows)",
+            data={"archived": len(rows), "reserved": reserved},
+        )
+    db.commit()
+    return schemas.StockArchiveResultOut(archived=len(rows), reserved=reserved)
+
+
+def _get_stock(
+    db: Session,
+    tenant_id: uuid.UUID,
+    stock_id: uuid.UUID,
+    *,
+    allow_archived: bool = False,
+) -> models.Stock:
     stock = db.scalar(
         select(models.Stock).where(
             models.Stock.id == stock_id,
@@ -569,6 +618,11 @@ def _get_stock(db: Session, tenant_id: uuid.UUID, stock_id: uuid.UUID) -> models
     )
     if stock is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stock item not found")
+    if stock.archived_at is not None and not allow_archived:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Archived stock must be restored before it can be changed",
+        )
     return stock
 
 
@@ -602,16 +656,76 @@ def create_stock(
     if card is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Card not found")
     tenant = _tenant(db, user)
+    language = _normalize_stock_language(payload.language)
+    currency = _stock_currency(payload.currency, tenant)
+
+    existing = db.scalar(
+        select(models.Stock).where(
+            models.Stock.tenant_id == _staff_tenant(user),
+            models.Stock.card_id == card.id,
+            models.Stock.finish == payload.finish,
+            models.Stock.condition == payload.condition,
+            models.Stock.language == language,
+            models.Stock.archived_at.is_not(None),
+        )
+    )
+    if existing is not None:
+        if payload.quantity < existing.reserved:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Quantity cannot be below the {existing.reserved} reserved copies",
+            )
+        delta = payload.quantity - existing.quantity
+        existing.archived_at = None
+        existing.quantity = payload.quantity
+        existing.price_minor = payload.price_minor
+        existing.currency = currency
+        existing.is_online = payload.is_online
+        existing.updated_at = _now()
+        if delta:
+            db.add(
+                models.StockMovement(
+                    tenant_id=_staff_tenant(user),
+                    stock_id=existing.id,
+                    kind="IMPORT",
+                    on_hand_delta=delta,
+                    reserved_delta=0,
+                    on_hand_after=existing.quantity,
+                    reserved_after=existing.reserved,
+                    actor_id=user.id,
+                    reason="restored archived stock",
+                )
+            )
+        restock.notify_waiting(db, tenant, existing)
+        audit.record(
+            db,
+            tenant_id=_staff_tenant(user),
+            actor_id=user.id,
+            action="stock.restore",
+            entity_type="stock",
+            entity_id=existing.id,
+            summary=f"Restored {card.name} ({existing.finish}/{existing.condition}) x{existing.quantity}",
+            data={
+                "card_name": card.name,
+                "finish": existing.finish,
+                "condition": existing.condition,
+                "quantity": existing.quantity,
+                "price_minor": existing.price_minor,
+            },
+        )
+        db.commit()
+        db.refresh(existing)
+        return serializers.staff_stock_out(existing)
 
     stock = models.Stock(
         tenant_id=_staff_tenant(user),
         card_id=card.id,
         finish=payload.finish,
         condition=payload.condition,
-        language=_normalize_stock_language(payload.language),
+        language=language,
         quantity=payload.quantity,
         price_minor=payload.price_minor,
-        currency=_stock_currency(payload.currency, tenant),
+        currency=currency,
         is_online=payload.is_online,
     )
     db.add(stock)
@@ -656,6 +770,32 @@ def create_stock(
             status_code=status.HTTP_409_CONFLICT,
             detail="A stock row for this card and variant already exists",
         ) from exc
+    return serializers.staff_stock_out(stock)
+
+
+@router.post("/stock/{stock_id}/restore", response_model=schemas.StaffStockOut)
+def restore_stock(
+    stock_id: uuid.UUID,
+    user: models.User = Depends(get_current_staff),
+    db: Session = Depends(get_db),
+):
+    stock = _get_stock(db, _staff_tenant(user), stock_id, allow_archived=True)
+    if stock.archived_at is not None:
+        stock.archived_at = None
+        stock.updated_at = _now()
+        restock.notify_waiting(db, _tenant(db, user), stock)
+        audit.record(
+            db,
+            tenant_id=_staff_tenant(user),
+            actor_id=user.id,
+            action="stock.restore",
+            entity_type="stock",
+            entity_id=stock.id,
+            summary=f"Restored {stock.card.name} ({stock.finish}/{stock.condition})",
+            data={"quantity": stock.quantity, "price_minor": stock.price_minor},
+        )
+        db.commit()
+        db.refresh(stock)
     return serializers.staff_stock_out(stock)
 
 
@@ -1103,6 +1243,7 @@ def dashboard(
         .select_from(models.Stock)
         .where(
             models.Stock.tenant_id == _staff_tenant(user),
+            models.Stock.archived_at.is_(None),
             models.Stock.is_online.is_(True),
             (models.Stock.quantity - models.Stock.reserved) <= 2,
         )
@@ -1120,6 +1261,7 @@ def dashboard(
         .select_from(models.Stock)
         .where(
             models.Stock.tenant_id == _staff_tenant(user),
+            models.Stock.archived_at.is_(None),
             models.Stock.is_online.is_(True),
             models.Stock.updated_at < now - timedelta(days=7),
         )

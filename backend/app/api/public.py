@@ -101,6 +101,7 @@ def list_stock(
         .join(models.Card, models.Card.id == models.Stock.card_id)
         .where(
             models.Stock.tenant_id == tenant.id,
+            models.Stock.archived_at.is_(None),
             models.Stock.is_online.is_(True),
         )
     )
@@ -196,6 +197,7 @@ def get_stock_item(slug: str, stock_id: uuid.UUID, db: Session = Depends(get_db)
         select(models.Stock).where(
             models.Stock.id == stock_id,
             models.Stock.tenant_id == tenant.id,
+            models.Stock.archived_at.is_(None),
             models.Stock.is_online.is_(True),
         )
     )
@@ -210,7 +212,11 @@ def stock_facets(slug: str, db: Session = Depends(get_db)):
     base = (
         select(models.Card, models.Stock)
         .join(models.Stock, models.Stock.card_id == models.Card.id)
-        .where(models.Stock.tenant_id == tenant.id, models.Stock.is_online.is_(True))
+        .where(
+            models.Stock.tenant_id == tenant.id,
+            models.Stock.archived_at.is_(None),
+            models.Stock.is_online.is_(True),
+        )
         .subquery()
     )
 

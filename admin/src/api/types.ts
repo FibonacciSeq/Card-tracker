@@ -11,6 +11,7 @@ export type Token = Schemas["TokenOut"];
 export type Dashboard = Schemas["DashboardOut"];
 export type StaffStock = Schemas["StaffStockOut"];
 export type StaffStockList = Schemas["StaffStockListOut"];
+export type StockArchiveResult = Schemas["StockArchiveResultOut"];
 export type ReservationSummary = Schemas["ReservationSummaryOut"];
 export type Reservation = Schemas["ReservationOut"];
 export type StaffReservation = Schemas["StaffReservationOut"];

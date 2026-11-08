@@ -206,6 +206,19 @@ To try the QR entry without a printed code, open `/scan` from the home screen
 and type `bolt-shop` into **Enter a code by hand**. The admin prints the matching
 shop QR code from **Settings → Shop QR code**.
 
+### Offline behavior
+
+The app persists its React Query snapshot on the device and hydrates it on cold
+launch. Previously loaded shop, card, hold, alert, and account data can render
+without a live request, while a refresh happens when the API is reachable.
+
+Writes are not queued as offline edits: creating or accepting a hold, changing
+an account, and similar actions still require a live API response. Guest rows
+remain device-local; if a signed-in account exposes the same row id, the account
+copy is shown while the guest copy stays intact in local storage. Sign-out,
+account switch, email change, deletion, and guest-row claiming clear
+account-scoped caches immediately, but keep guest data and the local cart.
+
 ### Deep links
 
 The app scheme is `cardtracker://`. Supported links:

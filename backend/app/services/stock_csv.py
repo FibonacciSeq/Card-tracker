@@ -89,13 +89,17 @@ class CsvFormatError(Exception):
     """The file as a whole cannot be processed (missing header, too big, ...)."""
 
 
-def export_rows(db: Session, tenant_id) -> list[dict[str, str]]:
+def export_rows(db: Session, tenant_id, *, archived: bool = False) -> list[dict[str, str]]:
     stmt = (
         select(models.Stock, models.Card)
         .join(models.Card, models.Card.id == models.Stock.card_id)
         .where(models.Stock.tenant_id == tenant_id)
         .order_by(func.lower(models.Card.name), models.Stock.finish, models.Stock.condition, models.Stock.language)
     )
+    if archived:
+        stmt = stmt.where(models.Stock.archived_at.is_not(None))
+    else:
+        stmt = stmt.where(models.Stock.archived_at.is_(None))
     rows: list[dict[str, str]] = []
     for stock, card in db.execute(stmt).all():
         rows.append(
@@ -394,7 +398,13 @@ def apply_rows(
             )
             continue
 
-        if stock.quantity == row.quantity and stock.price_minor == row.price_minor and stock.is_online == row.is_online:
+        restore = stock.archived_at is not None
+        if (
+            not restore
+            and stock.quantity == row.quantity
+            and stock.price_minor == row.price_minor
+            and stock.is_online == row.is_online
+        ):
             unchanged += 1
             continue
 
@@ -403,12 +413,15 @@ def apply_rows(
             continue
 
         delta = row.quantity - stock.quantity
+        stock.archived_at = None
         stock.quantity = row.quantity
         stock.price_minor = row.price_minor
         stock.is_online = row.is_online
         stock.updated_at = models.utcnow()
         if delta:
-            db.add(_movement(tenant.id, stock, actor_id, delta, "CSV import"))
+            db.add(
+                _movement(tenant.id, stock, actor_id, delta, "CSV import: restored card" if restore else "CSV import")
+            )
         restock.notify_waiting(db, tenant, stock)
 
     return created, updated, unchanged, errors

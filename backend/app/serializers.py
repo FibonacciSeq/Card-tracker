@@ -89,6 +89,7 @@ def staff_stock_out(stock: models.Stock, sold_30d: int = 0, restock_waiting: int
         restock_waiting=restock_waiting,
         price=schemas.Money(amount_minor=stock.price_minor, currency=stock.currency),
         is_online=stock.is_online,
+        archived_at=stock.archived_at,
         updated_at=stock.updated_at,
     )
 

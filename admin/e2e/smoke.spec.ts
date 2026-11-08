@@ -280,3 +280,20 @@ test("shows how many customers are waiting for a sold-out variant", async ({ pag
   await expect(row).toBeVisible();
   await expect(row.getByTestId("restock-waiting")).toContainText("1 waiting");
 });
+
+test("opens the archive confirmation and the archived stock view", async ({ page }) => {
+  await signIn(page);
+  await nav(page, "Stock").click();
+
+  await page.getByTestId("archive-all").click();
+  const panel = page.getByTestId("archive-panel");
+  await expect(panel).toContainText("Archive all stock?");
+  await expect(page.getByTestId("archive-confirm")).toBeVisible();
+  await page.getByTestId("archive-cancel").click();
+  await expect(panel).toHaveCount(0);
+
+  await page.getByTestId("stock-tab-archived").click();
+  await expect(page.getByTestId("stock-tab-archived")).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByTestId("archive-all")).toHaveCount(0);
+  await expect(page.getByTestId("stock-table")).toBeVisible();
+});

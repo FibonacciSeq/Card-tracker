@@ -223,6 +223,7 @@ class Stock(Base):
     price_minor: Mapped[int] = mapped_column(Integer, default=0)
     currency: Mapped[str] = mapped_column(String(3), default="EUR")
     is_online: Mapped[bool] = mapped_column(Boolean, default=True)
+    archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
@@ -241,6 +242,7 @@ class Stock(Base):
         CheckConstraint("finish IN ('nonfoil','foil','etched')", name="ck_stock_finish"),
         CheckConstraint("condition IN ('NM','LP','MP','HP','DMG')", name="ck_stock_condition"),
         Index("ix_stock_tenant_card", "tenant_id", "card_id"),
+        Index("ix_stock_tenant_archived", "tenant_id", "archived_at"),
     )
 
 

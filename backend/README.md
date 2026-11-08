@@ -16,10 +16,16 @@ desktop app is unchanged and still uses its own SQLite database.
   special orders, restock alerts, a notification delivery log, and push-device
   diagnostics, plus automatic claiming of unowned guest rows that match the
   verified email. Guest tokens and guest flows remain valid and unchanged.
-- Staff API: login, stock list/create/update/adjust/sell, reservation queue,
-  status transitions, completion with partial quantities, dashboard, settings,
-  audit trail, staff management, special-order quote/decline/convert, and
-  per-variant "customers waiting" counts.
+- Staff API: login, stock list/create/update/adjust/sell, archive-all and
+  archived-stock restore, reservation queue, status transitions, completion
+  with partial quantities, dashboard, settings, audit trail, staff management,
+  special-order quote/decline/convert, and per-variant "customers waiting"
+  counts.
+- Archived stock is soft-archived with `stock.archived_at`. It is hidden from
+  the public storefront, new holds, special-order conversion, restock alerts,
+  repricing, dashboard attention counts, and default CSV export, while existing
+  reservation completion/cancellation remains valid. Importing or creating the
+  same card and variant again restores the archived row in place.
 - Reservation engine: all-or-nothing holds, stock conflict handling, customer
   cancellation, expiry, completion, movement ledger, idempotency keys.
 - Postgres RLS policies in the migrations; tenant context is set for public
@@ -401,6 +407,9 @@ Staff:
 - `GET /v1/staff/dashboard`
 - `GET /v1/staff/cards`
 - `GET|POST /v1/staff/stock`
+- `POST /v1/staff/stock/archive`
+- `POST /v1/staff/stock/{id}/restore`
+- `GET /v1/staff/stock/export.csv` (`?archived=true` exports the archived view)
 - `PATCH /v1/staff/stock/{id}`
 - `POST /v1/staff/stock/{id}/adjust`
 - `POST /v1/staff/stock/{id}/sell`

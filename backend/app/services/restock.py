@@ -14,7 +14,7 @@ def notify_waiting(db, tenant: models.Tenant, stock: models.Stock) -> int:
     Called inside stock-increasing transactions. Alerts are one-shot: once
     notified, the customer subscribes again if they still want it later.
     """
-    if not stock.is_online or stock.available <= 0:
+    if stock.archived_at is not None or not stock.is_online or stock.available <= 0:
         return 0
 
     alerts = list(
