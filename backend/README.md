@@ -16,16 +16,22 @@ desktop app is unchanged and still uses its own SQLite database.
   special orders, restock alerts, a notification delivery log, and push-device
   diagnostics, plus automatic claiming of unowned guest rows that match the
   verified email. Guest tokens and guest flows remain valid and unchanged.
-- Staff API: login, stock list/create/update/adjust/sell, archive-all and
-  archived-stock restore, reservation queue, status transitions, completion
-  with partial quantities, dashboard, settings, audit trail, staff management,
+- Staff API: login, stock list/create/update/adjust/sell, archive-all,
+  archived-stock restore, permanent archive deletion (single and whole
+  archive), reservation queue, status transitions, completion with partial
+  quantities, dashboard, settings, audit trail, staff management,
   special-order quote/decline/convert, and per-variant "customers waiting"
   counts.
 - Archived stock is soft-archived with `stock.archived_at`. It is hidden from
   the public storefront, new holds, special-order conversion, restock alerts,
   repricing, dashboard attention counts, and default CSV export, while existing
   reservation completion/cancellation remains valid. Importing or creating the
-  same card and variant again restores the archived row in place.
+  same card and variant again restores the archived row in place. Archived rows
+  can be permanently deleted individually or in bulk; rows with active customer
+  holds are kept until those reservations close, and reservation line history is
+  detached rather than deleted. The owner can set
+  `archive_retention_days` (0 = keep forever) and the expiry worker purges
+  expired archived rows every 60 seconds.
 - Reservation engine: all-or-nothing holds, stock conflict handling, customer
   cancellation, expiry, completion, movement ledger, idempotency keys.
 - Postgres RLS policies in the migrations; tenant context is set for public
@@ -154,9 +160,10 @@ docker compose up --build
 ```
 
 The API container runs `alembic upgrade head` before starting. The `worker`
-container releases expired reservations and quotes every 60 seconds; the
-`notifications` container drains the email and native-push outboxes every 10
-seconds; and `scryfall-pricing` refreshes catalog prices nightly.
+container releases expired reservations and quotes, and purges archived stock
+past each shop's retention setting, every 60 seconds; the `notifications`
+container drains the email and native-push outboxes every 10 seconds; and
+`scryfall-pricing` refreshes catalog prices nightly.
 
 Compose separates database roles:
 
@@ -408,6 +415,8 @@ Staff:
 - `GET /v1/staff/cards`
 - `GET|POST /v1/staff/stock`
 - `POST /v1/staff/stock/archive`
+- `DELETE /v1/staff/stock/archive` (permanently delete eligible archived rows)
+- `DELETE /v1/staff/stock/{id}` (permanently delete one archived row)
 - `POST /v1/staff/stock/{id}/restore`
 - `GET /v1/staff/stock/export.csv` (`?archived=true` exports the archived view)
 - `PATCH /v1/staff/stock/{id}`

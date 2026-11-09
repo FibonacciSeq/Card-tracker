@@ -3,6 +3,8 @@ import { ApiError, requestBlob } from "../api/client";
 import {
   useAdjustStock,
   useArchiveAllStock,
+  useDeleteAllArchivedStock,
+  useDeleteArchivedStock,
   useImportStock,
   useRestoreStock,
   useSellStock,
@@ -22,11 +24,14 @@ export function StockPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiveNotice, setArchiveNotice] = useState<string | null>(null);
+  const [deleteArchiveOpen, setDeleteArchiveOpen] = useState(false);
+  const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const query = useDebounced(search.trim());
   const { data, isPending, error, refetch, isFetching } = useStock(query, onlyOnline, archivedView);
   const archive = useArchiveAllStock();
+  const deleteArchive = useDeleteAllArchivedStock();
 
   const items = data?.items ?? [];
 
@@ -35,7 +40,9 @@ export function StockPage() {
     setExpanded(null);
     setImportOpen(false);
     setArchiveOpen(false);
+    setDeleteArchiveOpen(false);
     setArchiveNotice(null);
+    setDeleteNotice(null);
   }
 
   async function downloadCsv() {
@@ -73,6 +80,23 @@ export function StockPage() {
     });
   }
 
+  function confirmDeleteArchive() {
+    deleteArchive.mutate(undefined, {
+      onSuccess: (result) => {
+        setDeleteArchiveOpen(false);
+        setExpanded(null);
+        setDeleteNotice(
+          result.deleted === 0 && result.kept === 0
+            ? "There was no archived stock to delete."
+            : result.kept > 0
+              ? `Permanently deleted ${result.deleted} archived item${result.deleted === 1 ? "" : "s"}. ` +
+                  `${result.kept} item${result.kept === 1 ? " was" : "s were"} kept because customers still have holds on them.`
+              : `Permanently deleted ${result.deleted} archived item${result.deleted === 1 ? "" : "s"}.`,
+        );
+      },
+    });
+  }
+
   return (
     <div className="page">
       <header className="page__header">
@@ -80,7 +104,7 @@ export function StockPage() {
           <h1>Stock</h1>
           <p className="muted">
             {archivedView
-              ? "Archived stock is hidden from the customer app. Import a matching card or restore a row to bring it back."
+              ? "Archived stock is hidden from the customer app. Restore a row, import a matching card, or delete it permanently."
               : "Only online stock is visible to customers in the app."}
           </p>
         </div>
@@ -143,6 +167,20 @@ export function StockPage() {
           <button type="button" className="btn btn--small" onClick={() => void downloadCsv()} disabled={exporting}>
             {exporting ? "Exporting…" : "Export CSV"}
           </button>
+          {archivedView ? (
+            <button
+              type="button"
+              className="btn btn--small btn--danger"
+              onClick={() => {
+                setDeleteNotice(null);
+                deleteArchive.reset();
+                setDeleteArchiveOpen(true);
+              }}
+              data-testid="archive-delete-all"
+            >
+              Delete all archived
+            </button>
+          ) : null}
           {!archivedView ? (
             <>
               <button
@@ -183,6 +221,12 @@ export function StockPage() {
         </p>
       ) : null}
 
+      {deleteNotice ? (
+        <p className="alert alert--success" role="status" data-testid="archive-delete-notice">
+          {deleteNotice}
+        </p>
+      ) : null}
+
       {archiveOpen ? (
         <section className="card import-panel" aria-labelledby="archive-title" data-testid="archive-panel">
           <div className="import-panel__header">
@@ -220,6 +264,52 @@ export function StockPage() {
               data-testid="archive-cancel"
             >
               Keep stock active
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {deleteArchiveOpen ? (
+        <section className="card import-panel" aria-labelledby="archive-delete-title" data-testid="archive-delete-panel">
+          <div className="import-panel__header">
+            <div>
+              <h2 id="archive-delete-title">Delete the whole archive?</h2>
+              <p className="muted small">
+                This permanently removes every archived stock row for this shop. Reservation history is kept, but the
+                stock rows cannot be restored. Items with active customer holds are kept until those reservations close.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="btn btn--ghost btn--small"
+              onClick={() => setDeleteArchiveOpen(false)}
+            >
+              Cancel
+            </button>
+          </div>
+          {deleteArchive.error ? (
+            <p className="alert alert--error" role="alert">
+              {deleteArchive.error instanceof ApiError ? deleteArchive.error.message : String(deleteArchive.error)}
+            </p>
+          ) : null}
+          <div className="inline-form">
+            <button
+              type="button"
+              className="btn btn--danger"
+              onClick={confirmDeleteArchive}
+              disabled={deleteArchive.isPending}
+              data-testid="archive-delete-confirm"
+            >
+              {deleteArchive.isPending ? "Deleting…" : "Delete all archived"}
+            </button>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={() => setDeleteArchiveOpen(false)}
+              disabled={deleteArchive.isPending}
+              data-testid="archive-delete-cancel"
+            >
+              Keep archived stock
             </button>
           </div>
         </section>
@@ -280,6 +370,8 @@ export function StockPage() {
 
 function StockRow({ item, expanded, onToggle }: { item: StaffStock; expanded: boolean; onToggle: () => void }) {
   const restore = useRestoreStock();
+  const remove = useDeleteArchivedStock();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const archived = item.archived_at != null;
 
   return (
@@ -321,6 +413,11 @@ function StockRow({ item, expanded, onToggle }: { item: StaffStock; expanded: bo
                   {restore.error instanceof ApiError ? restore.error.message : String(restore.error)}
                 </div>
               ) : null}
+              {remove.error ? (
+                <div className="tone--danger small" role="alert" data-testid="stock-delete-error">
+                  {remove.error instanceof ApiError ? remove.error.message : String(remove.error)}
+                </div>
+              ) : null}
             </div>
           </div>
         </td>
@@ -331,15 +428,56 @@ function StockRow({ item, expanded, onToggle }: { item: StaffStock; expanded: bo
         <td className="muted small">{formatDateTime(item.archived_at ?? item.updated_at)}</td>
         <td>
           {archived ? (
-            <button
-              type="button"
-              className="btn btn--small"
-              onClick={() => restore.mutate(item.stock_id)}
-              disabled={restore.isPending}
-              data-testid="stock-restore"
-            >
-              {restore.isPending ? "Restoring…" : "Restore"}
-            </button>
+            <div className="inline-form">
+              {confirmingDelete ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn--small btn--danger"
+                    onClick={() => remove.mutate(item.stock_id)}
+                    disabled={remove.isPending}
+                    data-testid="stock-delete-confirm"
+                  >
+                    {remove.isPending ? "Deleting…" : "Really delete"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--ghost btn--small"
+                    onClick={() => {
+                      setConfirmingDelete(false);
+                      remove.reset();
+                    }}
+                    disabled={remove.isPending}
+                    data-testid="stock-delete-cancel"
+                  >
+                    Cancel
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn--small"
+                    onClick={() => restore.mutate(item.stock_id)}
+                    disabled={restore.isPending}
+                    data-testid="stock-restore"
+                  >
+                    {restore.isPending ? "Restoring…" : "Restore"}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn--small btn--danger"
+                    onClick={() => {
+                      remove.reset();
+                      setConfirmingDelete(true);
+                    }}
+                    data-testid="stock-delete"
+                  >
+                    Delete
+                  </button>
+                </>
+              )}
+            </div>
           ) : (
             <button type="button" className="btn btn--small" onClick={onToggle} aria-expanded={expanded}>
               {expanded ? "Close" : "Manage"}

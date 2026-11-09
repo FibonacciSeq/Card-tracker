@@ -20,6 +20,7 @@ import type {
   StatusUpdate,
   StockAdjust,
   StockArchiveResult,
+  StockDeleteResult,
   StockImportReportWithRates,
   StockSell,
   StockUpdate,
@@ -74,6 +75,28 @@ export function useRestoreStock() {
   return useMutation({
     mutationFn: (id: string) =>
       request<StaffStock>(`/v1/staff/stock/${id}/restore`, { method: "POST" }),
+    onSuccess: () => {
+      refreshStock(client);
+      client.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+}
+
+export function useDeleteArchivedStock() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => request<void>(`/v1/staff/stock/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      refreshStock(client);
+      client.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+}
+
+export function useDeleteAllArchivedStock() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => request<StockDeleteResult>("/v1/staff/stock/archive", { method: "DELETE" }),
     onSuccess: () => {
       refreshStock(client);
       client.invalidateQueries({ queryKey: ["audit"] });

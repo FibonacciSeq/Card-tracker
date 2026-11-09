@@ -18,6 +18,7 @@ type FormState = {
   primary: string;
   accent: string;
   holdHours: string;
+  archiveRetentionDays: string;
   paymentInstructions: string;
   directoryOptIn: boolean;
   notificationEmail: string;
@@ -39,6 +40,7 @@ function toForm(shop: StaffShop): FormState {
     primary: asText(colors.primary, "#2f6fed"),
     accent: asText(colors.accent, "#f0a202"),
     holdHours: String(shop.hold_hours),
+    archiveRetentionDays: String(shop.archive_retention_days),
     paymentInstructions: shop.payment_instructions,
     directoryOptIn: shop.directory_opt_in,
     notificationEmail: shop.notification_email ?? "",
@@ -177,6 +179,12 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
 
   const holdHours = Number(form.holdHours);
   const holdValid = Number.isInteger(holdHours) && holdHours >= 1 && holdHours <= 720;
+  const retentionDays = Number(form.archiveRetentionDays);
+  const retentionValid =
+    form.archiveRetentionDays.trim() !== "" &&
+    Number.isInteger(retentionDays) &&
+    retentionDays >= 0 &&
+    retentionDays <= 3650;
   const minimumPriceMinor = parseMinorAmount(form.scryfallMinimumPrice);
   const markupPercent = Number(form.scryfallMarkupPercent);
   const roundingIncrement = Number(form.scryfallRoundingIncrement);
@@ -208,6 +216,7 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
         address: form.contactAddress.trim(),
       },
       hold_hours: holdHours,
+      archive_retention_days: Number.isInteger(retentionDays) ? retentionDays : 0,
       payment_instructions: form.paymentInstructions,
       directory_opt_in: form.directoryOptIn,
       notification_email: form.notificationEmail.trim() || null,
@@ -319,6 +328,26 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
               placeholder="orders@yourshop.example"
             />
             <small className="hint">New reservations are queued for this address once notifications are enabled.</small>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Archived stock</legend>
+          <div className="field">
+            <label htmlFor="archive-retention-days">Delete archived cards after (days)</label>
+            <input
+              id="archive-retention-days"
+              type="number"
+              min={0}
+              max={3650}
+              value={form.archiveRetentionDays}
+              onChange={(event) => patch({ archiveRetentionDays: event.target.value })}
+              aria-invalid={!retentionValid}
+            />
+            <small className="hint">
+              Archived cards older than this are permanently deleted automatically. Use 0 to keep archived stock
+              forever. Rows with active customer holds are kept until those reservations close.
+            </small>
           </div>
         </fieldset>
 
@@ -446,7 +475,7 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
           <button
             type="submit"
             className="btn btn--primary"
-            disabled={update.isPending || !holdValid || !pricingValid}
+            disabled={update.isPending || !holdValid || !retentionValid || !pricingValid}
           >
             {update.isPending ? "Saving…" : "Save settings"}
           </button>

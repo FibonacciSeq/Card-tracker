@@ -833,10 +833,35 @@ export interface paths {
          * @description Move every active stock row for this shop into the archived view.
          */
         post: operations["archive_all_stock_v1_staff_stock_archive_post"];
-        delete?: never;
+        /**
+         * Delete Archived Stock
+         * @description Permanently delete every archived row that has no active customer hold.
+         */
+        delete: operations["delete_archived_stock_v1_staff_stock_archive_delete"];
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/stock/{stock_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete One Archived Stock
+         * @description Permanently delete a single archived stock row.
+         */
+        delete: operations["delete_one_archived_stock_v1_staff_stock__stock_id__delete"];
+        options?: never;
+        head?: never;
+        /** Update Stock */
+        patch: operations["update_stock_v1_staff_stock__stock_id__patch"];
         trace?: never;
     };
     "/v1/staff/stock/{stock_id}/restore": {
@@ -854,23 +879,6 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
-        trace?: never;
-    };
-    "/v1/staff/stock/{stock_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        /** Update Stock */
-        patch: operations["update_stock_v1_staff_stock__stock_id__patch"];
         trace?: never;
     };
     "/v1/staff/stock/{stock_id}/adjust": {
@@ -1803,11 +1811,8 @@ export interface components {
              * Format: uuid
              */
             line_id: string;
-            /**
-             * Stock Id
-             * Format: uuid
-             */
-            stock_id: string;
+            /** Stock Id */
+            stock_id: string | null;
             /** Name */
             name: string;
             /** Set Code */
@@ -2004,6 +2009,8 @@ export interface components {
             scryfall_markup_percent?: number | null;
             /** Scryfall Rounding Increment */
             scryfall_rounding_increment?: number | null;
+            /** Archive Retention Days */
+            archive_retention_days?: number | null;
         };
         /** ShopOut */
         ShopOut: {
@@ -2279,6 +2286,11 @@ export interface components {
             repriced_stock?: number | null;
             /** Stock Without Scryfall Prices */
             stock_without_scryfall_prices?: number | null;
+            /**
+             * Archive Retention Days
+             * @default 0
+             */
+            archive_retention_days: number;
         };
         /** StaffStockListOut */
         StaffStockListOut: {
@@ -2444,6 +2456,16 @@ export interface components {
              * @default true
              */
             is_online: boolean;
+        };
+        /** StockDeleteResultOut */
+        StockDeleteResultOut: {
+            /** Deleted */
+            deleted: number;
+            /**
+             * Kept
+             * @default 0
+             */
+            kept: number;
         };
         /** StockImportErrorOut */
         StockImportErrorOut: {
@@ -4236,7 +4258,27 @@ export interface operations {
             };
         };
     };
-    restore_stock_v1_staff_stock__stock_id__restore_post: {
+    delete_archived_stock_v1_staff_stock_archive_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StockDeleteResultOut"];
+                };
+            };
+        };
+    };
+    delete_one_archived_stock_v1_staff_stock__stock_id__delete: {
         parameters: {
             query?: never;
             header?: never;
@@ -4248,13 +4290,11 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Successful Response */
-            200: {
+            204: {
                 headers: {
                     [name: string]: unknown;
                 };
-                content: {
-                    "application/json": components["schemas"]["StaffStockOut"];
-                };
+                content?: never;
             };
             /** @description Validation Error */
             422: {
@@ -4281,6 +4321,37 @@ export interface operations {
                 "application/json": components["schemas"]["StockUpdateIn"];
             };
         };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffStockOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    restore_stock_v1_staff_stock__stock_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                stock_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
         responses: {
             /** @description Successful Response */
             200: {

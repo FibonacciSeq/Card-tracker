@@ -68,11 +68,18 @@ class TenantSettings(Base):
     features: Mapped[dict] = mapped_column(JSON, default=dict)
     stock_import_pricing: Mapped[dict | None] = mapped_column(JSON)
     scryfall_pricing: Mapped[dict | None] = mapped_column(JSON)
+    archive_retention_days: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     tenant: Mapped[Tenant] = relationship(back_populates="settings")
 
-    __table_args__ = (CheckConstraint("hold_hours >= 1 AND hold_hours <= 720", name="ck_settings_hold_hours"),)
+    __table_args__ = (
+        CheckConstraint("hold_hours >= 1 AND hold_hours <= 720", name="ck_settings_hold_hours"),
+        CheckConstraint(
+            "archive_retention_days >= 0 AND archive_retention_days <= 3650",
+            name="ck_settings_archive_retention_days",
+        ),
+    )
 
 
 class User(Base):
@@ -293,7 +300,7 @@ class ReservationLine(Base):
     reservation_id: Mapped[uuid.UUID] = mapped_column(
         Uuid, ForeignKey("reservations.id", ondelete="CASCADE"), index=True
     )
-    stock_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("stock.id"), index=True)
+    stock_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("stock.id", ondelete="SET NULL"), index=True)
     card_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("cards.id"))
     name: Mapped[str] = mapped_column(String(300))
     set_code: Mapped[str] = mapped_column(String(20), default="")
@@ -308,7 +315,7 @@ class ReservationLine(Base):
     currency: Mapped[str] = mapped_column(String(3))
 
     reservation: Mapped[Reservation] = relationship(back_populates="lines")
-    stock: Mapped[Stock] = relationship()
+    stock: Mapped[Stock | None] = relationship()
 
     @property
     def remaining(self) -> int:

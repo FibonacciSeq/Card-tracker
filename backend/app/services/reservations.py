@@ -432,11 +432,21 @@ def _release(
     if reservation.status in TERMINAL_STATUSES:
         raise ReservationError("invalid_state", "This reservation is already closed.", status_code=409)
 
-    stocks = _lock_stocks(db, reservation.tenant_id, {line.stock_id for line in reservation.lines})
+    stocks = _lock_stocks(
+        db,
+        reservation.tenant_id,
+        {line.stock_id for line in reservation.lines if line.stock_id is not None},
+    )
     for line in reservation.lines:
         remaining = line.remaining
         if remaining <= 0:
             continue
+        if line.stock_id is None:
+            raise ReservationError(
+                "stock_inconsistency",
+                "Reserved stock is missing for an open reservation.",
+                status_code=500,
+            )
         stock = stocks[line.stock_id]
         if stock.reserved < remaining:
             raise ReservationError(
@@ -586,12 +596,22 @@ def complete_reservation(
     if not plan:
         raise ReservationError("nothing_to_do", "No quantities were supplied.", status_code=400)
 
-    stocks = _lock_stocks(db, locked.tenant_id, {res_line.stock_id for res_line, _, _ in plan})
+    stocks = _lock_stocks(
+        db,
+        locked.tenant_id,
+        {res_line.stock_id for res_line, _, _ in plan if res_line.stock_id is not None},
+    )
     now = _now()
     released_stocks: list[models.Stock] = []
 
     try:
         for res_line, complete_q, cancel_q in plan:
+            if res_line.stock_id is None:
+                raise ReservationError(
+                    "stock_inconsistency",
+                    f"Stock is missing for '{res_line.name}'.",
+                    status_code=500,
+                )
             stock = stocks[res_line.stock_id]
 
             if complete_q:

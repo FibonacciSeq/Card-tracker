@@ -16,7 +16,7 @@ from app.config import settings
 from app.db import get_db, set_tenant_context
 from app.deps import get_current_staff, require_owner
 from app.security import create_access_token, hash_password, verify_password
-from app.services import audit, notifications, ratelimit, restock, scryfall_pricing, stock_csv
+from app.services import audit, notifications, ratelimit, restock, scryfall_pricing, stock_archive, stock_csv
 from app.services import card_requests as card_request_service
 from app.services import exchange_rates as exchange_rate_service
 from app.services import reservations as reservation_service
@@ -333,11 +333,20 @@ def list_stock(
     user: models.User = Depends(get_current_staff),
     db: Session = Depends(get_db),
 ):
+    tenant = _tenant(db, user)
+    tenant_id = tenant.id
+    if archived:
+        retention_days = tenant.settings.archive_retention_days if tenant.settings is not None else 0
+        if retention_days > 0:
+            # Local development often runs only the API, so expiring archived
+            # stock lazily keeps this view consistent without the worker.
+            stock_archive.purge_expired_archived_stock(db, tenant_id=tenant_id)
+
     stmt = (
         select(models.Stock)
         .join(models.Card, models.Card.id == models.Stock.card_id)
         .options(joinedload(models.Stock.card))
-        .where(models.Stock.tenant_id == _staff_tenant(user))
+        .where(models.Stock.tenant_id == tenant_id)
         .order_by(func.lower(models.Card.name), models.Stock.id)
         .limit(limit)
     )
@@ -357,7 +366,7 @@ def list_stock(
         if only_online:
             stmt = stmt.where(models.Stock.is_online.is_(True))
 
-    sold = _sold_30d(db, _staff_tenant(user))
+    sold = _sold_30d(db, tenant_id)
     waiting_rows = db.execute(
         select(
             models.RestockAlert.card_id,
@@ -367,7 +376,7 @@ def list_stock(
             func.count(),
         )
         .where(
-            models.RestockAlert.tenant_id == _staff_tenant(user),
+            models.RestockAlert.tenant_id == tenant_id,
             models.RestockAlert.notified_at.is_(None),
         )
         .group_by(
@@ -601,6 +610,74 @@ def archive_all_stock(
         )
     db.commit()
     return schemas.StockArchiveResultOut(archived=len(rows), reserved=reserved)
+
+
+@router.delete("/stock/archive", response_model=schemas.StockDeleteResultOut)
+def delete_archived_stock(
+    user: models.User = Depends(get_current_staff),
+    db: Session = Depends(get_db),
+):
+    """Permanently delete every archived row that has no active customer hold."""
+    tenant_id = _staff_tenant(user)
+    result = stock_archive.delete_archived_stock(db, tenant_id)
+    if result.deleted:
+        audit.record(
+            db,
+            tenant_id=tenant_id,
+            actor_id=user.id,
+            action="stock.delete_all",
+            entity_type="stock",
+            entity_id="batch",
+            summary=f"Permanently deleted archived stock ({result.deleted} rows)",
+            data={"deleted": result.deleted, "kept": result.kept},
+        )
+    db.commit()
+    return schemas.StockDeleteResultOut(deleted=result.deleted, kept=result.kept)
+
+
+@router.delete("/stock/{stock_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_one_archived_stock(
+    stock_id: uuid.UUID,
+    user: models.User = Depends(get_current_staff),
+    db: Session = Depends(get_db),
+):
+    """Permanently delete a single archived stock row."""
+    tenant_id = _staff_tenant(user)
+    stock = db.scalar(
+        select(models.Stock)
+        .options(joinedload(models.Stock.card))
+        .where(
+            models.Stock.id == stock_id,
+            models.Stock.tenant_id == tenant_id,
+        )
+    )
+    if stock is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Stock item not found")
+    if stock.archived_at is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Only archived stock can be permanently deleted",
+        )
+    if stock_archive.stock_has_active_hold(db, stock):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This archived card still has customer holds and cannot be deleted yet",
+        )
+
+    summary = f"Deleted archived stock: {stock.card.name} ({stock.condition} {stock.finish} {stock.language})"
+    result = stock_archive.delete_archived_stock(db, tenant_id, stock_id=stock_id)
+    audit.record(
+        db,
+        tenant_id=tenant_id,
+        actor_id=user.id,
+        action="stock.delete",
+        entity_type="stock",
+        entity_id=stock_id,
+        summary=summary,
+        data={"deleted": result.deleted, "kept": result.kept},
+    )
+    db.commit()
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 def _get_stock(

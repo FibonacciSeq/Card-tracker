@@ -44,6 +44,7 @@ class StaffShopOut(ShopOut):
     scryfall_rounding_increment: int = 5
     repriced_stock: int | None = None
     stock_without_scryfall_prices: int | None = None
+    archive_retention_days: int = 0
 
 
 class CardOut(BaseModel):
@@ -97,7 +98,7 @@ class ReservationCreate(BaseModel):
 
 class ReservationLineOut(BaseModel):
     line_id: uuid.UUID
-    stock_id: uuid.UUID
+    stock_id: uuid.UUID | None
     name: str
     set_code: str
     collector_number: str
@@ -336,6 +337,11 @@ class StockArchiveResultOut(BaseModel):
     reserved: int
 
 
+class StockDeleteResultOut(BaseModel):
+    deleted: int
+    kept: int = 0
+
+
 class StockCreateIn(BaseModel):
     card_id: uuid.UUID
     finish: Literal["nonfoil", "foil", "etched"] = "nonfoil"
@@ -568,3 +574,4 @@ class SettingsUpdateIn(BaseModel):
     scryfall_min_price_minor: int | None = Field(default=None, ge=0, le=2_147_483_647)
     scryfall_markup_percent: int | None = Field(default=None, ge=0, le=10_000)
     scryfall_rounding_increment: int | None = Field(default=None, ge=1, le=21_474_836)
+    archive_retention_days: int | None = Field(default=None, ge=0, le=3650)

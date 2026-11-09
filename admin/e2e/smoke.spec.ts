@@ -127,6 +127,7 @@ test("saves shop settings", async ({ page }) => {
   await expect(name).toBeVisible();
   await name.fill("Bolt Shop Deluxe");
   await page.getByLabel("Hold duration (hours)").fill("48");
+  await page.getByLabel("Delete archived cards after (days)").fill("0");
   await page.getByRole("button", { name: "Save settings" }).click();
 
   await expect(page.getByText("Settings saved.")).toBeVisible();
@@ -134,6 +135,7 @@ test("saves shop settings", async ({ page }) => {
   await page.reload();
   await expect(page.getByLabel("Display name")).toHaveValue("Bolt Shop Deluxe");
   await expect(page.getByLabel("Hold duration (hours)")).toHaveValue("48");
+  await expect(page.getByLabel("Delete archived cards after (days)")).toHaveValue("0");
 });
 
 test("exports the stock template and imports a checked change", async ({ page }) => {
@@ -296,4 +298,10 @@ test("opens the archive confirmation and the archived stock view", async ({ page
   await expect(page.getByTestId("stock-tab-archived")).toHaveAttribute("aria-selected", "true");
   await expect(page.getByTestId("archive-all")).toHaveCount(0);
   await expect(page.getByTestId("stock-table")).toBeVisible();
+
+  await page.getByTestId("archive-delete-all").click();
+  const deletePanel = page.getByTestId("archive-delete-panel");
+  await expect(deletePanel).toContainText("Delete the whole archive?");
+  await page.getByTestId("archive-delete-cancel").click();
+  await expect(deletePanel).toHaveCount(0);
 });

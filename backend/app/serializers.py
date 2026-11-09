@@ -54,6 +54,7 @@ def staff_shop_out(
         ),
         repriced_stock=repriced_stock,
         stock_without_scryfall_prices=stock_without_scryfall_prices,
+        archive_retention_days=(tenant.settings.archive_retention_days if tenant.settings is not None else 0),
     )
 
 

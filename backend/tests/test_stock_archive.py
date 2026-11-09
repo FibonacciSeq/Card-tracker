@@ -3,7 +3,12 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import pytest
+
 from app import models
+from app.services import reservations as reservation_service
+from app.services import stock_archive
+from app.services.reservations import ReservationError
 
 
 def _archive(client, auth):
@@ -364,3 +369,238 @@ def test_archived_stock_does_not_fire_restock_alerts_when_a_hold_is_released(
     alert = db.query(models.RestockAlert).one()
     assert alert.notified_at is None
     assert db.query(models.Notification).filter_by(kind="RESTOCK_AVAILABLE").count() == 0
+
+
+def test_delete_one_archived_stock_removes_only_that_row(client, tenant, stock, second_stock, auth, db):
+    stock_id = stock.id
+    second_id = second_stock.id
+    assert _archive(client, auth).status_code == 200
+
+    deleted = client.delete(f"/v1/staff/stock/{second_id}", headers=auth)
+    assert deleted.status_code == 204, deleted.text
+
+    db.expire_all()
+    assert db.get(models.Stock, second_id) is None
+    assert db.get(models.Stock, stock_id) is not None
+    archived = client.get("/v1/staff/stock?archived=true", headers=auth).json()["items"]
+    assert [item["stock_id"] for item in archived] == [str(stock_id)]
+    assert db.query(models.StockMovement).filter_by(stock_id=second_id).count() == 0
+    assert db.query(models.AuditEvent).filter_by(action="stock.delete").count() == 1
+
+
+def test_delete_one_rejects_active_and_missing_stock(client, stock, auth):
+    active = client.delete(f"/v1/staff/stock/{stock.id}", headers=auth)
+    assert active.status_code == 409
+    assert "Only archived stock" in active.json()["detail"]
+
+    assert _archive(client, auth).status_code == 200
+    assert client.delete(f"/v1/staff/stock/{stock.id}", headers=auth).status_code == 204
+    assert client.delete(f"/v1/staff/stock/{stock.id}", headers=auth).status_code == 404
+
+
+def test_delete_one_rejects_reserved_archived_stock(client, tenant, stock, reservation_payload, auth):
+    created = client.post(f"/v1/shops/{tenant.slug}/reservations", json=reservation_payload)
+    assert created.status_code == 201, created.text
+    assert _archive(client, auth).status_code == 200
+
+    response = client.delete(f"/v1/staff/stock/{stock.id}", headers=auth)
+    assert response.status_code == 409
+    assert "customer holds" in response.json()["detail"]
+
+
+def test_delete_archive_keeps_rows_with_active_holds(
+    client, tenant, stock, second_stock, reservation_payload, auth, db
+):
+    stock_id = stock.id
+    second_id = second_stock.id
+    created = client.post(f"/v1/shops/{tenant.slug}/reservations", json=reservation_payload)
+    assert created.status_code == 201, created.text
+    assert _archive(client, auth).status_code == 200
+
+    response = client.delete("/v1/staff/stock/archive", headers=auth)
+    assert response.status_code == 200, response.text
+    assert response.json() == {"deleted": 1, "kept": 1}
+
+    db.expire_all()
+    assert db.get(models.Stock, second_id) is None
+    assert db.get(models.Stock, stock_id).reserved == 2
+    assert db.query(models.AuditEvent).filter_by(action="stock.delete_all").count() == 1
+
+
+def test_delete_archive_never_touches_active_stock_or_another_shop(
+    client, tenant, other_tenant, stock, second_stock, auth, db
+):
+    foreign = models.Stock(
+        id=uuid.uuid4(),
+        tenant_id=other_tenant.id,
+        card_id=stock.card_id,
+        finish="nonfoil",
+        condition="NM",
+        language="en",
+        quantity=1,
+        reserved=0,
+        price_minor=1000,
+        currency="RSD",
+        archived_at=datetime.now(UTC),
+    )
+    db.add(foreign)
+    db.commit()
+    assert _archive(client, auth).status_code == 200
+
+    response = client.delete("/v1/staff/stock/archive", headers=auth)
+    assert response.status_code == 200, response.text
+    assert response.json() == {"deleted": 2, "kept": 0}
+
+    db.expire_all()
+    assert db.query(models.Stock).filter_by(tenant_id=tenant.id).count() == 0
+    assert db.get(models.Stock, foreign.id) is not None
+
+
+def test_deleting_archived_stock_preserves_reservation_history(client, tenant, stock, reservation_payload, auth, db):
+    created = client.post(f"/v1/shops/{tenant.slug}/reservations", json=reservation_payload)
+    assert created.status_code == 201, created.text
+    reservation = created.json()
+    cancelled = client.post(
+        f"/v1/reservations/{reservation['id']}/cancel",
+        headers={"X-Shop-Slug": tenant.slug, "X-Reservation-Token": reservation["access_token"]},
+    )
+    assert cancelled.status_code == 200, cancelled.text
+    assert _archive(client, auth).status_code == 200
+
+    assert client.delete(f"/v1/staff/stock/{stock.id}", headers=auth).status_code == 204
+
+    db.expire_all()
+    line = db.query(models.ReservationLine).one()
+    assert line.stock_id is None
+    assert line.name == "Lightning Bolt"
+    assert line.completed_quantity == 0
+    assert line.cancelled_quantity == 2
+
+    detail = client.get(f"/v1/staff/reservations/{reservation['id']}", headers=auth)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["lines"][0]["stock_id"] is None
+    assert detail.json()["lines"][0]["name"] == "Lightning Bolt"
+
+
+def test_archive_retention_setting_round_trips_and_validates(client, auth):
+    settings = client.get("/v1/staff/settings", headers=auth)
+    assert settings.status_code == 200
+    assert settings.json()["archive_retention_days"] == 0
+
+    saved = client.patch("/v1/staff/settings", headers=auth, json={"archive_retention_days": 45})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["archive_retention_days"] == 45
+
+    assert client.patch("/v1/staff/settings", headers=auth, json={"archive_retention_days": -1}).status_code == 422
+    assert client.patch("/v1/staff/settings", headers=auth, json={"archive_retention_days": 3651}).status_code == 422
+
+
+def test_purge_deletes_only_expired_unheld_archived_stock(client, tenant, stock, second_stock, db):
+    stock_id = stock.id
+    second_id = second_stock.id
+    now = datetime.now(UTC)
+    tenant.settings.archive_retention_days = 30
+    stock.archived_at = now - timedelta(days=31)
+    second_stock.archived_at = now - timedelta(days=3)
+    db.commit()
+
+    assert stock_archive.purge_expired_archived_stock(db, now) == 1
+
+    db.expire_all()
+    assert db.get(models.Stock, stock_id) is None
+    assert db.get(models.Stock, second_id) is not None
+    assert db.query(models.AuditEvent).filter_by(action="stock.delete_expired").count() == 1
+
+
+def test_purge_respects_retention_zero_and_active_holds(client, tenant, stock, reservation_payload, db):
+    created = client.post(f"/v1/shops/{tenant.slug}/reservations", json=reservation_payload)
+    assert created.status_code == 201, created.text
+    now = datetime.now(UTC)
+    stock.archived_at = now - timedelta(days=500)
+    tenant.settings.archive_retention_days = 0
+    db.commit()
+    assert stock_archive.purge_expired_archived_stock(db, now) == 0
+
+    tenant.settings.archive_retention_days = 30
+    db.commit()
+    assert stock_archive.purge_expired_archived_stock(db, now) == 0
+
+    db.expire_all()
+    assert db.get(models.Stock, stock.id) is not None
+
+
+def test_listing_archived_stock_purges_expired_rows_lazily(client, tenant, stock, second_stock, auth, db):
+    stock_id = stock.id
+    second_id = second_stock.id
+    assert _archive(client, auth).status_code == 200
+    tenant.settings.archive_retention_days = 30
+    stock.archived_at = datetime.now(UTC) - timedelta(days=31)
+    second_stock.archived_at = datetime.now(UTC) - timedelta(days=2)
+    db.commit()
+
+    items = client.get("/v1/staff/stock?archived=true", headers=auth).json()["items"]
+    assert [item["stock_id"] for item in items] == [str(second_id)]
+
+    db.expire_all()
+    assert db.get(models.Stock, stock_id) is None
+    assert db.get(models.Stock, second_id) is not None
+
+
+def _detached_open_reservation(db, tenant, stock):
+    now = datetime.now(UTC)
+    row = models.Reservation(
+        tenant_id=tenant.id,
+        public_ref=f"REF-{uuid.uuid4().hex[:8]}",
+        customer_name="Ana Ilic",
+        email="ana@example.com",
+        status="CONFIRMED",
+        total_minor=1000,
+        currency="RSD",
+        expires_at=now - timedelta(minutes=1),
+    )
+    row.lines.append(
+        models.ReservationLine(
+            tenant_id=tenant.id,
+            stock_id=None,
+            card_id=stock.card_id,
+            name="Lightning Bolt",
+            set_code="LEB",
+            collector_number="161",
+            finish="nonfoil",
+            condition="NM",
+            language="en",
+            quantity=1,
+            unit_price_minor=1000,
+            currency="RSD",
+        )
+    )
+    db.add(row)
+    db.commit()
+    return row
+
+
+def test_delete_empty_archive_is_a_noop(client, auth, db):
+    response = client.delete("/v1/staff/stock/archive", headers=auth)
+    assert response.status_code == 200, response.text
+    assert response.json() == {"deleted": 0, "kept": 0}
+    assert db.query(models.AuditEvent).filter_by(action="stock.delete_all").count() == 0
+
+
+def test_expiring_a_reservation_whose_stock_row_is_missing_fails_safely(db, tenant, stock):
+    row = _detached_open_reservation(db, tenant, stock)
+
+    with pytest.raises(ReservationError):
+        reservation_service.expire_due_reservations(db)
+
+    db.expire_all()
+    assert db.get(models.Reservation, row.id).status == "CONFIRMED"
+
+
+def test_completing_a_reservation_whose_stock_row_is_missing_fails_safely(db, tenant, stock):
+    row = _detached_open_reservation(db, tenant, stock)
+
+    with pytest.raises(ReservationError):
+        reservation_service.complete_reservation(db, row)
+
+    db.expire_all()
+    assert db.get(models.Reservation, row.id).status == "CONFIRMED"

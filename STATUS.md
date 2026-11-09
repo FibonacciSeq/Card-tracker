@@ -1,16 +1,18 @@
 # Card Tracker platform — status
 
-Last updated: **2026-11-08**
+Last updated: **2026-11-09**
 Latest commit: see `git log -1`
 Working tree: account lifecycle/session-safety work, offline/cache safety,
 Scryfall market-based stock pricing, and stock archiving are implemented and
 verified. Shop Settings reprice existing stock from catalog market prices when
 rules change; the nightly worker refreshes prices and recalculates eligible
 stock. Staff can archive all stock for a shop in one action, inspect it in a
-separate archived view, and restore it manually or by importing a matching card
-again. The local platform database contains the Scryfall catalog required for
-stock imports. Step 5 is in release-readiness work: validate production links
-and delivery, then run a signed-in multi-device smoke before a small pilot.
+separate archived view, restore it manually or by importing a matching card
+again, permanently delete individual archived cards or the whole archive, and
+set an automatic retention period for archived stock. The local platform
+database contains the Scryfall catalog required for stock imports. Step 5 is in
+release-readiness work: validate production links and delivery, then run a
+signed-in multi-device smoke before a small pilot.
 
 This file is the quick, human-readable status of the multi-vendor platform.
 The full product/technical specification lives outside the repository in the
@@ -120,6 +122,37 @@ for the original single-shop workflow until the new stack replaces it.
 - Migration `0011_stock_archive` adds `stock.archived_at` and the
   `(tenant_id, archived_at)` index.
 
+### Archive deletion and retention — 2026-11-09
+
+- The archived tab can permanently delete one card (**Delete**, with an inline
+  confirmation) or the whole archive (**Delete all archived**, with a
+  confirmation panel). Deletion only ever targets rows that are already
+  archived; active stock is never touched.
+- `DELETE /v1/staff/stock/{stock_id}` removes one archived row and
+  `DELETE /v1/staff/stock/archive` removes every eligible archived row for the
+  shop. Both are tenant-scoped and audited as `stock.delete` /
+  `stock.delete_all`.
+- Rows with an active customer hold (`stock.reserved > 0` or an open
+  reservation line with remaining quantity) are kept. Bulk deletion reports
+  how many rows were deleted and how many were kept; the single-row action
+  returns `409` for a held row. Rows become eligible once their reservations
+  close.
+- Reservation history survives deletion. `reservation_lines.stock_id` is now
+  nullable with `ON DELETE SET NULL`, so completed/cancelled reservations keep
+  their card, price, and quantity snapshots. Stock movements and restock alerts
+  for the deleted stock row are removed/detached by their existing foreign
+  keys.
+- Shop Settings has an **Archived stock** field: delete archived cards after a
+  number of days (`0` keeps them forever, maximum 3650). The 60-second expiry
+  worker purges expired archived rows for every shop, and listing the archived
+  tab performs the same purge lazily so local API-only setups stay consistent.
+  Automatic purges are audited as `stock.delete_expired`.
+- Migration `0012_archive_retention` adds
+  `tenant_settings.archive_retention_days` (with a validation check) and makes
+  `reservation_lines.stock_id` nullable with `ON DELETE SET NULL`.
+  Downgrading removes detached reservation lines because the older schema
+  cannot represent them.
+
 ### Step 3 — staff, audit, and rate limits
 
 - Owner staff management: add, promote/demote, deactivate, reset password;
@@ -225,7 +258,7 @@ Pages:
 | --- | --- |
 | `/login` | Shop slug + email + password |
 | `/` | Dashboard: pending holds, active holds, special orders, sold today, low/stale stock |
-| `/stock` | Search, counts, price/visibility, adjustments, in-store sales, CSV import/export, archive-all and archived-view restore, waiting-demand badge |
+| `/stock` | Search, counts, price/visibility, adjustments, in-store sales, CSV import/export, archive-all, archived-view restore/delete, retention-aware archived view, waiting-demand badge |
 | `/reservations` | Status queue, confirm/ready/cancel, partial completion; auto-refreshes every 20 s |
 | `/requests` | Special orders: quote, decline, convert to reservation |
 | `/team` | Owner-only staff management |
@@ -328,7 +361,7 @@ public HTTPS domain are configured but not yet validated in production.
 | Check | Result |
 | --- | --- |
 | Root Python suite (`pytest --cov --cov-branch`) | **351 passed, 100% line/branch** |
-| Backend SQLite suite | **333 passed, 13 PostgreSQL tests skipped, 100%** |
+| Backend SQLite suite | **347 passed, 13 PostgreSQL tests skipped, 100%** |
 | Backend with PostgreSQL test URLs | **278 passed, 100%** (277 before the added per-device logout test) |
 | Backend PostgreSQL-only suite (RLS, customer claiming, notifications, locking) | **13 passed** |
 | Backend account/session tests | `tests/test_customer_accounts.py`: **22 passed**, including per-device logout |
@@ -338,7 +371,7 @@ public HTTPS domain are configured but not yet validated in production.
 | Admin Vitest logic/API-client coverage | **23 passed, 100% statements/branches/functions/lines** |
 | Admin production source maps | **0** `.map` files in `dist/` |
 | Admin Playwright suite | **9 passed** |
-| Generated API snapshot/types | `admin/openapi.json` and admin/mobile `schema.d.ts` regenerated; archive/restore endpoints and archived stock fields present, no manual type edits |
+| Generated API snapshot/types | `admin/openapi.json` and admin/mobile `schema.d.ts` regenerated; archive delete/retention endpoints and fields present, no manual type edits |
 | Mobile TypeScript / ESLint | Clean |
 | Mobile Vitest `src/lib/**` coverage | **49 passed, 100% statements/branches/functions/lines** |
 | Mobile `expo-doctor` | **20/20** |
@@ -413,6 +446,27 @@ Latest stock-archive validation (2026-11-08):
   statements/branches/functions/lines.
 - `admin/openapi.json` and both generated `schema.d.ts` files were regenerated
   from the running app; no manual API type edits.
+
+Latest archive deletion/retention validation (2026-11-09):
+
+- Backend suite: **347 passed, 13 PostgreSQL-only skipped**, 100% statement and
+  branch coverage. `tests/test_stock_archive.py` additionally covers single and
+  bulk deletion, active-hold skipping, tenant isolation, reservation-history
+  preservation after stock removal, retention settings and validation, manual
+  purge, lazy purge on the archived listing, and defensive handling of open
+  reservations whose stock row disappeared.
+- Backend Ruff check/formatting and mypy: clean.
+- Alembic `0012_archive_retention` upgrade → downgrade to `0011` → upgrade
+  verified on a temporary SQLite database; the retention column/check and
+  nullable `SET NULL` stock foreign key appear and disappear with the revision.
+  The local development database was migrated to `0012_archive_retention`.
+- Admin ESLint, TypeScript, Vitest (**23 passed**), production build: clean.
+  Playwright smoke suite: **9 passed**, including the archived delete-all
+  confirmation and the retention field round-trip.
+- Mobile TypeScript and ESLint: clean; Vitest **49 passed**, 100%
+  statements/branches/functions/lines.
+- `admin/openapi.json` and both generated `schema.d.ts` files were regenerated
+  from the app; no manual API type edits.
 
 The Python coverage floors are 100% line and branch for both the root and
 backend suites. Admin and mobile keep their explicitly included logic/API

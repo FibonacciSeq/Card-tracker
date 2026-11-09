@@ -335,6 +335,7 @@ def test_expiry_worker_run_once_with_nothing_due(monkeypatch):
     monkeypatch.setattr(expiry_worker, "SessionLocal", lambda: FakeSession())
     monkeypatch.setattr(expiry_worker, "expire_due_reservations", lambda _db: 0)
     monkeypatch.setattr(expiry_worker, "expire_due_quotes", lambda _db: 0)
+    monkeypatch.setattr(expiry_worker, "purge_expired_archived_stock", lambda _db: 0)
     assert expiry_worker.run_once() == 0
 
 
@@ -349,12 +350,28 @@ def test_expiry_worker_run_once_and_main(monkeypatch):
     monkeypatch.setattr(expiry_worker, "SessionLocal", lambda: FakeSession())
     monkeypatch.setattr(expiry_worker, "expire_due_reservations", lambda _db: 2)
     monkeypatch.setattr(expiry_worker, "expire_due_quotes", lambda _db: 3)
+    monkeypatch.setattr(expiry_worker, "purge_expired_archived_stock", lambda _db: 0)
     assert expiry_worker.run_once() == 2
 
     monkeypatch.setattr(expiry_worker, "run_once", lambda: (_ for _ in ()).throw(RuntimeError("boom")))
     monkeypatch.setattr(expiry_worker.time, "sleep", lambda _seconds: (_ for _ in ()).throw(KeyboardInterrupt))
     with pytest.raises(KeyboardInterrupt):
         expiry_worker.main()
+
+
+def test_expiry_worker_logs_purged_archive_rows(monkeypatch):
+    class FakeSession:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    monkeypatch.setattr(expiry_worker, "SessionLocal", lambda: FakeSession())
+    monkeypatch.setattr(expiry_worker, "expire_due_reservations", lambda _db: 0)
+    monkeypatch.setattr(expiry_worker, "expire_due_quotes", lambda _db: 0)
+    monkeypatch.setattr(expiry_worker, "purge_expired_archived_stock", lambda _db: 4)
+    assert expiry_worker.run_once() == 0
 
 
 # --------------------------------------------------------------------- CLI

@@ -15,7 +15,7 @@ staff-only.
 | --- | --- |
 | `/login` | Shop address + email + password (staff JWT) |
 | `/` | Dashboard: pending requests, active holds, sold today, low/stale stock |
-| `/stock` | Search, on-hand/price/visibility edits, adjustments, in-store sales, CSV import/export, archive-all and archived-view restore |
+| `/stock` | Search, on-hand/price/visibility edits, adjustments, in-store sales, CSV import/export, archive-all, archived-view restore/delete, retention-aware archived view |
 | `/reservations` | Queue by status, accept/ready/cancel, complete with per-line quantities |
 | `/requests` | Special orders: quote, decline, and convert an accepted request into a reservation |
 | `/team` | Owner-only: add staff, change roles, deactivate accounts |
@@ -32,7 +32,11 @@ confirmation step. Archived rows are hidden from the customer app and from new
 holds, keep existing reservation history, and can be restored one row at a time.
 Importing or creating the same card and variant again restores the matching
 archived row automatically. The archived tab has its own CSV export
-(`?archived=true`); the normal export excludes archived rows.
+(`?archived=true`); the normal export excludes archived rows. It also offers
+per-row **Delete** and **Delete all archived** actions with confirmation.
+Permanent deletion keeps rows that still have active customer holds. Settings has
+an **Archived stock** retention field (0 = keep forever) for automatic cleanup;
+the expiry worker and the archived view both enforce it.
 
 Stock CSV import accepts both the app's exported stock template and ManaBox
 collection exports. ManaBox purchase prices are converted from their source
