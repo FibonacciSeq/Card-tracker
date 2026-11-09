@@ -161,7 +161,7 @@ def price_import_rows(
     rows: list[stock_csv.ImportRow],
     pricing: dict[str, int],
 ) -> tuple[list[stock_csv.ImportRow], list[stock_csv.RowError]]:
-    """Use Scryfall market prices for imports; skip catalog rows without prices."""
+    """Use Scryfall market prices when available, otherwise retain CSV prices."""
     set_codes = {row.set_code.upper() for row in rows}
     cards_by_key: dict[tuple[str, str], models.Card] = {}
     if set_codes:
@@ -185,13 +185,7 @@ def price_import_rows(
             continue
         price = price_for_card(catalog_card, row.finish, tenant.currency, pricing, rates)
         if price is None:
-            errors.append(
-                stock_csv.RowError(
-                    row.line,
-                    "No Scryfall market price for this card and finish; row skipped.",
-                    "collector_number",
-                )
-            )
+            priced_rows.append(row)
             continue
         priced_rows.append(replace(row, price_minor=price, currency=tenant.currency.upper(), uses_pricing_rules=False))
     return priced_rows, errors

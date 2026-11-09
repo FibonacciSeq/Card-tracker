@@ -337,7 +337,7 @@ def test_scryfall_pricing_settings_surfaces_repricing_failures(client, tenant, a
     assert response.status_code == status_code
 
 
-def test_scryfall_pricing_import_uses_finish_market_price_and_skips_missing(
+def test_scryfall_pricing_import_uses_finish_market_price_and_falls_back_to_csv_price(
     client, tenant, stock, card, auth, db, monkeypatch
 ):
     card.scryfall_prices = {"usd": "2.00"}
@@ -366,11 +366,13 @@ def test_scryfall_pricing_import_uses_finish_market_price_and_skips_missing(
     assert report.status_code == 200, report.text
     data = report.json()
     assert data["updated"] == 1
-    assert len(data["errors"]) == 1
-    assert "No Scryfall market price" in data["errors"][0]["message"]
+    assert data["created"] == 1
+    assert data["errors"] == []
 
     db.expire_all()
     assert db.get(models.Stock, stock.id).price_minor == 22_500
+    foil_stock = db.query(models.Stock).filter_by(tenant_id=tenant.id, card_id=card.id, finish="foil").one()
+    assert foil_stock.price_minor == 125_000
 
 
 def test_purchase_price_import_applies_rules_and_daily_rate(client, tenant, stock, auth, monkeypatch):
