@@ -10,6 +10,8 @@ import pytest
 os.environ["CARDTRACKER_DATABASE_URL"] = "sqlite+pysqlite://"
 os.environ["CARDTRACKER_AUTO_CREATE_TABLES"] = "false"
 os.environ["CARDTRACKER_JWT_SECRET"] = "test-secret-test-secret-test-secret-32"
+# Keep the suite hermetic: a developer's backend/.env may enable the debug code.
+os.environ["CARDTRACKER_OTP_DEBUG_CODE"] = "false"
 
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy import create_engine  # noqa: E402
