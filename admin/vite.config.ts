@@ -7,6 +7,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
+    // Allow opening the dev server through VS Code port forwarding
+    // (https://{tunnelId}-{port}.{region}.devtunnels.ms). API calls stay
+    // same-origin because the /v1 proxy below forwards them server-side.
+    allowedHosts: [".devtunnels.ms"],
     headers: {
       "Content-Security-Policy":
         "default-src 'self'; connect-src 'self' ws://127.0.0.1:5173 http://127.0.0.1:8000; img-src 'self' data: https:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",

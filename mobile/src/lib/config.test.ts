@@ -14,6 +14,7 @@ async function load() {
 describe("mobile API config", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
     constants.expoConfig.hostUri = undefined;
     platform.OS = "ios";
   });
@@ -47,5 +48,41 @@ describe("mobile API config", () => {
     constants.expoConfig.hostUri = ":8081";
     const config = await load();
     expect(config.API_BASE_URL).toBe("http://127.0.0.1:8000");
+  });
+
+  it("uses the API tunnel when the web app is behind VS Code port forwarding", async () => {
+    platform.OS = "web";
+    constants.expoConfig.hostUri = "127.0.0.1:8081";
+    vi.stubGlobal("window", { location: { hostname: "l3rs99qw-8081.usw2.devtunnels.ms" } });
+    const config = await load();
+    expect(config.API_BASE_URL).toBe("https://l3rs99qw-8000.usw2.devtunnels.ms");
+  });
+
+  it("handles dev tunnel hosts without a region label", async () => {
+    platform.OS = "web";
+    vi.stubGlobal("window", { location: { hostname: "d4chrl5d-8081.devtunnels.ms" } });
+    const config = await load();
+    expect(config.API_BASE_URL).toBe("https://d4chrl5d-8000.devtunnels.ms");
+  });
+
+  it("ignores web hosts that are not dev tunnels", async () => {
+    platform.OS = "web";
+    vi.stubGlobal("window", { location: { hostname: "localhost" } });
+    const config = await load();
+    expect(config.API_BASE_URL).toBe("http://127.0.0.1:8000");
+  });
+
+  it("ignores the dev tunnel host on native platforms", async () => {
+    vi.stubGlobal("window", { location: { hostname: "l3rs99qw-8081.usw2.devtunnels.ms" } });
+    const config = await load();
+    expect(config.API_BASE_URL).toBe("http://127.0.0.1:8000");
+  });
+
+  it("prefers an explicit base URL over the dev tunnel host", async () => {
+    platform.OS = "web";
+    vi.stubGlobal("window", { location: { hostname: "l3rs99qw-8081.usw2.devtunnels.ms" } });
+    vi.stubEnv("EXPO_PUBLIC_API_BASE_URL", "https://cards.example");
+    const config = await load();
+    expect(config.API_BASE_URL).toBe("https://cards.example");
   });
 });
