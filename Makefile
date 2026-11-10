@@ -1,4 +1,4 @@
-.PHONY: help install dev install-backend run run-customer run-owner test cov coverage \
+.PHONY: help install dev install-backend run run-customer run-owner dev-api test cov coverage \
 	lint typecheck security format check test-backend coverage-backend \
 	test-backend-postgres test-admin coverage-admin test-mobile coverage-mobile \
 	test-sqlserver test-matrix test-all clean refresh-db
@@ -33,6 +33,9 @@ run-customer:  ## Pokreni kupacku aplikaciju
 
 run-owner:  ## Pokreni vlasnicku aplikaciju
 	$(PYTHON) owner_app.py
+
+dev-api:  ## Pokreni API sa workerima (migracije + notifications + expiry)
+	./scripts/dev_api.sh
 
 test:  ## Pokreni testove
 	$(PYTHON) -m pytest
