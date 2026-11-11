@@ -575,3 +575,12 @@ class SettingsUpdateIn(BaseModel):
     scryfall_markup_percent: int | None = Field(default=None, ge=0, le=10_000)
     scryfall_rounding_increment: int | None = Field(default=None, ge=1, le=21_474_836)
     archive_retention_days: int | None = Field(default=None, ge=0, le=3650)
+
+
+class ScryfallRefreshOut(BaseModel):
+    """Result of an owner-triggered Scryfall price refresh and stock reprice."""
+
+    cards_refreshed: int
+    cards_unavailable: int
+    repriced_stock: int
+    stock_without_scryfall_prices: int

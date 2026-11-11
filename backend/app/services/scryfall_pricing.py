@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import time
 from dataclasses import replace
 from decimal import ROUND_CEILING, ROUND_HALF_UP, Decimal, InvalidOperation
 from typing import Any
 
+import httpx
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -19,6 +21,18 @@ PRICE_FIELDS = {
     ("foil", "EUR"): "eur_foil",
     ("etched", "USD"): "usd_etched",
 }
+
+# The Scryfall collection endpoint accepts at most 75 identifiers per call
+# and asks for a pause between requests so bursts stay under 10 calls/second.
+SCRYFALL_COLLECTION_URL = "https://api.scryfall.com/cards/collection"
+SCRYFALL_USER_AGENT = "CardTracker/1.0 (manual price refresh)"
+SCRYFALL_COLLECTION_BATCH_SIZE = 75
+SCRYFALL_COLLECTION_PAUSE_SECONDS = 0.1
+SCRYFALL_TIMEOUT_SECONDS = 15.0
+
+
+class ScryfallUnavailableError(Exception):
+    """Scryfall could not be reached or returned unusable market data."""
 
 
 def pricing_settings(settings_row: models.TenantSettings | None) -> dict[str, int] | None:
@@ -153,6 +167,75 @@ def reprice_tenant_stock(
             stock.updated_at = models.utcnow()
             updated += 1
     return updated, skipped
+
+
+def _fetch_scryfall_prices(http_client: httpx.Client, provider_ids: list[str]) -> dict[str, Any]:
+    """Fetch current prices from the Scryfall collection endpoint, by card id."""
+    try:
+        response = http_client.post(
+            SCRYFALL_COLLECTION_URL,
+            json={"identifiers": [{"id": provider_id} for provider_id in provider_ids]},
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except (httpx.HTTPError, ValueError) as exc:
+        raise ScryfallUnavailableError("Scryfall market prices are unavailable right now. Try again later.") from exc
+    if not isinstance(payload, dict) or payload.get("object") != "list":
+        raise ScryfallUnavailableError("Scryfall market prices are unavailable right now. Try again later.")
+    prices: dict[str, Any] = {}
+    for obj in payload.get("data", []):
+        if not isinstance(obj, dict) or obj.get("id") is None:
+            continue
+        prices[str(obj["id"])] = obj.get("prices")
+    return prices
+
+
+def refresh_stock_market_prices(
+    db: Session,
+    tenant: models.Tenant,
+    client: httpx.Client | None = None,
+) -> tuple[int, int]:
+    """Fetch current Scryfall market prices for the cards this shop stocks.
+
+    Updates the stored catalog prices so a following reprice uses fresh data.
+    Returns ``(cards_refreshed, cards_unavailable)``; cards that are not in the
+    Scryfall catalog or no longer report prices count as unavailable.
+    """
+    cards = db.scalars(
+        select(models.Card)
+        .join(models.Stock, models.Stock.card_id == models.Card.id)
+        .where(
+            models.Stock.tenant_id == tenant.id,
+            models.Stock.archived_at.is_(None),
+        )
+        .distinct()
+    ).all()
+    refreshable = [row for row in cards if row.provider == "scryfall" and row.provider_card_id]
+    unavailable = len(cards) - len(refreshable)
+    refreshed = 0
+    if refreshable:
+        owns_client = client is None
+        http_client = client or httpx.Client(
+            timeout=SCRYFALL_TIMEOUT_SECONDS,
+            headers={"User-Agent": SCRYFALL_USER_AGENT},
+        )
+        try:
+            for start in range(0, len(refreshable), SCRYFALL_COLLECTION_BATCH_SIZE):
+                batch = refreshable[start : start + SCRYFALL_COLLECTION_BATCH_SIZE]
+                if start:
+                    time.sleep(SCRYFALL_COLLECTION_PAUSE_SECONDS)
+                fresh = _fetch_scryfall_prices(http_client, [row.provider_card_id for row in batch])
+                for row in batch:
+                    prices = fresh.get(row.provider_card_id)
+                    if not isinstance(prices, dict):
+                        unavailable += 1
+                        continue
+                    row.scryfall_prices = prices
+                    refreshed += 1
+        finally:
+            if owns_client:
+                http_client.close()
+    return refreshed, unavailable
 
 
 def price_import_rows(

@@ -67,6 +67,10 @@ class Settings(BaseSettings):
     restock_alert_rate_window_seconds: int = 3600
     card_request_rate_limit: int = 10
     card_request_rate_window_seconds: int = 3600
+    # Owner-triggered Scryfall price refreshes; keeps manual refreshes from
+    # hammering the shared Scryfall API quota.
+    scryfall_refresh_ip_limit: int = 12
+    scryfall_refresh_ip_window_seconds: int = 3600
     # Notification delivery. "console" logs messages (useful in development);
     # "smtp" sends real email; "none" disables delivery entirely.
     notification_backend: str = "console"

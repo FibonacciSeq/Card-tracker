@@ -19,6 +19,7 @@ export type StaffReservation = Schemas["StaffReservationOut"];
 export type ReservationLine = Schemas["ReservationLineOut"];
 export type ReservationStatus = Reservation["status"];
 export type SettingsUpdate = Schemas["SettingsUpdateIn"];
+export type ScryfallRefresh = Schemas["ScryfallRefreshOut"];
 export type StatusUpdate = Schemas["StatusUpdateIn"];
 export type CompleteIn = Schemas["CompleteIn"];
 export type CompleteLine = Schemas["CompleteLineIn"];

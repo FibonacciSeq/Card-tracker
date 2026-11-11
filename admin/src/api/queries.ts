@@ -8,6 +8,7 @@ import type {
   QuoteIn,
   StaffCardRequest,
   Dashboard,
+  ScryfallRefresh,
   StaffReservation,
   ReservationSummary,
   SettingsUpdate,
@@ -208,6 +209,17 @@ export function useUpdateSettings() {
       request<StaffShop>("/v1/staff/settings", { method: "PATCH", body: patch }),
     onSuccess: (shop) => {
       client.setQueryData(queryKeys.settings, shop);
+      client.invalidateQueries({ queryKey: queryKeys.dashboard });
+      client.invalidateQueries({ queryKey: ["stock"] });
+    },
+  });
+}
+
+export function useRefreshScryfallPrices() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => request<ScryfallRefresh>("/v1/staff/settings/scryfall-refresh", { method: "POST" }),
+    onSuccess: () => {
       client.invalidateQueries({ queryKey: queryKeys.dashboard });
       client.invalidateQueries({ queryKey: ["stock"] });
     },

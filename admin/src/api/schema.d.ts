@@ -1086,6 +1086,26 @@ export interface paths {
         patch: operations["update_settings_v1_staff_settings_patch"];
         trace?: never;
     };
+    "/v1/staff/settings/scryfall-refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Refresh Scryfall Prices
+         * @description Fetch current Scryfall market prices for stocked cards and reprice.
+         */
+        post: operations["refresh_scryfall_prices_v1_staff_settings_scryfall_refresh_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/health": {
         parameters: {
             query?: never;
@@ -1968,6 +1988,20 @@ export interface components {
              * Format: email
              */
             email: string;
+        };
+        /**
+         * ScryfallRefreshOut
+         * @description Result of an owner-triggered Scryfall price refresh and stock reprice.
+         */
+        ScryfallRefreshOut: {
+            /** Cards Refreshed */
+            cards_refreshed: number;
+            /** Cards Unavailable */
+            cards_unavailable: number;
+            /** Repriced Stock */
+            repriced_stock: number;
+            /** Stock Without Scryfall Prices */
+            stock_without_scryfall_prices: number;
         };
         /** SettingsUpdateIn */
         SettingsUpdateIn: {
@@ -4783,6 +4817,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    refresh_scryfall_prices_v1_staff_settings_scryfall_refresh_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScryfallRefreshOut"];
                 };
             };
         };

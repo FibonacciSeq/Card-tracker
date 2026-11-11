@@ -1442,3 +1442,59 @@ def update_settings(
     db.commit()
     db.refresh(tenant)
     return serializers.staff_shop_out(tenant, repriced_stock, stock_without_scryfall_prices)
+
+
+@router.post("/settings/scryfall-refresh", response_model=schemas.ScryfallRefreshOut)
+def refresh_scryfall_prices(
+    request: Request,
+    user: models.User = Depends(require_owner),
+    db: Session = Depends(get_db),
+):
+    """Fetch current Scryfall market prices for stocked cards and reprice."""
+    tenant = _tenant(db, user)
+    pricing = scryfall_pricing.pricing_settings(tenant.settings)
+    if pricing is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="A minimum price and markup percentage are required before refreshing prices.",
+        )
+    ratelimit.enforce(
+        request,
+        scope="scryfall-refresh",
+        limit=settings.scryfall_refresh_ip_limit,
+        window_seconds=settings.scryfall_refresh_ip_window_seconds,
+    )
+    try:
+        refreshed, unavailable = scryfall_pricing.refresh_stock_market_prices(db, tenant)
+        updated, skipped = scryfall_pricing.reprice_tenant_stock(db, tenant, pricing)
+    except scryfall_pricing.ScryfallUnavailableError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except exchange_rate_service.ExchangeRateError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)) from exc
+    audit.record(
+        db,
+        tenant_id=tenant.id,
+        actor_id=user.id,
+        action="stock.reprice",
+        entity_type="shop",
+        entity_id=tenant.id,
+        summary=(f"Refreshed Scryfall prices: {updated} stock rows repriced, {skipped} rows without a market price"),
+        data={
+            "cards_refreshed": refreshed,
+            "cards_unavailable": unavailable,
+            "repriced_stock": updated,
+            "stock_without_scryfall_prices": skipped,
+        },
+    )
+    db.commit()
+    return schemas.ScryfallRefreshOut(
+        cards_refreshed=refreshed,
+        cards_unavailable=unavailable,
+        repriced_stock=updated,
+        stock_without_scryfall_prices=skipped,
+    )

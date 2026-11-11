@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import { ApiError } from "../api/client";
-import { useSettings, useUpdateSettings } from "../api/queries";
+import { useRefreshScryfallPrices, useSettings, useUpdateSettings } from "../api/queries";
 import type { SettingsUpdate, StaffShop } from "../api/types";
 
 function asText(value: unknown, fallback = ""): string {
@@ -174,6 +174,7 @@ function ShopQrPanel({ slug }: { slug: string }) {
 
 function SettingsForm({ shop }: { shop: StaffShop }) {
   const update = useUpdateSettings();
+  const refreshScryfall = useRefreshScryfallPrices();
   const [form, setForm] = useState<FormState>(() => toForm(shop));
   const [saved, setSaved] = useState(false);
 
@@ -228,7 +229,7 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
     update.mutate(body, { onSuccess: () => setSaved(true) });
   }
 
-  const failure = update.error;
+  const failure = update.error ?? refreshScryfall.error;
 
   return (
     <div className="page">
@@ -408,6 +409,28 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
             UTC and use the finish-specific market price. Cards without a reported market price are skipped during
             imports; existing stock keeps its last price.
           </p>
+          <div className="field">
+            <button
+              type="button"
+              className="btn"
+              data-testid="scryfall-refresh"
+              onClick={() => refreshScryfall.mutate()}
+              disabled={
+                !form.scryfallPricingEnabled || !pricingValid || refreshScryfall.isPending || update.isPending
+              }
+            >
+              {refreshScryfall.isPending ? "Fetching prices…" : "Update prices from Scryfall now"}
+            </button>
+            <small className="hint">
+              Fetches the current Scryfall market prices for the cards in stock and reprices them immediately, using the
+              saved rules above. The nightly refresh at 02:00 UTC keeps running either way.
+            </small>
+            <span aria-live="polite" className="small tone--available" data-testid="scryfall-refresh-result">
+              {refreshScryfall.data
+                ? `Fetched current Scryfall prices for ${refreshScryfall.data.cards_refreshed} cards (${refreshScryfall.data.cards_unavailable} unavailable). Updated ${refreshScryfall.data.repriced_stock} stock prices; ${refreshScryfall.data.stock_without_scryfall_prices} rows had no market price and were left unchanged.`
+                : null}
+            </span>
+          </div>
         </fieldset>
 
         <fieldset>
