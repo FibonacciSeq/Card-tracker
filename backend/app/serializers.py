@@ -41,7 +41,6 @@ def staff_shop_out(
     rounding_increment_minor = pricing.get("rounding_increment_minor", 500)
     return schemas.StaffShopOut(
         **base.model_dump(),
-        notification_email=tenant.settings.notification_email if tenant.settings else None,
         scryfall_pricing_enabled=pricing.get("enabled") is True,
         scryfall_min_price_minor=minimum_price if type(minimum_price) is int else 0,
         scryfall_markup_percent=markup_percent if type(markup_percent) is int else 0,

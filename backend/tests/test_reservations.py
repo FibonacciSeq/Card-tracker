@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
 from app import models
+from app.security import create_customer_access_token
 from app.services.reservations import expire_due_reservations
 
 
@@ -126,7 +127,17 @@ def test_cancel_requires_token(client, tenant, stock, reservation_payload):
 
 
 def test_expiry_releases_stock(client, tenant, stock, reservation_payload, db):
-    created = _create(client, tenant, reservation_payload).json()
+    customer = models.User(
+        tenant_id=None,
+        email="marko@example.com",
+        role="customer",
+        is_active=True,
+        email_verified_at=datetime.now(UTC),
+    )
+    db.add(customer)
+    db.commit()
+    headers = {"Authorization": f"Bearer {create_customer_access_token(customer.id)}"}
+    created = _create(client, tenant, reservation_payload, headers=headers).json()
 
     reservation = db.get(models.Reservation, uuid.UUID(created["id"]))
     assert reservation is not None
@@ -142,15 +153,24 @@ def test_expiry_releases_stock(client, tenant, stock, reservation_payload, db):
     assert stock_row is not None and stock_row.reserved == 0
     assert stock_row.available == 3
 
-    note = (
-        db.query(models.Notification)
-        .filter_by(kind="RESERVATION_EXPIRED")
-        .order_by(models.Notification.id.desc())
-        .first()
-    )
-    assert note is not None
-    assert note.recipient == "marko@example.com"
-    assert note.channel == "email"
+    notes = list(db.query(models.Notification).filter_by(kind="RESERVATION_EXPIRED").all())
+    assert {note.channel for note in notes} == {"in_app", "push"}
+    assert all(note.recipient is None for note in notes)
+    assert all(note.user_id == customer.id for note in notes)
+    assert next(n for n in notes if n.channel == "in_app").sent_at is not None
+
+
+def test_guest_reservations_get_no_event_notifications(client, tenant, stock, reservation_payload, db):
+    created = _create(client, tenant, reservation_payload).json()
+
+    reservation = db.get(models.Reservation, uuid.UUID(created["id"]))
+    assert reservation is not None
+    reservation.expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    db.commit()
+
+    assert expire_due_reservations(db) == 1
+    db.expire_all()
+    assert db.query(models.Notification).count() == 0
 
 
 def test_movement_ledger_created(client, tenant, stock, reservation_payload, db):

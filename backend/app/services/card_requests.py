@@ -57,10 +57,6 @@ def _unique_ref(db: Session, tenant_id: uuid.UUID) -> str:
     raise CardRequestError("ref_conflict", "Could not allocate a request reference.", 500)
 
 
-def _notification_recipient(tenant: models.Tenant) -> str | None:
-    return notifications.staff_recipient(tenant)
-
-
 def create(
     db: Session,
     tenant: models.Tenant,
@@ -101,20 +97,6 @@ def create(
     )
     db.add(row)
     db.flush()
-
-    notifications.enqueue(
-        db,
-        tenant.id,
-        "CARD_REQUEST_CREATED",
-        {
-            "public_ref": row.public_ref,
-            "customer_name": row.customer_name,
-            "requested_name": row.requested_name,
-            "quantity": row.quantity,
-            "customer_note": row.customer_note,
-        },
-        recipient=_notification_recipient(tenant),
-    )
     db.commit()
     db.refresh(row)
     return row, token
@@ -159,24 +141,24 @@ def quote(
     row.status = "QUOTED"
     row.updated_at = _now()
 
-    notifications.enqueue(
-        db,
-        tenant.id,
-        "CARD_REQUEST_QUOTED",
-        {
-            "public_ref": row.public_ref,
-            "requested_name": row.requested_name,
-            "finish": row.finish,
-            "condition": row.condition,
-            "quote_price_minor": row.quote_price_minor,
-            "currency": row.quote_currency,
-            "quote_expires_at": row.quote_expires_at.isoformat() if row.quote_expires_at else None,
-            "vendor_note": row.vendor_note,
-        },
-        recipient=row.email,
-        user_id=row.customer_id,
-        push=True,
-    )
+    if row.customer_id is not None:
+        notifications.enqueue(
+            db,
+            tenant.id,
+            "CARD_REQUEST_QUOTED",
+            {
+                "public_ref": row.public_ref,
+                "requested_name": row.requested_name,
+                "finish": row.finish,
+                "condition": row.condition,
+                "quote_price_minor": row.quote_price_minor,
+                "currency": row.quote_currency,
+                "quote_expires_at": row.quote_expires_at.isoformat() if row.quote_expires_at else None,
+                "vendor_note": row.vendor_note,
+            },
+            user_id=row.customer_id,
+            push=True,
+        )
     db.commit()
     db.refresh(row)
     return row
@@ -189,19 +171,19 @@ def decline(db: Session, tenant: models.Tenant, row: models.CardRequest, note: s
     row.status = "DECLINED"
     row.vendor_note = note.strip()
     row.updated_at = _now()
-    notifications.enqueue(
-        db,
-        tenant.id,
-        "CARD_REQUEST_DECLINED",
-        {
-            "public_ref": row.public_ref,
-            "requested_name": row.requested_name,
-            "vendor_note": row.vendor_note,
-        },
-        recipient=row.email,
-        user_id=row.customer_id,
-        push=True,
-    )
+    if row.customer_id is not None:
+        notifications.enqueue(
+            db,
+            tenant.id,
+            "CARD_REQUEST_DECLINED",
+            {
+                "public_ref": row.public_ref,
+                "requested_name": row.requested_name,
+                "vendor_note": row.vendor_note,
+            },
+            user_id=row.customer_id,
+            push=True,
+        )
     db.commit()
     db.refresh(row)
     return row
@@ -213,15 +195,15 @@ def accept(db: Session, tenant: models.Tenant, row: models.CardRequest) -> model
     if row.status == "QUOTED" and expires_at is not None and expires_at <= now:
         row.status = "EXPIRED"
         row.updated_at = now
-        notifications.enqueue(
-            db,
-            tenant.id,
-            "CARD_REQUEST_EXPIRED",
-            {"public_ref": row.public_ref, "requested_name": row.requested_name},
-            recipient=row.email,
-            user_id=row.customer_id,
-            push=True,
-        )
+        if row.customer_id is not None:
+            notifications.enqueue(
+                db,
+                tenant.id,
+                "CARD_REQUEST_EXPIRED",
+                {"public_ref": row.public_ref, "requested_name": row.requested_name},
+                user_id=row.customer_id,
+                push=True,
+            )
         db.commit()
         raise CardRequestError("quote_expired", "This quote has expired. Ask the shop for a new one.", 409)
     if row.status != "QUOTED":
@@ -229,17 +211,6 @@ def accept(db: Session, tenant: models.Tenant, row: models.CardRequest) -> model
 
     row.status = "ACCEPTED"
     row.updated_at = now
-    notifications.enqueue(
-        db,
-        tenant.id,
-        "CARD_REQUEST_ACCEPTED",
-        {
-            "public_ref": row.public_ref,
-            "customer_name": row.customer_name,
-            "requested_name": row.requested_name,
-        },
-        recipient=_notification_recipient(tenant),
-    )
     db.commit()
     db.refresh(row)
     return row
@@ -316,19 +287,19 @@ def convert(
     row.status = "CONVERTED"
     row.reservation_id = reservation.id
     row.updated_at = _now()
-    notifications.enqueue(
-        db,
-        tenant.id,
-        "CARD_REQUEST_CONVERTED",
-        {
-            "public_ref": row.public_ref,
-            "reservation_ref": reservation.public_ref,
-            "expires_at": reservation.expires_at.isoformat(),
-        },
-        recipient=row.email,
-        user_id=row.customer_id,
-        push=True,
-    )
+    if row.customer_id is not None:
+        notifications.enqueue(
+            db,
+            tenant.id,
+            "CARD_REQUEST_CONVERTED",
+            {
+                "public_ref": row.public_ref,
+                "reservation_ref": reservation.public_ref,
+                "expires_at": reservation.expires_at.isoformat(),
+            },
+            user_id=row.customer_id,
+            push=True,
+        )
     db.commit()
     db.refresh(row)
     db.refresh(reservation)
@@ -365,15 +336,15 @@ def expire_due_quotes(db: Session, now: datetime | None = None) -> int:
         for row in due:
             row.status = "EXPIRED"
             row.updated_at = now
-            notifications.enqueue(
-                db,
-                tenant.id,
-                "CARD_REQUEST_EXPIRED",
-                {"public_ref": row.public_ref, "requested_name": row.requested_name},
-                recipient=row.email,
-                user_id=row.customer_id,
-                push=True,
-            )
+            if row.customer_id is not None:
+                notifications.enqueue(
+                    db,
+                    tenant.id,
+                    "CARD_REQUEST_EXPIRED",
+                    {"public_ref": row.public_ref, "requested_name": row.requested_name},
+                    user_id=row.customer_id,
+                    push=True,
+                )
             expired += 1
         if due:
             db.commit()

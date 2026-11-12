@@ -45,7 +45,6 @@ def main() -> None:
             directory_opt_in=True,
             payment_instructions="Pay in store when collecting.",
             contact={"email": args.email},
-            notification_email=args.email,
         )
         db.add(tenant.settings)
 

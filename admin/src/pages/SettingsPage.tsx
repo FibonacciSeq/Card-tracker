@@ -21,7 +21,6 @@ type FormState = {
   archiveRetentionDays: string;
   paymentInstructions: string;
   directoryOptIn: boolean;
-  notificationEmail: string;
   contactEmail: string;
   contactPhone: string;
   contactAddress: string;
@@ -43,7 +42,6 @@ function toForm(shop: StaffShop): FormState {
     archiveRetentionDays: String(shop.archive_retention_days),
     paymentInstructions: shop.payment_instructions,
     directoryOptIn: shop.directory_opt_in,
-    notificationEmail: shop.notification_email ?? "",
     contactEmail: asText(contact.email),
     contactPhone: asText(contact.phone),
     contactAddress: asText(contact.address),
@@ -220,7 +218,6 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
       archive_retention_days: Number.isInteger(retentionDays) ? retentionDays : 0,
       payment_instructions: form.paymentInstructions,
       directory_opt_in: form.directoryOptIn,
-      notification_email: form.notificationEmail.trim() || null,
       scryfall_pricing_enabled: form.scryfallPricingEnabled,
       scryfall_min_price_minor: minimumPriceMinor ?? 0,
       scryfall_markup_percent: Number.isInteger(markupPercent) ? markupPercent : 0,
@@ -318,17 +315,6 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
             <small className="hint">
               Stock is released automatically when a hold is not collected in time. Default is 24 hours.
             </small>
-          </div>
-          <div className="field">
-            <label htmlFor="notification-email">Reservation alert email</label>
-            <input
-              id="notification-email"
-              type="email"
-              value={form.notificationEmail}
-              onChange={(event) => patch({ notificationEmail: event.target.value })}
-              placeholder="orders@yourshop.example"
-            />
-            <small className="hint">New reservations are queued for this address once notifications are enabled.</small>
           </div>
         </fieldset>
 

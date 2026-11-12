@@ -1119,21 +1119,21 @@ def update_reservation_status(
             )
         reservation.status = payload.status
         reservation.updated_at = _now()
-        notifications.enqueue(
-            db,
-            _staff_tenant(user),
-            f"RESERVATION_{payload.status}",
-            {
-                "reservation_id": str(reservation.id),
-                "public_ref": reservation.public_ref,
-                "status": payload.status,
-                "customer_name": reservation.customer_name,
-                "expires_at": reservation.expires_at.isoformat(),
-            },
-            recipient=reservation.email,
-            user_id=reservation.customer_id,
-            push=True,
-        )
+        if reservation.customer_id is not None:
+            notifications.enqueue(
+                db,
+                _staff_tenant(user),
+                f"RESERVATION_{payload.status}",
+                {
+                    "reservation_id": str(reservation.id),
+                    "public_ref": reservation.public_ref,
+                    "status": payload.status,
+                    "customer_name": reservation.customer_name,
+                    "expires_at": reservation.expires_at.isoformat(),
+                },
+                user_id=reservation.customer_id,
+                push=True,
+            )
         db.commit()
         db.refresh(reservation)
 

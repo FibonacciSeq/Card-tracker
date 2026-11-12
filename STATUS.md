@@ -1,10 +1,13 @@
 # Card Tracker platform — status
 
-Last updated: **2026-11-09**
+Last updated: **2026-11-12**
 Latest commit: see `git log -1`
-Working tree: account lifecycle/session-safety work, offline/cache safety,
-Scryfall market-based stock pricing, and stock archiving are implemented and
-verified. Shop Settings reprice existing stock from catalog market prices when
+Working tree: notification rework, account lifecycle/session-safety work,
+offline/cache safety, Scryfall market-based stock pricing, and stock archiving
+are implemented and verified. Email is now reserved for account-security OTP
+codes (sign-in/account creation and email change); all business-event updates
+are in-app notifications plus optional push for signed-in customers, with no
+staff alert emails and no guest deliveries. Shop Settings reprice existing stock from catalog market prices when
 rules change; the nightly worker refreshes prices and recalculates eligible
 stock. Staff can archive all stock for a shop in one action, inspect it in a
 separate archived view, restore it manually or by importing a matching card
@@ -53,9 +56,11 @@ for the original single-shop workflow until the new stack replaces it.
   session persisted in secure device storage and rotated by refresh token; types
   come from the same OpenAPI snapshot.
 - **Workers:** expiry worker (holds and quotes) and notification outbox worker.
-- **Notifications:** transactional outbox with console or SMTP delivery,
-  retry/backoff, and per-tenant iteration so RLS stays enforced. The `none`
-  backend deliberately leaves the outbox untouched instead of dropping mail.
+- **Notifications:** transactional outbox with console or SMTP delivery for
+  account-security OTP codes plus push delivery; business-event updates are
+  in-app rows in the customer feed. Retry/backoff and per-tenant iteration so
+  RLS stays enforced. The `none` backend deliberately leaves the outbox
+  untouched instead of dropping mail.
 
 ---
 
@@ -354,6 +359,30 @@ release QA, the signed-in multi-device smoke, and production app-link
 validation. Printed codes still use the custom scheme, and universal links on a
 public HTTPS domain are configured but not yet validated in production.
 
+### Notification rework — email is OTP-only — 2026-11-12
+
+- Business events no longer send email. Email is reserved for account-security
+  OTP codes: customer sign-in/account creation and email-change verification.
+- Customer event notifications — reservation status changes, quote
+  quoted/declined/expired/converted, and restock available — are in-app rows in
+  the signed-in customer feed plus a push row when the customer allows push.
+  In-app rows are marked sent at creation (the feed is the delivery), so the
+  worker only drains OTP email and push rows.
+- Staff alert emails are gone: `RESERVATION_CREATED`,
+  `CARD_REQUEST_CREATED`, and `CARD_REQUEST_ACCEPTED` no longer enqueue
+  anything. The admin dashboard and queues cover those events. The
+  "Reservation alert email" setting was removed from the staff settings API and
+  the admin Settings page; the database column stays for compatibility.
+- Guests receive nothing: event notifications enqueue only when a customer
+  account owns the row. Guest restock alerts stay pending rather than being
+  marked notified, so they are claimed — and fire on the next restock — once
+  the same email signs in.
+- Mobile copy follows the change: restock alerts say "notify" instead of
+  "email", guests are pointed at sign-in, the email preference toggle was
+  removed from Account (the API field stays for compatibility), and the
+  notifications screen describes push and in-app delivery. SQLite and
+  PostgreSQL suites cover both customer and guest paths at 100% coverage.
+
 ---
 
 ## 3. Verification status
@@ -649,7 +678,7 @@ Implementation and QA task list (in order):
      with the app installed and from a fresh browser; record the tested URLs
      and results.
    - 3.4 Configure production SMTP and push-provider credentials; send and
-     verify OTP, email, and push notifications, including opt-out behavior.
+     verify OTP email and push notifications, including opt-out behavior.
    - **Done when:** real-device links route correctly and the production
      notification path is exercised end to end.
 
@@ -690,7 +719,8 @@ Implementation and QA task list (in order):
      rate-limit events; review operational edge cases with pilot feedback.
    - Move in-process rate limiting to Redis before running multiple API workers.
    - Revisit staff in-app notifications only if pilot workflows require them;
-     customer email and push remain the supported delivery channels today.
+     customer in-app and push notifications remain the supported delivery
+     channels today.
    - **Done when:** observed pilot needs are addressed and multi-worker behavior
      is deliberately supported before scaling.
 
@@ -727,16 +757,19 @@ Implementation and QA task list (in order):
   back to the `cardtracker://` custom scheme, but production domain
   configuration and app-store install paths still need final deploy-time setup.
 - Notification delivery is gated by customer preferences at the worker level,
-  so email and push respect opt-out, quiet hours, and per-channel toggles. The
-  customer delivery log is per-channel: one business event can appear as a
-  separate email and push entry. It returns rendered titles but deliberately
+  so push (and the idle email path) respect opt-out, quiet hours, and
+  per-channel toggles; in-app feed rows always appear for signed-in customers.
+  The customer delivery log is per-channel: one business event can appear as a
+  separate in-app and push entry. It returns rendered titles but deliberately
   omits message bodies so unsubscribe tokens do not leak.
 - Push-device diagnostics show the last sanitized error and failure count on the
   token, and invalid provider tokens are revoked automatically. A customer can
   re-enable delivery by registering the device again.
-- Restock alerts are one-shot and email-based. They can be linked to a customer
-  account or claimed later, and the links now prefer the canonical public app
-  URL while remaining compatible with the custom-scheme fallback.
+- Restock alerts are one-shot and in-app/push-based for signed-in customers.
+  Guest alerts stay pending and are claimed once the same email signs in, so
+  the first restock after signing in fires them. Alert links prefer the
+  canonical public app URL while remaining compatible with the custom-scheme
+  fallback.
 - OTP and guest-create rate limiting is in-process, so it assumes a single API
   worker; the per-email challenge cooldown is also database-backed.
 - The PostgreSQL-only tests skip locally unless the two test URLs are set;

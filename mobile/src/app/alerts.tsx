@@ -73,7 +73,7 @@ export default function AlertsScreen() {
           <Text style={styles.eyebrow}>RESTOCK ALERTS</Text>
           <Text style={styles.title}>We’ll tell you when it’s back.</Text>
           <Text style={styles.subtitle}>
-            These are one-off emails for the exact card variant you asked about. No newsletter.
+            One-off notifications for the exact card variant you asked about. No newsletter.
           </Text>
         </View>
 
@@ -88,7 +88,7 @@ export default function AlertsScreen() {
           <EmptyState
             icon="notifications-outline"
             title="No restock alerts"
-            body="Open a sold-out card at a shop and ask to be emailed when it returns."
+            body="Open a sold-out card at a shop and ask to be notified when it returns."
             actionLabel="Browse shops"
             onAction={() => router.replace("/")}
           />
@@ -157,7 +157,7 @@ export default function AlertsScreen() {
             <Text style={styles.modalTitle}>Remove this alert?</Text>
             <Text style={styles.modalBody}>
               {confirming
-                ? `You will not be emailed when ${confirming.cardName} is back at ${confirming.shopName}.`
+                ? `You will not be notified when ${confirming.cardName} is back at ${confirming.shopName}.`
                 : ""}
             </Text>
             {error ? <Text style={styles.modalError}>{error}</Text> : null}

@@ -111,8 +111,8 @@ export default function NotificationsScreen() {
           <Text style={styles.eyebrow}>NOTIFICATION DELIVERY</Text>
           <Text style={styles.title}>Know what reached you.</Text>
           <Text style={styles.subtitle}>
-            Every email, push, and in-app update is listed with its delivery status. Failed and
-            skipped items stay visible so you can check your settings or this device.
+            Every push and in-app update is listed with its delivery status. Failed and skipped
+            items stay visible so you can check your settings or this device.
           </Text>
         </View>
 

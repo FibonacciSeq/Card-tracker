@@ -717,9 +717,6 @@ function ProfileCard({
   const [displayName, setDisplayName] = useState(customer.display_name ?? "");
   const [phone, setPhone] = useState(customer.phone ?? "");
   const [pushEnabled, setPushEnabled] = useState(customer.push_notifications_enabled ?? true);
-  const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(
-    customer.email_notifications_enabled ?? true,
-  );
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(customer.quiet_hours_enabled ?? false);
   const [notificationsOptOut, setNotificationsOptOut] = useState(
     customer.notifications_opt_out ?? false,
@@ -733,7 +730,6 @@ function ProfileCard({
         display_name: displayName.trim() || null,
         phone: phone.trim() || null,
         push_notifications_enabled: pushEnabled,
-        email_notifications_enabled: emailNotificationsEnabled,
         quiet_hours_enabled: quietHoursEnabled,
         notifications_opt_out: notificationsOptOut,
       });
@@ -764,11 +760,6 @@ function ProfileCard({
         label="Push notifications"
         value={pushEnabled}
         onValueChange={setPushEnabled}
-      />
-      <SettingToggle
-        label="Email notifications"
-        value={emailNotificationsEnabled}
-        onValueChange={setEmailNotificationsEnabled}
       />
       <SettingToggle
         label="Quiet hours"

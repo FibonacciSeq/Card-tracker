@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 
 from app import models
+from app.security import create_customer_access_token
 from app.services import card_requests as request_service
 
 
@@ -20,8 +21,36 @@ def _payload(card, **overrides):
     return payload
 
 
+def _customer(db) -> models.User:
+    user = models.User(
+        tenant_id=None,
+        email="ana@example.com",
+        role="customer",
+        is_active=True,
+        email_verified_at=datetime.now(UTC),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def _customer_headers(user: models.User) -> dict[str, str]:
+    return {"Authorization": f"Bearer {create_customer_access_token(user.id)}"}
+
+
 def _create(client, tenant, card, **overrides):
     response = client.post(f"/v1/shops/{tenant.slug}/card-requests", json=_payload(card, **overrides))
+    assert response.status_code == 201, response.text
+    return response.json()
+
+
+def _create_signed_in(client, tenant, card, customer, **overrides):
+    response = client.post(
+        f"/v1/shops/{tenant.slug}/card-requests",
+        json=_payload(card, **overrides),
+        headers=_customer_headers(customer),
+    )
     assert response.status_code == 201, response.text
     return response.json()
 
@@ -78,7 +107,8 @@ def test_staff_queue_includes_contact_details(client, auth, tenant, card):
 
 
 def test_quote_notifies_the_customer_and_is_audited(client, auth, tenant, card, db):
-    data = _create(client, tenant, card)
+    customer = _customer(db)
+    data = _create_signed_in(client, tenant, card, customer)
     quote = _quote(
         client,
         auth,
@@ -91,18 +121,29 @@ def test_quote_notifies_the_customer_and_is_audited(client, auth, tenant, card, 
     assert body["quote_price"] == {"amount_minor": 275000, "currency": "RSD"}
     assert body["vendor_note"] == "Can have it Friday."
 
-    note = (
-        db.query(models.Notification)
-        .filter_by(kind="CARD_REQUEST_QUOTED")
-        .order_by(models.Notification.id.desc())
-        .first()
-    )
-    assert note is not None
-    assert note.recipient == "ana@example.com"
-    assert note.channel == "email"
+    notes = list(db.query(models.Notification).filter_by(kind="CARD_REQUEST_QUOTED").all())
+    assert {note.channel for note in notes} == {"in_app", "push"}
+    assert all(note.recipient is None for note in notes)
+    assert all(note.user_id == customer.id for note in notes)
 
     audit = client.get("/v1/staff/audit?action=card_request", headers=auth).json()
     assert any(event["action"] == "card_request.quote" for event in audit)
+
+
+def test_guest_requests_get_no_event_notifications(client, auth, tenant, card, db):
+    data = _create(client, tenant, card)
+    assert _quote(client, auth, data["id"]).status_code == 200
+    db.expire_all()
+    assert db.query(models.Notification).count() == 0
+
+    # A guest accepting an expired quote changes the status without notifying.
+    row = db.get(models.CardRequest, uuid.UUID(data["id"]))
+    assert row is not None
+    row.quote_expires_at = datetime.now(UTC) - timedelta(minutes=1)
+    db.commit()
+    assert _accept(client, tenant, data["id"], data["access_token"]).status_code == 409
+    db.expire_all()
+    assert db.query(models.Notification).count() == 0
 
 
 def test_customer_accepts_the_quote(client, auth, tenant, card):
@@ -132,7 +173,8 @@ def test_declined_requests_cannot_be_accepted(client, auth, tenant, card):
 
 
 def test_expired_quote_is_rejected(client, auth, tenant, card, db):
-    data = _create(client, tenant, card)
+    customer = _customer(db)
+    data = _create_signed_in(client, tenant, card, customer)
     row = db.get(models.CardRequest, uuid.UUID(data["id"]))
     assert row is not None
     row.status = "QUOTED"
@@ -152,17 +194,14 @@ def test_expired_quote_is_rejected(client, auth, tenant, card, db):
     assert fetched.json()["status"] == "EXPIRED"
 
     db.expire_all()
-    note = (
-        db.query(models.Notification)
-        .filter_by(kind="CARD_REQUEST_EXPIRED")
-        .order_by(models.Notification.id.desc())
-        .first()
-    )
-    assert note is not None and note.recipient == "ana@example.com"
+    notes = list(db.query(models.Notification).filter_by(kind="CARD_REQUEST_EXPIRED").all())
+    assert {note.channel for note in notes} == {"in_app", "push"}
+    assert all(note.user_id == customer.id for note in notes)
 
 
 def test_expiry_worker_expires_stale_quotes(client, auth, tenant, card, db):
-    data = _create(client, tenant, card)
+    customer = _customer(db)
+    data = _create_signed_in(client, tenant, card, customer)
     row = db.get(models.CardRequest, uuid.UUID(data["id"]))
     assert row is not None
     row.status = "QUOTED"
@@ -176,13 +215,9 @@ def test_expiry_worker_expires_stale_quotes(client, auth, tenant, card, db):
     row = db.get(models.CardRequest, uuid.UUID(data["id"]))
     assert row is not None and row.status == "EXPIRED"
 
-    note = (
-        db.query(models.Notification)
-        .filter_by(kind="CARD_REQUEST_EXPIRED")
-        .order_by(models.Notification.id.desc())
-        .first()
-    )
-    assert note is not None and note.recipient == "ana@example.com"
+    notes = list(db.query(models.Notification).filter_by(kind="CARD_REQUEST_EXPIRED").all())
+    assert {note.channel for note in notes} == {"in_app", "push"}
+    assert all(note.user_id == customer.id for note in notes)
 
 
 def test_quote_rejects_an_expiry_in_the_past(client, auth, tenant, card):
@@ -197,8 +232,9 @@ def test_quote_rejects_an_expiry_in_the_past(client, auth, tenant, card):
     assert "future" in response.json()["detail"]
 
 
-def test_staff_can_decline_an_accepted_request(client, auth, tenant, card):
-    data = _create(client, tenant, card)
+def test_staff_can_decline_an_accepted_request(client, auth, tenant, card, db):
+    customer = _customer(db)
+    data = _create_signed_in(client, tenant, card, customer)
     _quote(client, auth, data["id"])
     assert _accept(client, tenant, data["id"], data["access_token"]).status_code == 200
 
@@ -209,6 +245,11 @@ def test_staff_can_decline_an_accepted_request(client, auth, tenant, card):
     )
     assert declined.status_code == 200, declined.text
     assert declined.json()["status"] == "DECLINED"
+
+    db.expire_all()
+    notes = list(db.query(models.Notification).filter_by(kind="CARD_REQUEST_DECLINED").all())
+    assert {note.channel for note in notes} == {"in_app", "push"}
+    assert all(note.user_id == customer.id for note in notes)
 
 
 def test_expiry_worker_expires_abandoned_accepted_requests(client, auth, tenant, card, db):
@@ -228,7 +269,8 @@ def test_expiry_worker_expires_abandoned_accepted_requests(client, auth, tenant,
 
 
 def test_conversion_creates_a_confirmed_reservation(client, auth, tenant, card, stock, db):
-    data = _create(client, tenant, card, quantity=2)
+    customer = _customer(db)
+    data = _create_signed_in(client, tenant, card, customer, quantity=2)
     _quote(client, auth, data["id"])
     _accept(client, tenant, data["id"], data["access_token"])
 
@@ -252,16 +294,26 @@ def test_conversion_creates_a_confirmed_reservation(client, auth, tenant, card, 
     assert updated_stock.reserved == 2
     assert updated_stock.available == 1
 
-    note = (
-        db.query(models.Notification)
-        .filter_by(kind="CARD_REQUEST_CONVERTED")
-        .order_by(models.Notification.id.desc())
-        .first()
-    )
-    assert note is not None and note.recipient == "ana@example.com"
+    notes = list(db.query(models.Notification).filter_by(kind="CARD_REQUEST_CONVERTED").all())
+    assert {note.channel for note in notes} == {"in_app", "push"}
+    assert all(note.recipient is None for note in notes)
+    assert all(note.user_id == customer.id for note in notes)
 
     audit = client.get("/v1/staff/audit?action=card_request", headers=auth).json()
     assert any(event["action"] == "card_request.convert" for event in audit)
+
+
+def test_guest_conversion_notifies_no_one(client, auth, tenant, card, stock, db):
+    data = _create(client, tenant, card)
+    _quote(client, auth, data["id"])
+    _accept(client, tenant, data["id"], data["access_token"])
+
+    converted = client.post(f"/v1/staff/card-requests/{data['id']}/convert", headers=auth, json={})
+    assert converted.status_code == 200, converted.text
+    assert converted.json()["status"] == "CONVERTED"
+
+    db.expire_all()
+    assert db.query(models.Notification).count() == 0
 
 
 def test_conversion_needs_the_matching_variant_in_stock(client, auth, tenant, card):

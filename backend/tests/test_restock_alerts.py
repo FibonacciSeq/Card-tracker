@@ -1,6 +1,27 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 from app import models
+from app.security import create_customer_access_token
+
+
+def _customer(db, email: str = "reader@example.com") -> models.User:
+    user = models.User(
+        tenant_id=None,
+        email=email,
+        role="customer",
+        is_active=True,
+        email_verified_at=datetime.now(UTC),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def _customer_headers(user: models.User) -> dict[str, str]:
+    return {"Authorization": f"Bearer {create_customer_access_token(user.id)}"}
 
 
 def _subscribe(client, tenant, card, **overrides):
@@ -14,6 +35,27 @@ def _subscribe(client, tenant, card, **overrides):
     }
     payload.update(overrides)
     return client.post(f"/v1/shops/{tenant.slug}/restock-alerts", json=payload)
+
+
+def _subscribe_signed_in(client, tenant, card, customer, **overrides):
+    payload = {
+        "email": customer.email,
+        "name": "Reader",
+        "card_id": str(card.id),
+        "finish": "nonfoil",
+        "condition": "NM",
+        "language": "en",
+    }
+    payload.update(overrides)
+    return client.post(
+        f"/v1/shops/{tenant.slug}/restock-alerts",
+        json=payload,
+        headers=_customer_headers(customer),
+    )
+
+
+def _restock_notes(db) -> list[models.Notification]:
+    return list(db.query(models.Notification).filter_by(kind="RESTOCK_AVAILABLE").all())
 
 
 def _sold_out(db, stock):
@@ -44,7 +86,8 @@ def test_subscribe_is_idempotent_and_shows_on_the_stock_list(client, auth, tenan
 
 def test_restock_notifies_waiting_customers_and_clears_the_count(client, auth, tenant, card, stock, db):
     _sold_out(db, stock)
-    _subscribe(client, tenant, card)
+    customer = _customer(db)
+    _subscribe_signed_in(client, tenant, card, customer)
 
     response = client.post(
         f"/v1/staff/stock/{stock.id}/adjust",
@@ -57,26 +100,44 @@ def test_restock_notifies_waiting_customers_and_clears_the_count(client, auth, t
     alert = db.query(models.RestockAlert).one()
     assert alert.notified_at is not None
 
-    note = (
-        db.query(models.Notification)
-        .filter_by(kind="RESTOCK_AVAILABLE")
-        .order_by(models.Notification.id.desc())
-        .first()
-    )
-    assert note is not None
-    assert note.recipient == "reader@example.com"
-    assert note.channel == "email"
-    assert note.payload["name"] == "Lightning Bolt"
-    assert note.payload["price_minor"] == 125000
+    notes = _restock_notes(db)
+    assert {note.channel for note in notes} == {"in_app", "push"}
+    assert all(note.recipient is None for note in notes)
+    assert all(note.user_id == customer.id for note in notes)
+    in_app = next(note for note in notes if note.channel == "in_app")
+    assert in_app.sent_at is not None
+    assert in_app.payload["name"] == "Lightning Bolt"
+    assert in_app.payload["price_minor"] == 125000
 
     rows = client.get("/v1/staff/stock", headers=auth).json()["items"]
     row = next(item for item in rows if item["stock_id"] == str(stock.id))
     assert row["restock_waiting"] == 0
 
 
-def test_no_notification_when_still_sold_out_or_offline(client, auth, tenant, card, stock, db):
+def test_guest_subscribers_get_no_restock_updates(client, auth, tenant, card, stock, db):
     _sold_out(db, stock)
     _subscribe(client, tenant, card)
+
+    response = client.post(
+        f"/v1/staff/stock/{stock.id}/adjust",
+        json={"delta": 2, "reason": "restock"},
+        headers=auth,
+    )
+    assert response.status_code == 200, response.text
+
+    db.expire_all()
+    alert = db.query(models.RestockAlert).one()
+    # Guests have no app account to notify and event email is reserved for
+    # account security, so their alert stays pending rather than consumed.
+    assert alert.customer_id is None
+    assert alert.notified_at is None
+    assert _restock_notes(db) == []
+
+
+def test_no_notification_when_still_sold_out_or_offline(client, auth, tenant, card, stock, db):
+    _sold_out(db, stock)
+    customer = _customer(db)
+    _subscribe_signed_in(client, tenant, card, customer)
 
     still_zero = client.post(
         f"/v1/staff/stock/{stock.id}/adjust",
@@ -86,7 +147,7 @@ def test_no_notification_when_still_sold_out_or_offline(client, auth, tenant, ca
     assert still_zero.status_code == 200
     db.expire_all()
     assert db.query(models.RestockAlert).one().notified_at is None
-    assert db.query(models.Notification).filter_by(kind="RESTOCK_AVAILABLE").count() == 0
+    assert _restock_notes(db) == []
 
     stock.is_online = False
     db.commit()
@@ -104,7 +165,8 @@ def test_turning_stock_back_online_triggers_restock_alerts(client, auth, tenant,
     stock.quantity = 2
     stock.is_online = False
     db.commit()
-    _subscribe(client, tenant, card)
+    customer = _customer(db)
+    _subscribe_signed_in(client, tenant, card, customer)
 
     response = client.patch(
         f"/v1/staff/stock/{stock.id}",
@@ -115,7 +177,7 @@ def test_turning_stock_back_online_triggers_restock_alerts(client, auth, tenant,
 
     db.expire_all()
     assert db.query(models.RestockAlert).one().notified_at is not None
-    assert db.query(models.Notification).filter_by(kind="RESTOCK_AVAILABLE").count() == 1
+    assert len(_restock_notes(db)) == 2
 
 
 def test_releasing_a_reservation_triggers_restock_alerts(client, tenant, stock, reservation_payload, db):
@@ -126,7 +188,8 @@ def test_releasing_a_reservation_triggers_restock_alerts(client, tenant, stock, 
     created = client.post(f"/v1/shops/{tenant.slug}/reservations", json=reservation_payload)
     assert created.status_code == 201, created.text
     body = created.json()
-    _subscribe(client, tenant, stock.card)
+    customer = _customer(db)
+    _subscribe_signed_in(client, tenant, stock.card, customer)
 
     cancelled = client.post(
         f"/v1/reservations/{body['id']}/cancel",
@@ -136,12 +199,13 @@ def test_releasing_a_reservation_triggers_restock_alerts(client, tenant, stock, 
 
     db.expire_all()
     assert db.query(models.RestockAlert).one().notified_at is not None
-    assert db.query(models.Notification).filter_by(kind="RESTOCK_AVAILABLE").count() == 1
+    assert len(_restock_notes(db)) == 2
 
 
 def test_csv_import_triggers_restock_alerts(client, auth, tenant, card, stock, db):
     _sold_out(db, stock)
-    _subscribe(client, tenant, card)
+    customer = _customer(db)
+    _subscribe_signed_in(client, tenant, card, customer)
 
     body = (
         "card_name,set_code,collector_number,finish,condition,language,quantity,price,currency,is_online\n"
@@ -157,7 +221,7 @@ def test_csv_import_triggers_restock_alerts(client, auth, tenant, card, stock, d
 
     db.expire_all()
     assert db.query(models.RestockAlert).one().notified_at is not None
-    assert db.query(models.Notification).filter_by(kind="RESTOCK_AVAILABLE").count() == 1
+    assert len(_restock_notes(db)) == 2
 
 
 def test_unsubscribe_requires_the_matching_email(client, tenant, card, stock, db):

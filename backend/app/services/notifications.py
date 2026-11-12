@@ -1,8 +1,10 @@
 """Notification outbox helpers and plain-text message rendering.
 
 Notifications are queued inside the same transaction as the business event.
-The delivery worker (``app.workers.notifications``) drains them later, so a
-slow SMTP server never slows down a reservation.
+Event notifications are delivered in-app (the customer feed) plus optional
+push, so a slow SMTP server never slows down a reservation. Email is reserved
+for account-security codes, which the worker delivers straight from the OTP
+challenge tables.
 """
 
 from __future__ import annotations
@@ -25,6 +27,8 @@ def enqueue(
     user_id: uuid.UUID | None = None,
     push: bool = False,
 ) -> models.Notification:
+    # In-app rows are delivered the moment they are created: the customer's
+    # feed is the delivery. Only email and push rows wait for the worker.
     row = models.Notification(
         tenant_id=tenant_id,
         kind=kind,
@@ -32,6 +36,7 @@ def enqueue(
         recipient=recipient,
         user_id=user_id,
         channel="email" if recipient else "in_app",
+        sent_at=None if recipient else models.utcnow(),
     )
     db.add(row)
     if push and user_id is not None:
@@ -71,19 +76,6 @@ def shop_label(tenant: models.Tenant) -> str:
     if tenant.settings and tenant.settings.brand_name:
         return tenant.settings.brand_name
     return tenant.name
-
-
-def staff_recipient(tenant: models.Tenant) -> str | None:
-    """Best available inbox for staff alerts.
-
-    ``notification_email`` is the explicit setting; fall back to the public
-    contact email so a newly seeded shop is not silently alert-less.
-    """
-    if not tenant.settings:
-        return None
-    contact = tenant.settings.contact or {}
-    email = contact.get("email") if isinstance(contact, dict) else None
-    return tenant.settings.notification_email or (str(email).strip() if email else None) or None
 
 
 def _money(amount_minor: int | None, currency: str | None) -> str:

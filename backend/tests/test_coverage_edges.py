@@ -46,25 +46,15 @@ def test_notification_helpers_cover_all_branches():
         id=uuid.uuid4(),
         slug="bolt-shop",
         name="Bolt Shop",
-        settings=SimpleNamespace(brand_name="", notification_email=None, contact=None),
+        settings=SimpleNamespace(brand_name=""),
     )
     assert notifications.shop_label(tenant) == "Bolt Shop"
-    assert notifications.staff_recipient(tenant) is None
 
-    tenant.settings = SimpleNamespace(brand_name="Brand", notification_email="staff@example.com", contact={})
+    tenant.settings.brand_name = "Brand"
     assert notifications.shop_label(tenant) == "Brand"
-    assert notifications.staff_recipient(tenant) == "staff@example.com"
 
-    tenant.settings.contact = {"email": "contact@example.com"}
-    tenant.settings.notification_email = None
-    assert notifications.staff_recipient(tenant) == "contact@example.com"
-
-    tenant.settings.contact = "not-a-dict"
-    assert notifications.staff_recipient(tenant) is None
-
-    no_settings: Any = SimpleNamespace(settings=None)
-    assert notifications.staff_recipient(no_settings) is None
-    assert notifications.shop_label(no_settings) == no_settings.name if hasattr(no_settings, "name") else True
+    no_settings: Any = SimpleNamespace(settings=None, name="No Settings Shop")
+    assert notifications.shop_label(no_settings) == "No Settings Shop"
 
 
 def test_notification_money_when_and_url_helpers():

@@ -246,21 +246,6 @@ def create_reservation(
 
         reservation.total_minor = total
         reservation.updated_at = now
-        notifications.enqueue(
-            db,
-            tenant.id,
-            "RESERVATION_CREATED",
-            {
-                "reservation_id": str(reservation.id),
-                "public_ref": reservation.public_ref,
-                "customer_name": reservation.customer_name,
-                "line_count": len(quantities),
-                "total_minor": total,
-                "currency": reservation.currency,
-                "expires_at": reservation.expires_at.isoformat(),
-            },
-            recipient=notifications.staff_recipient(tenant),
-        )
 
         if idempotency_key:
             db.add(
@@ -485,20 +470,20 @@ def _release(
         reservation.cancel_reason = reason
 
     kind = "RESERVATION_COMPLETED" if sold_any else f"RESERVATION_{new_status}"
-    notifications.enqueue(
-        db,
-        reservation.tenant_id,
-        kind,
-        {
-            "reservation_id": str(reservation.id),
-            "public_ref": reservation.public_ref,
-            "status": reservation.status,
-            "reason": reason,
-        },
-        recipient=reservation.email,
-        user_id=reservation.customer_id,
-        push=True,
-    )
+    if reservation.customer_id is not None:
+        notifications.enqueue(
+            db,
+            reservation.tenant_id,
+            kind,
+            {
+                "reservation_id": str(reservation.id),
+                "public_ref": reservation.public_ref,
+                "status": reservation.status,
+                "reason": reason,
+            },
+            user_id=reservation.customer_id,
+            push=True,
+        )
 
     # Releasing a hold can make a sold-out variant available again. The alert
     # query is a no-op when nobody is waiting, and locks the rows so parallel
@@ -673,19 +658,19 @@ def complete_reservation(
         locked.updated_at = now
 
         kind = ("RESERVATION_COMPLETED" if sold_any else "RESERVATION_CANCELLED") if resolved else "RESERVATION_UPDATED"
-        notifications.enqueue(
-            db,
-            locked.tenant_id,
-            kind,
-            {
-                "reservation_id": str(locked.id),
-                "public_ref": locked.public_ref,
-                "status": locked.status,
-            },
-            recipient=locked.email if resolved else None,
-            user_id=locked.customer_id,
-            push=resolved,
-        )
+        if locked.customer_id is not None:
+            notifications.enqueue(
+                db,
+                locked.tenant_id,
+                kind,
+                {
+                    "reservation_id": str(locked.id),
+                    "public_ref": locked.public_ref,
+                    "status": locked.status,
+                },
+                user_id=locked.customer_id,
+                push=resolved,
+            )
 
         if released_stocks:
             from app.services import restock

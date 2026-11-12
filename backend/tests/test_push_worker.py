@@ -223,6 +223,26 @@ def test_enqueue_adds_a_push_row_for_a_signed_in_customer(db, tenant, customer):
     assert push_row.recipient is None
 
 
+def test_enqueue_marks_in_app_rows_sent_immediately(db, tenant, customer):
+    notifications.enqueue(
+        db,
+        tenant.id,
+        "RESERVATION_READY",
+        {"public_ref": "R-XYZ"},
+        user_id=customer.id,
+        push=True,
+    )
+    db.commit()
+
+    rows = list(db.scalars(select(models.Notification)).all())
+    assert {row.channel for row in rows} == {"in_app", "push"}
+    in_app = next(row for row in rows if row.channel == "in_app")
+    push_row = next(row for row in rows if row.channel == "push")
+    # The feed is the delivery for in-app rows; push still waits for the worker.
+    assert in_app.sent_at is not None
+    assert push_row.sent_at is None
+
+
 def test_enqueue_does_not_add_push_without_a_customer(db, tenant):
     notifications.enqueue(
         db,

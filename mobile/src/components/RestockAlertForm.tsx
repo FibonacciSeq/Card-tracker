@@ -145,8 +145,12 @@ export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
           <Text style={styles.title}>{saved ? "You’re on the list" : "Notify me"}</Text>
           <Text style={styles.body}>
             {saved
-              ? `We’ll email ${saved.email} when this exact variant is back at ${shopName}.`
-              : `Get one email from ${shopName} when this variant is back in stock.`}
+              ? saved.source === "account"
+                ? `We’ll notify you when this exact variant is back at ${shopName}.`
+                : `Saved for ${saved.email}. Sign in with this email to get notified when it’s back.`
+              : token
+                ? "Get a notification when this variant is back in stock."
+                : "Save this variant and we’ll notify you once you sign in with this email."}
           </Text>
         </View>
       </View>
@@ -210,14 +214,14 @@ export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
         />
       ) : (
         <PrimaryButton
-          label="Email me when it’s back"
+          label={token ? "Notify me when it’s back" : "Save this alert"}
           loading={submitting}
           onPress={() => void subscribe()}
         />
       )}
 
       <Text style={styles.note}>
-        This is a single back-in-stock email, not a newsletter. You can remove it at any time.
+        A single back-in-stock notification, not a newsletter. You can remove it at any time.
       </Text>
     </View>
   );

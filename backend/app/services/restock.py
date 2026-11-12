@@ -36,7 +36,13 @@ def notify_waiting(db, tenant: models.Tenant, stock: models.Stock) -> int:
 
     card = stock.card
     now = models.utcnow()
+    notified = 0
     for alert in alerts:
+        if alert.customer_id is None:
+            # Guests have no account to notify, and event email is reserved
+            # for account security. Their alert stays pending until they sign
+            # in and claim it.
+            continue
         notifications.enqueue(
             db,
             tenant.id,
@@ -54,9 +60,9 @@ def notify_waiting(db, tenant: models.Tenant, stock: models.Stock) -> int:
                 "shop_slug": tenant.slug,
                 "alert_id": str(alert.id),
             },
-            recipient=alert.email,
             user_id=alert.customer_id,
             push=True,
         )
         alert.notified_at = now
-    return len(alerts)
+        notified += 1
+    return notified

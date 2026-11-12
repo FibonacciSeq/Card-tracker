@@ -2033,8 +2033,6 @@ export interface components {
             allow_backorders?: boolean | null;
             /** Directory Opt In */
             directory_opt_in?: boolean | null;
-            /** Notification Email */
-            notification_email?: string | null;
             /** Scryfall Pricing Enabled */
             scryfall_pricing_enabled?: boolean | null;
             /** Scryfall Min Price Minor */
@@ -2294,8 +2292,6 @@ export interface components {
              * @default false
              */
             directory_opt_in: boolean;
-            /** Notification Email */
-            notification_email?: string | null;
             /**
              * Scryfall Pricing Enabled
              * @default false

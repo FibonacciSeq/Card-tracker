@@ -1,12 +1,32 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 from app import models
+from app.security import create_customer_access_token
 
 
-def _create(client, tenant, payload):
-    return client.post(f"/v1/shops/{tenant.slug}/reservations", json=payload)
+def _create(client, tenant, payload, headers=None):
+    return client.post(f"/v1/shops/{tenant.slug}/reservations", json=payload, headers=headers or {})
+
+
+def _signed_in_customer(db) -> models.User:
+    user = models.User(
+        tenant_id=None,
+        email="marko@example.com",
+        role="customer",
+        is_active=True,
+        email_verified_at=datetime.now(UTC),
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def _customer_headers(user: models.User) -> dict[str, str]:
+    return {"Authorization": f"Bearer {create_customer_access_token(user.id)}"}
 
 
 def test_staff_login(client, tenant, owner):
@@ -63,7 +83,8 @@ def test_staff_cannot_reduce_below_reserved(client, tenant, stock, reservation_p
 
 
 def test_complete_reservation_sells_stock(client, tenant, stock, reservation_payload, auth, db):
-    created = _create(client, tenant, reservation_payload).json()
+    customer = _signed_in_customer(db)
+    created = _create(client, tenant, reservation_payload, headers=_customer_headers(customer)).json()
 
     response = client.post(
         f"/v1/staff/reservations/{created['id']}/complete",
@@ -82,14 +103,10 @@ def test_complete_reservation_sells_stock(client, tenant, stock, reservation_pay
     movements = db.query(models.StockMovement).filter_by(stock_id=stock.id).all()
     assert any(m.kind == "SELL" for m in movements)
 
-    note = (
-        db.query(models.Notification)
-        .filter_by(kind="RESERVATION_COMPLETED")
-        .order_by(models.Notification.id.desc())
-        .first()
-    )
-    assert note is not None
-    assert note.recipient == "marko@example.com"
+    notes = list(db.query(models.Notification).filter_by(kind="RESERVATION_COMPLETED").all())
+    assert {note.channel for note in notes} == {"in_app", "push"}
+    assert all(note.recipient is None for note in notes)
+    assert all(note.user_id == customer.id for note in notes)
 
 
 def test_partial_completion_releases_the_rest(client, tenant, stock, reservation_payload, auth, db):
@@ -180,6 +197,23 @@ def test_confirm_then_ready(client, tenant, stock, reservation_payload, auth):
     assert response.json()["status"] == "READY"
 
 
+def test_status_updates_notify_the_customer_in_app(client, tenant, stock, reservation_payload, auth, db):
+    customer = _signed_in_customer(db)
+    created = _create(client, tenant, reservation_payload, headers=_customer_headers(customer)).json()
+
+    response = client.post(
+        f"/v1/staff/reservations/{created['id']}/status",
+        json={"status": "CONFIRMED"},
+        headers=auth,
+    )
+    assert response.status_code == 200, response.text
+
+    notes = list(db.query(models.Notification).filter_by(kind="RESERVATION_CONFIRMED").all())
+    assert {note.channel for note in notes} == {"in_app", "push"}
+    assert all(note.recipient is None for note in notes)
+    assert all(note.user_id == customer.id for note in notes)
+
+
 def test_staff_cannot_read_other_reservation(client, tenant, other_tenant, stock, reservation_payload, owner, db):
     created = _create(client, tenant, reservation_payload).json()
 
@@ -221,38 +255,24 @@ def test_staff_reservation_view_includes_contact_details(client, tenant, stock, 
     assert data["note"] == reservation_payload["note"]
 
 
-def test_settings_include_alert_email_but_public_profile_does_not(client, tenant, auth, db):
-    tenant.settings.notification_email = "orders@example.com"
-    db.add(tenant.settings)
-    db.commit()
-
+def test_settings_do_not_leak_staff_only_fields_to_the_public_profile(client, tenant, auth):
     staff = client.get("/v1/staff/settings", headers=auth)
     assert staff.status_code == 200
-    assert staff.json()["notification_email"] == "orders@example.com"
+    assert "notification_email" not in staff.json()
 
     public = client.get(f"/v1/shops/{tenant.slug}")
     assert public.status_code == 200
     assert "notification_email" not in public.json()
 
 
-def test_staff_alert_falls_back_to_the_public_contact_email(client, tenant, stock, reservation_payload, db):
-    tenant.settings.notification_email = None
-    tenant.settings.contact = {"email": "hello@shop.example"}
-    db.add(tenant.settings)
-    db.commit()
-
+def test_no_staff_alert_is_queued_when_a_reservation_is_created(client, tenant, stock, reservation_payload, db):
     created = _create(client, tenant, reservation_payload)
     assert created.status_code == 201, created.text
 
     db.expire_all()
-    note = (
-        db.query(models.Notification)
-        .filter_by(kind="RESERVATION_CREATED")
-        .order_by(models.Notification.id.desc())
-        .first()
-    )
-    assert note is not None
-    assert note.recipient == "hello@shop.example"
+    # Shop-side event emails are gone: new reservations surface in the
+    # admin dashboard instead of an inbox.
+    assert db.query(models.Notification).filter_by(kind="RESERVATION_CREATED").count() == 0
 
 
 def test_new_stock_rejects_a_mismatched_currency(client, tenant, card, auth):
