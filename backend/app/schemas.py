@@ -108,6 +108,8 @@ class ReservationLineOut(BaseModel):
     completed_quantity: int
     cancelled_quantity: int
     unit_price: Money
+    image_small: str | None = None
+    image_normal: str | None = None
 
 
 class ReservationOut(BaseModel):
@@ -445,6 +447,8 @@ class CardRequestOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     access_token: str | None = None
+    image_small: str | None = None
+    image_normal: str | None = None
 
 
 class MeCardRequestOut(CardRequestOut):

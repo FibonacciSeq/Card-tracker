@@ -1177,7 +1177,7 @@ def complete_reservation(
 def _get_card_request(db: Session, tenant_id: uuid.UUID, request_id: uuid.UUID) -> models.CardRequest:
     row = db.scalar(
         select(models.CardRequest)
-        .options(joinedload(models.CardRequest.reservation))
+        .options(joinedload(models.CardRequest.reservation), joinedload(models.CardRequest.card))
         .where(
             models.CardRequest.id == request_id,
             models.CardRequest.tenant_id == tenant_id,
@@ -1198,7 +1198,7 @@ def list_card_requests(
     tenant = _tenant(db, user)
     stmt = (
         select(models.CardRequest)
-        .options(joinedload(models.CardRequest.reservation))
+        .options(joinedload(models.CardRequest.reservation), joinedload(models.CardRequest.card))
         .where(models.CardRequest.tenant_id == _staff_tenant(user))
         .order_by(models.CardRequest.created_at.desc())
         .limit(limit)

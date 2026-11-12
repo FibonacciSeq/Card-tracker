@@ -95,6 +95,7 @@ def staff_stock_out(stock: models.Stock, sold_30d: int = 0, restock_waiting: int
 
 
 def line_out(line: models.ReservationLine) -> schemas.ReservationLineOut:
+    card = line.card
     return schemas.ReservationLineOut(
         line_id=line.id,
         stock_id=line.stock_id,
@@ -108,6 +109,8 @@ def line_out(line: models.ReservationLine) -> schemas.ReservationLineOut:
         completed_quantity=line.completed_quantity,
         cancelled_quantity=line.cancelled_quantity,
         unit_price=schemas.Money(amount_minor=line.unit_price_minor, currency=line.currency),
+        image_small=card.image_small,
+        image_normal=card.image_normal,
     )
 
 
@@ -195,6 +198,8 @@ def card_request_out(
         created_at=row.created_at,
         updated_at=row.updated_at,
         access_token=access_token,
+        image_small=row.card.image_small if row.card else None,
+        image_normal=row.card.image_normal if row.card else None,
     )
 
 

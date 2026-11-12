@@ -257,9 +257,25 @@ function ReservationBody({ reservation }: { reservation: StaffReservation }) {
             {reservation.lines.map((line) => (
               <tr key={line.line_id}>
                 <td>
-                  <div>{line.name}</div>
-                  <div className="muted small">
-                    {line.set_code.toUpperCase()} #{line.collector_number} · {line.condition} · {line.finish}
+                  <div className="card-cell">
+                    {line.image_small ? (
+                      <img
+                        className="card-cell__thumb"
+                        src={line.image_small}
+                        alt=""
+                        width={40}
+                        height={56}
+                        loading="lazy"
+                      />
+                    ) : (
+                      <span className="card-cell__thumb card-cell__thumb--placeholder" aria-hidden="true" />
+                    )}
+                    <div>
+                      <div>{line.name}</div>
+                      <div className="muted small">
+                        {line.set_code.toUpperCase()} #{line.collector_number} · {line.condition} · {line.finish}
+                      </div>
+                    </div>
                   </div>
                 </td>
                 <td className="num">{line.quantity}</td>
@@ -361,8 +377,27 @@ function ReservationBody({ reservation }: { reservation: StaffReservation }) {
                   return (
                     <tr key={line.line_id}>
                       <td>
-                        {line.name}
-                        <div className="muted small">{left} still held</div>
+                        <div className="card-cell">
+                          {line.image_small ? (
+                            <img
+                              className="card-cell__thumb"
+                              src={line.image_small}
+                              alt=""
+                              width={40}
+                              height={56}
+                              loading="lazy"
+                            />
+                          ) : (
+                            <span
+                              className="card-cell__thumb card-cell__thumb--placeholder"
+                              aria-hidden="true"
+                            />
+                          )}
+                          <div>
+                            {line.name}
+                            <div className="muted small">{left} still held</div>
+                          </div>
+                        </div>
                       </td>
                       <td>
                         <input

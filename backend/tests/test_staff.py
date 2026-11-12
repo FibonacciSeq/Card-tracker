@@ -253,6 +253,8 @@ def test_staff_reservation_view_includes_contact_details(client, tenant, stock, 
     assert data["customer_email"] == reservation_payload["customer"]["email"]
     assert data["customer_phone"] == reservation_payload["customer"]["phone"]
     assert data["note"] == reservation_payload["note"]
+    assert data["lines"][0]["image_small"] == "https://example.test/bolt-small.jpg"
+    assert data["lines"][0]["image_normal"] == "https://example.test/bolt-normal.jpg"
 
 
 def test_settings_do_not_leak_staff_only_fields_to_the_public_profile(client, tenant, auth):

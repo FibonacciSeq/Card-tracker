@@ -316,6 +316,7 @@ class ReservationLine(Base):
 
     reservation: Mapped[Reservation] = relationship(back_populates="lines")
     stock: Mapped[Stock | None] = relationship()
+    card: Mapped[Card] = relationship()
 
     @property
     def remaining(self) -> int:
@@ -413,6 +414,7 @@ class CardRequest(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     reservation: Mapped[Reservation | None] = relationship()
+    card: Mapped[Card | None] = relationship()
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "public_ref", name="uq_card_requests_ref"),

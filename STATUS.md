@@ -12,8 +12,10 @@ rules change; the nightly worker refreshes prices and recalculates eligible
 stock. Staff can archive all stock for a shop in one action, inspect it in a
 separate archived view, restore it manually or by importing a matching card
 again, permanently delete individual archived cards or the whole archive, and
-set an automatic retention period for archived stock. The local platform
-database contains the Scryfall catalog required for stock imports. Step 5 is in
+set an automatic retention period for archived stock. Admin reservation and
+special-order views now show catalog card thumbnails so staff can identify a
+card at a glance. The local platform database contains the Scryfall catalog
+required for stock imports. Step 5 is in
 release-readiness work: validate production links and delivery, then run a
 signed-in multi-device smoke before a small pilot.
 
@@ -359,6 +361,18 @@ release QA, the signed-in multi-device smoke, and production app-link
 validation. Printed codes still use the custom scheme, and universal links on a
 public HTTPS domain are configured but not yet validated in production.
 
+### Card thumbnails in admin reservations and special orders — 2026-11-12
+
+- Admin reservation details show a thumbnail on every card line, in both the
+  read-only list and the complete-at-counter table. Special orders show the
+  linked catalog card's thumbnail in the queue row and the quote/decline/convert
+  panel.
+- Reservation line and card-request responses now carry `image_small` and
+  `image_normal` from the catalog card. The card request keeps the image nullable
+  for free-text requests that have no catalog card.
+- The quote form hint now says the customer is notified in the app instead of
+  being emailed, matching the OTP-only email flow.
+
 ### Notification rework — email is OTP-only — 2026-11-12
 
 - Business events no longer send email. Email is reserved for account-security
@@ -390,8 +404,8 @@ public HTTPS domain are configured but not yet validated in production.
 | Check | Result |
 | --- | --- |
 | Root Python suite (`pytest --cov --cov-branch`) | **351 passed, 100% line/branch** |
-| Backend SQLite suite | **347 passed, 13 PostgreSQL tests skipped, 100%** |
-| Backend with PostgreSQL test URLs | **278 passed, 100%** (277 before the added per-device logout test) |
+| Backend SQLite suite | **370 passed, 13 PostgreSQL tests skipped, 100%** |
+| Backend with PostgreSQL test URLs | **383 passed, 100%** |
 | Backend PostgreSQL-only suite (RLS, customer claiming, notifications, locking) | **13 passed** |
 | Backend account/session tests | `tests/test_customer_accounts.py`: **22 passed**, including per-device logout |
 | Backend Ruff lint / changed-file formatting / mypy | Clean |

@@ -104,6 +104,8 @@ def test_staff_queue_includes_contact_details(client, auth, tenant, card):
     assert row["customer_email"] == "ana@example.com"
     assert row["customer_phone"] == "+38160111222"
     assert row["customer_note"] == "Would prefer a clean copy."
+    assert row["image_small"] == "https://example.test/bolt-small.jpg"
+    assert row["image_normal"] == "https://example.test/bolt-normal.jpg"
 
 
 def test_quote_notifies_the_customer_and_is_audited(client, auth, tenant, card, db):
@@ -366,3 +368,5 @@ def test_free_text_requests_do_not_need_a_catalog_card(client, tenant):
     assert response.status_code == 201
     assert response.json()["requested_name"] == "Mox Pearl"
     assert response.json()["card_id"] is None
+    assert response.json()["image_small"] is None
+    assert response.json()["image_normal"] is None

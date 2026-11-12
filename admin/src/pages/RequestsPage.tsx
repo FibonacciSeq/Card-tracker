@@ -104,17 +104,33 @@ export function RequestsPage() {
                       <div className="muted small">{item.customer_email}</div>
                     </td>
                     <td>
-                      <div>{item.requested_name}</div>
-                      <div className="muted small">
-                        {[
-                          item.set_code.toUpperCase(),
-                          item.collector_number ? `#${item.collector_number}` : "",
-                          item.condition,
-                          item.finish,
-                          item.language,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
+                      <div className="card-cell">
+                        {item.image_small ? (
+                          <img
+                            className="card-cell__thumb"
+                            src={item.image_small}
+                            alt=""
+                            width={40}
+                            height={56}
+                            loading="lazy"
+                          />
+                        ) : (
+                          <span className="card-cell__thumb card-cell__thumb--placeholder" aria-hidden="true" />
+                        )}
+                        <div>
+                          <div>{item.requested_name}</div>
+                          <div className="muted small">
+                            {[
+                              item.set_code.toUpperCase(),
+                              item.collector_number ? `#${item.collector_number}` : "",
+                              item.condition,
+                              item.finish,
+                              item.language,
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                          </div>
+                        </div>
                       </div>
                     </td>
                     <td className="num">{item.quantity}</td>
@@ -226,6 +242,35 @@ function RequestPanel({
         </button>
       </div>
 
+      <div className="card-cell">
+        {item.image_small ? (
+          <img
+            className="card-cell__thumb"
+            src={item.image_small}
+            alt=""
+            width={40}
+            height={56}
+            loading="lazy"
+          />
+        ) : (
+          <span className="card-cell__thumb card-cell__thumb--placeholder" aria-hidden="true" />
+        )}
+        <div>
+          <div className="card-cell__name">{item.requested_name}</div>
+          <div className="muted small">
+            {[
+              item.set_code.toUpperCase(),
+              item.collector_number ? `#${item.collector_number}` : "",
+              item.condition,
+              item.finish,
+              item.language,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </div>
+        </div>
+      </div>
+
       {item.customer_note ? <p className="note">“{item.customer_note}”</p> : null}
       {item.vendor_note ? <p className="muted small">Previous note: {item.vendor_note}</p> : null}
 
@@ -325,7 +370,7 @@ function QuoteForm({ item, onDone }: { item: StaffCardRequest; onDone: () => voi
         >
           {quote.isPending ? "Sending…" : "Send quote"}
         </button>
-        <span className="hint">The customer is emailed and can accept or cancel the quote.</span>
+        <span className="hint">The customer is notified in the app and can accept or cancel the quote.</span>
       </div>
     </form>
   );

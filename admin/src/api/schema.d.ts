@@ -1307,6 +1307,10 @@ export interface components {
             updated_at: string;
             /** Access Token */
             access_token?: string | null;
+            /** Image Small */
+            image_small?: string | null;
+            /** Image Normal */
+            image_normal?: string | null;
         };
         /** ClaimedOut */
         ClaimedOut: {
@@ -1582,6 +1586,10 @@ export interface components {
             updated_at: string;
             /** Access Token */
             access_token?: string | null;
+            /** Image Small */
+            image_small?: string | null;
+            /** Image Normal */
+            image_normal?: string | null;
             /** Shop */
             shop: {
                 [key: string]: unknown;
@@ -1852,6 +1860,10 @@ export interface components {
             /** Cancelled Quantity */
             cancelled_quantity: number;
             unit_price: components["schemas"]["Money"];
+            /** Image Small */
+            image_small?: string | null;
+            /** Image Normal */
+            image_normal?: string | null;
         };
         /** ReservationOut */
         ReservationOut: {
@@ -2148,6 +2160,10 @@ export interface components {
             updated_at: string;
             /** Access Token */
             access_token?: string | null;
+            /** Image Small */
+            image_small?: string | null;
+            /** Image Normal */
+            image_normal?: string | null;
             /**
              * Customer Email
              * Format: email
