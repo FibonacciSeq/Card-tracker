@@ -39,6 +39,9 @@ export type StaffCardRequest = Schemas["StaffCardRequestOut"];
 export type QuoteIn = Schemas["QuoteIn"];
 export type DeclineIn = Schemas["DeclineIn"];
 export type ConvertIn = Schemas["ConvertIn"];
+export type StaffNotification = Schemas["StaffNotificationOut"];
+export type StaffNotificationList = Schemas["StaffNotificationListOut"];
+export type NotificationReadResult = Schemas["NotificationReadResultOut"];
 
 /** Statuses that still hold stock. Mirrors the backend ACTIVE_STATUSES tuple. */
 export const ACTIVE_STATUSES = ["REQUESTED", "CONFIRMED", "READY"] as const;

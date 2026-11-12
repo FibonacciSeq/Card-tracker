@@ -82,6 +82,17 @@ test("confirms and completes a reservation, releasing the hold", async ({ page, 
   const reservation = (await created.json()) as { public_ref: string };
 
   await signIn(page);
+  const notificationsLink = page
+    .getByRole("navigation", { name: "Main" })
+    .getByRole("link", { name: /^Notifications/ });
+  await expect(notificationsLink.locator(".nav__badge")).toBeVisible();
+  await notificationsLink.click();
+  await expect(page.getByRole("heading", { name: "Notifications" })).toBeVisible();
+  const notifications = page.getByTestId("notification-list");
+  await expect(notifications).toContainText(`New reservation ${reservation.public_ref}`);
+  await page.getByRole("button", { name: "Mark all read" }).click();
+  await expect(page.getByRole("button", { name: "Mark all read" })).toBeDisabled();
+
   await nav(page, "Reservations").click();
   await page.getByRole("tab", { name: "Requested" }).click();
 

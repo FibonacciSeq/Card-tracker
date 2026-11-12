@@ -247,6 +247,21 @@ def create_reservation(
         reservation.total_minor = total
         reservation.updated_at = now
 
+        notifications.enqueue_staff(
+            db,
+            tenant.id,
+            "RESERVATION_CREATED",
+            {
+                "reservation_id": str(reservation.id),
+                "public_ref": reservation.public_ref,
+                "customer_name": reservation.customer_name,
+                "line_count": len(quantities),
+                "total_minor": reservation.total_minor,
+                "currency": reservation.currency,
+                "expires_at": reservation.expires_at.isoformat(),
+            },
+        )
+
         if idempotency_key:
             db.add(
                 models.IdempotencyKey(
@@ -483,6 +498,21 @@ def _release(
             },
             user_id=reservation.customer_id,
             push=True,
+        )
+
+    if actor_id is None:
+        staff_kind = "RESERVATION_EXPIRED" if new_status == "EXPIRED" else "RESERVATION_CANCELLED"
+        notifications.enqueue_staff(
+            db,
+            reservation.tenant_id,
+            staff_kind,
+            {
+                "reservation_id": str(reservation.id),
+                "public_ref": reservation.public_ref,
+                "customer_name": reservation.customer_name,
+                "status": reservation.status,
+                "reason": reason,
+            },
         )
 
     # Releasing a hold can make a sold-out variant available again. The alert

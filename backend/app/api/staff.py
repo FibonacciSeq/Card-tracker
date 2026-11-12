@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
@@ -48,6 +48,22 @@ def _tenant(db: Session, account: models.User) -> models.Tenant:
     if tenant is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shop not found")
     return tenant
+
+
+def _staff_notification_out(
+    row: models.Notification,
+    tenant: models.Tenant,
+) -> schemas.StaffNotificationOut:
+    title, body = notifications.render_staff(row, tenant)
+    return schemas.StaffNotificationOut(
+        id=row.id,
+        kind=row.kind,
+        title=title,
+        body=body,
+        link=notifications.staff_link(row.kind),
+        read_at=row.read_at,
+        created_at=row.created_at,
+    )
 
 
 @router.post("/auth/login", response_model=schemas.TokenOut)
@@ -92,6 +108,81 @@ def me(user: models.User = Depends(get_current_staff)):
         role=user.role,
         display_name=user.display_name,
     )
+
+
+@router.get("/notifications", response_model=schemas.StaffNotificationListOut)
+def list_staff_notifications(
+    cursor: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    user: models.User = Depends(get_current_staff),
+    db: Session = Depends(get_db),
+):
+    tenant = _tenant(db, user)
+    base = (
+        models.Notification.tenant_id == _staff_tenant(user),
+        models.Notification.user_id == user.id,
+        models.Notification.channel == "in_app",
+    )
+    unread_count = db.scalar(
+        select(func.count(models.Notification.id)).where(*base, models.Notification.read_at.is_(None))
+    )
+    stmt = select(models.Notification).where(*base)
+    if cursor is not None:
+        stmt = stmt.where(models.Notification.id < cursor)
+    rows = list(db.scalars(stmt.order_by(models.Notification.id.desc()).limit(limit + 1)).all())
+
+    next_cursor = None
+    if len(rows) > limit:
+        next_cursor = str(rows[limit - 1].id)
+        rows = rows[:limit]
+
+    return schemas.StaffNotificationListOut(
+        items=[_staff_notification_out(row, tenant) for row in rows],
+        next_cursor=next_cursor,
+        unread_count=int(unread_count or 0),
+    )
+
+
+@router.post("/notifications/read-all", response_model=schemas.NotificationReadResultOut)
+def mark_all_staff_notifications_read(
+    user: models.User = Depends(get_current_staff),
+    db: Session = Depends(get_db),
+):
+    result = db.execute(
+        update(models.Notification)
+        .where(
+            models.Notification.tenant_id == _staff_tenant(user),
+            models.Notification.user_id == user.id,
+            models.Notification.channel == "in_app",
+            models.Notification.read_at.is_(None),
+        )
+        .values(read_at=_now())
+    )
+    db.commit()
+    return schemas.NotificationReadResultOut(updated=int(result.rowcount or 0))
+
+
+@router.post("/notifications/{notification_id}/read", response_model=schemas.StaffNotificationOut)
+def mark_staff_notification_read(
+    notification_id: int,
+    user: models.User = Depends(get_current_staff),
+    db: Session = Depends(get_db),
+):
+    row = db.scalar(
+        select(models.Notification).where(
+            models.Notification.id == notification_id,
+            models.Notification.tenant_id == _staff_tenant(user),
+            models.Notification.user_id == user.id,
+            models.Notification.channel == "in_app",
+        )
+    )
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
+    if row.read_at is None:
+        row.read_at = _now()
+        db.commit()
+        db.refresh(row)
+    return _staff_notification_out(row, _tenant(db, user))
 
 
 def _user_out(row: models.User) -> schemas.StaffUserOut:

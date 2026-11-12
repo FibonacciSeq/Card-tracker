@@ -284,6 +284,26 @@ class MeNotificationListOut(BaseModel):
     next_cursor: str | None = None
 
 
+class StaffNotificationOut(BaseModel):
+    id: int
+    kind: str
+    title: str
+    body: str
+    link: str
+    read_at: datetime | None = None
+    created_at: datetime
+
+
+class StaffNotificationListOut(BaseModel):
+    items: list[StaffNotificationOut]
+    next_cursor: str | None = None
+    unread_count: int
+
+
+class NotificationReadResultOut(BaseModel):
+    updated: int
+
+
 class MeReservationSummaryOut(ReservationSummaryOut):
     shop: dict
 

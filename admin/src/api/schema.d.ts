@@ -674,6 +674,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/staff/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Staff Notifications */
+        get: operations["list_staff_notifications_v1_staff_notifications_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/notifications/read-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark All Staff Notifications Read */
+        post: operations["mark_all_staff_notifications_read_v1_staff_notifications_read_all_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/staff/notifications/{notification_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Mark Staff Notification Read */
+        post: operations["mark_staff_notification_read_v1_staff_notifications__notification_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/staff/users": {
         parameters: {
             query?: never;
@@ -1726,6 +1777,11 @@ export interface components {
             /** Currency */
             currency: string;
         };
+        /** NotificationReadResultOut */
+        NotificationReadResultOut: {
+            /** Updated */
+            updated: number;
+        };
         /** OtpRequestIn */
         OtpRequestIn: {
             /**
@@ -2207,6 +2263,35 @@ export interface components {
             role: string;
             /** Display Name */
             display_name?: string | null;
+        };
+        /** StaffNotificationListOut */
+        StaffNotificationListOut: {
+            /** Items */
+            items: components["schemas"]["StaffNotificationOut"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+            /** Unread Count */
+            unread_count: number;
+        };
+        /** StaffNotificationOut */
+        StaffNotificationOut: {
+            /** Id */
+            id: number;
+            /** Kind */
+            kind: string;
+            /** Title */
+            title: string;
+            /** Body */
+            body: string;
+            /** Link */
+            link: string;
+            /** Read At */
+            read_at?: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /**
          * StaffReservationOut
@@ -3943,6 +4028,89 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StaffMeOut"];
+                };
+            };
+        };
+    };
+    list_staff_notifications_v1_staff_notifications_get: {
+        parameters: {
+            query?: {
+                cursor?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffNotificationListOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    mark_all_staff_notifications_read_v1_staff_notifications_read_all_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationReadResultOut"];
+                };
+            };
+        };
+    };
+    mark_staff_notification_read_v1_staff_notifications__notification_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                notification_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffNotificationOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

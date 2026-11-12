@@ -4,6 +4,7 @@ import { Layout } from "./components/Layout";
 import { ActivityPage } from "./pages/ActivityPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { LoginPage } from "./pages/LoginPage";
+import { NotificationsPage } from "./pages/NotificationsPage";
 import { RequestsPage } from "./pages/RequestsPage";
 import { ReservationsPage } from "./pages/ReservationsPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -17,6 +18,7 @@ export function App() {
       <Route element={<RequireAuth />}>
         <Route element={<Layout />}>
           <Route index element={<DashboardPage />} />
+          <Route path="notifications" element={<NotificationsPage />} />
           <Route path="stock" element={<StockPage />} />
           <Route path="reservations" element={<ReservationsPage />} />
           <Route path="requests" element={<RequestsPage />} />

@@ -12,6 +12,8 @@ from __future__ import annotations
 import uuid
 from typing import Literal
 
+from sqlalchemy import select
+
 from app import models
 from app.config import settings
 from app.security import restock_unsubscribe_token
@@ -50,6 +52,23 @@ def enqueue(
             )
         )
     return row
+
+
+def enqueue_staff(db, tenant_id: uuid.UUID, kind: str, payload: dict) -> list[models.Notification]:
+    """Queue an in-app notification for every active staff member of a shop.
+
+    Staff notifications are per-user so each team member has their own unread
+    state. They never use the email or push channels: the admin inbox is the
+    delivery, and an owner may be working from a desktop browser.
+    """
+    user_ids = db.scalars(
+        select(models.User.id).where(
+            models.User.tenant_id == tenant_id,
+            models.User.role.in_(("owner", "staff")),
+            models.User.is_active.is_(True),
+        )
+    ).all()
+    return [enqueue(db, tenant_id, kind, payload, user_id=user_id) for user_id in user_ids]
 
 
 SKIPPED_DELIVERY_ERRORS = (
@@ -288,5 +307,83 @@ def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
         if unsubscribe:
             body += f"\nYou asked {shop} to tell you when this card returned.\nUnsubscribe: {unsubscribe}\n"
         return subject, body
+
+    return f"{shop}: {kind}", str(payload)
+
+
+def staff_link(kind: str) -> str:
+    """Admin page that lets staff act on a queued notification."""
+    if kind.startswith("RESERVATION_"):
+        return "/reservations"
+    if kind.startswith("CARD_REQUEST_"):
+        return "/requests"
+    return "/"
+
+
+def render_staff(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
+    """Return (title, body) for the staff inbox.
+
+    These are deliberately action-oriented: each message says what changed and
+    where the owner or team member can respond.
+    """
+    payload = row.payload or {}
+    shop = shop_label(tenant)
+    ref = payload.get("public_ref", "")
+    kind = row.kind
+
+    if kind == "RESERVATION_CREATED":
+        title = f"New reservation {ref}"
+        body = (
+            f"{payload.get('customer_name', 'A customer')} is holding "
+            f"{payload.get('line_count', 0)} card line(s) worth "
+            f"{_money(payload.get('total_minor'), payload.get('currency'))}.\n"
+            f"Confirm it before {_when(payload.get('expires_at'))}."
+        )
+        return title, body
+
+    if kind == "RESERVATION_CANCELLED":
+        title = f"Reservation {ref} cancelled"
+        reason = payload.get("reason")
+        body = (
+            f"{payload.get('customer_name', 'The customer')} cancelled the hold. "
+            f"The cards are back in stock."
+        )
+        if reason:
+            body += f" Reason: {reason}."
+        return title, body
+
+    if kind == "RESERVATION_EXPIRED":
+        title = f"Reservation {ref} expired"
+        body = (
+            f"The hold for {payload.get('customer_name', 'a customer')} expired "
+            f"and the cards are back in stock."
+        )
+        return title, body
+
+    if kind == "CARD_REQUEST_CREATED":
+        title = f"New special order {ref}"
+        body = (
+            f"{payload.get('customer_name', 'A customer')} asked for "
+            f"{payload.get('quantity', 1)} x {payload.get('requested_name', 'a card')}.\n"
+            f"Open Special orders to quote or decline it."
+        )
+        return title, body
+
+    if kind == "CARD_REQUEST_ACCEPTED":
+        title = f"Quote {ref} accepted"
+        body = (
+            f"{payload.get('customer_name', 'The customer')} accepted the quote for "
+            f"{payload.get('requested_name', 'a card')}.\n"
+            f"Source the card, add it to stock, then convert the request."
+        )
+        return title, body
+
+    if kind == "CARD_REQUEST_CANCELLED":
+        title = f"Special order {ref} cancelled"
+        body = (
+            f"{payload.get('customer_name', 'The customer')} cancelled the request for "
+            f"{payload.get('requested_name', 'a card')}."
+        )
+        return title, body
 
     return f"{shop}: {kind}", str(payload)

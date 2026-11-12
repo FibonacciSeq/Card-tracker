@@ -132,11 +132,16 @@ def test_quote_notifies_the_customer_and_is_audited(client, auth, tenant, card, 
     assert any(event["action"] == "card_request.quote" for event in audit)
 
 
-def test_guest_requests_get_no_event_notifications(client, auth, tenant, card, db):
+def test_guest_requests_get_no_customer_notifications(client, auth, tenant, card, db, owner):
     data = _create(client, tenant, card)
     assert _quote(client, auth, data["id"]).status_code == 200
     db.expire_all()
-    assert db.query(models.Notification).count() == 0
+    notes = list(db.query(models.Notification).all())
+    assert notes
+    assert {note.kind for note in notes} == {"CARD_REQUEST_CREATED"}
+    assert all(note.user_id == owner.id for note in notes)
+    assert all(note.channel == "in_app" for note in notes)
+    assert all(note.recipient is None for note in notes)
 
     # A guest accepting an expired quote changes the status without notifying.
     row = db.get(models.CardRequest, uuid.UUID(data["id"]))
@@ -145,7 +150,7 @@ def test_guest_requests_get_no_event_notifications(client, auth, tenant, card, d
     db.commit()
     assert _accept(client, tenant, data["id"], data["access_token"]).status_code == 409
     db.expire_all()
-    assert db.query(models.Notification).count() == 0
+    assert db.query(models.Notification).count() == len(notes)
 
 
 def test_customer_accepts_the_quote(client, auth, tenant, card):
@@ -305,7 +310,7 @@ def test_conversion_creates_a_confirmed_reservation(client, auth, tenant, card, 
     assert any(event["action"] == "card_request.convert" for event in audit)
 
 
-def test_guest_conversion_notifies_no_one(client, auth, tenant, card, stock, db):
+def test_guest_conversion_notifies_no_customer(client, auth, tenant, card, stock, db, owner):
     data = _create(client, tenant, card)
     _quote(client, auth, data["id"])
     _accept(client, tenant, data["id"], data["access_token"])
@@ -315,7 +320,10 @@ def test_guest_conversion_notifies_no_one(client, auth, tenant, card, stock, db)
     assert converted.json()["status"] == "CONVERTED"
 
     db.expire_all()
-    assert db.query(models.Notification).count() == 0
+    assert db.query(models.Notification).filter_by(kind="CARD_REQUEST_CONVERTED").count() == 0
+    notes = list(db.query(models.Notification).all())
+    assert {note.kind for note in notes} == {"CARD_REQUEST_CREATED", "CARD_REQUEST_ACCEPTED"}
+    assert all(note.user_id == owner.id for note in notes)
 
 
 def test_conversion_needs_the_matching_variant_in_stock(client, auth, tenant, card):

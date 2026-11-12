@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { request } from "./client";
 import type {
   AuditEvent,
@@ -8,7 +8,10 @@ import type {
   QuoteIn,
   StaffCardRequest,
   Dashboard,
+  NotificationReadResult,
   ScryfallRefresh,
+  StaffNotification,
+  StaffNotificationList,
   StaffReservation,
   ReservationSummary,
   SettingsUpdate,
@@ -37,6 +40,8 @@ export const queryKeys = {
   team: ["team"] as const,
   audit: (action: string) => ["audit", action] as const,
   requests: (status: string) => ["requests", status] as const,
+  notificationsList: ["notifications", "list"] as const,
+  notificationsUnread: ["notifications", "unread"] as const,
 };
 
 export function useDashboard() {
@@ -278,6 +283,47 @@ export function useCardRequests(status: string) {
       const query = params.size ? `?${params.toString()}` : "";
       return request<StaffCardRequest[]>(`/v1/staff/card-requests${query}`, { signal });
     },
+  });
+}
+
+export function useStaffNotifications() {
+  return useInfiniteQuery({
+    queryKey: queryKeys.notificationsList,
+    queryFn: ({ pageParam, signal }) => {
+      const params = new URLSearchParams({ limit: "50" });
+      if (pageParam) params.set("cursor", pageParam);
+      return request<StaffNotificationList>(`/v1/staff/notifications?${params.toString()}`, { signal });
+    },
+    initialPageParam: null as string | null,
+    getNextPageParam: (last) => last.next_cursor,
+    refetchInterval: 20_000,
+  });
+}
+
+export function useStaffUnreadCount() {
+  return useQuery({
+    queryKey: queryKeys.notificationsUnread,
+    queryFn: () => request<StaffNotificationList>("/v1/staff/notifications?limit=1"),
+    select: (data) => data.unread_count,
+    refetchInterval: 20_000,
+  });
+}
+
+export function useMarkNotificationRead() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) =>
+      request<StaffNotification>(`/v1/staff/notifications/${id}/read`, { method: "POST" }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["notifications"] }),
+  });
+}
+
+export function useMarkAllNotificationsRead() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      request<NotificationReadResult>("/v1/staff/notifications/read-all", { method: "POST" }),
+    onSuccess: () => client.invalidateQueries({ queryKey: ["notifications"] }),
   });
 }
 

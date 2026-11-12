@@ -1,13 +1,14 @@
 # Card Tracker platform — status
 
-Last updated: **2026-11-12**
+Last updated: **2026-11-13**
 Latest commit: see `git log -1`
-Working tree: notification rework, account lifecycle/session-safety work,
-offline/cache safety, Scryfall market-based stock pricing, and stock archiving
-are implemented and verified. Email is now reserved for account-security OTP
-codes (sign-in/account creation and email change); all business-event updates
-are in-app notifications plus optional push for signed-in customers, with no
-staff alert emails and no guest deliveries. Shop Settings reprice existing stock from catalog market prices when
+Working tree: owner/staff in-app notification inbox, account lifecycle/session-safety
+work, offline/cache safety, Scryfall market-based stock pricing, and stock
+archiving are implemented and verified. Email is now reserved for
+account-security OTP codes (sign-in/account creation and email change); all
+business-event updates are in-app notifications plus optional push for
+signed-in customers, and owners/staff get a per-user inbox in the admin app.
+No staff alert emails or guest customer deliveries are sent. Shop Settings reprice existing stock from catalog market prices when
 rules change; the nightly worker refreshes prices and recalculates eligible
 stock. Staff can archive all stock for a shop in one action, inspect it in a
 separate archived view, restore it manually or by importing a matching card
@@ -60,9 +61,10 @@ for the original single-shop workflow until the new stack replaces it.
 - **Workers:** expiry worker (holds and quotes) and notification outbox worker.
 - **Notifications:** transactional outbox with console or SMTP delivery for
   account-security OTP codes plus push delivery; business-event updates are
-  in-app rows in the customer feed. Retry/backoff and per-tenant iteration so
-  RLS stays enforced. The `none` backend deliberately leaves the outbox
-  untouched instead of dropping mail.
+  in-app rows in the customer feed. Owners/staff get a per-user admin inbox for
+  new reservations, customer cancellations/expiry, and special-order activity.
+  Retry/backoff and per-tenant iteration keep RLS enforced. The `none` backend
+  deliberately leaves the outbox untouched instead of dropping mail.
 
 ---
 
@@ -383,19 +385,39 @@ public HTTPS domain are configured but not yet validated in production.
   In-app rows are marked sent at creation (the feed is the delivery), so the
   worker only drains OTP email and push rows.
 - Staff alert emails are gone: `RESERVATION_CREATED`,
-  `CARD_REQUEST_CREATED`, and `CARD_REQUEST_ACCEPTED` no longer enqueue
-  anything. The admin dashboard and queues cover those events. The
-  "Reservation alert email" setting was removed from the staff settings API and
-  the admin Settings page; the database column stays for compatibility.
-- Guests receive nothing: event notifications enqueue only when a customer
-  account owns the row. Guest restock alerts stay pending rather than being
-  marked notified, so they are claimed — and fire on the next restock — once
-  the same email signs in.
+  `CARD_REQUEST_CREATED`, and `CARD_REQUEST_ACCEPTED` no longer send email. The
+  admin dashboard and queues cover those events. The "Reservation alert email"
+  setting was removed from the staff settings API and the admin Settings page;
+  the database column stays for compatibility.
+- Guest customers receive no customer notifications: event notifications
+  enqueue only when a customer account owns the row. Staff still get admin-inbox
+  rows for guest reservations and requests. Guest restock alerts stay pending
+  rather than being marked notified, so they are claimed — and fire on the next
+  restock — once the same email signs in.
 - Mobile copy follows the change: restock alerts say "notify" instead of
   "email", guests are pointed at sign-in, the email preference toggle was
   removed from Account (the API field stays for compatibility), and the
   notifications screen describes push and in-app delivery. SQLite and
   PostgreSQL suites cover both customer and guest paths at 100% coverage.
+
+### Owner/staff notification inbox — 2026-11-13
+
+- Staff notifications reuse the existing `notifications` table with one
+  `channel="in_app"` row per active owner/staff account, so each team member has
+  their own read state. No migration or new audience column was needed.
+- The inbox is queued inside the business transaction for: new customer
+  reservations, customer-cancelled reservations, expired holds, new special
+  orders, customer-accepted quotes, and customer-cancelled special orders.
+  Actions taken by staff themselves do not notify staff.
+- `GET /v1/staff/notifications` returns rendered titles/bodies, the action link,
+  cursor pagination, and the unread count. `POST /v1/staff/notifications/{id}/read`
+  and `POST /v1/staff/notifications/read-all` clear unread state with tenant and
+  user filtering.
+- The admin app has a Notifications page and nav entry with an unread badge. The
+  badge and list poll every 20 seconds; read-all is idempotent.
+- Backend coverage includes rendering for every staff event kind, pagination,
+  unread counts, tenant/user isolation, inactive-staff filtering, and event
+  enqueue paths for reservations, expiry, and special orders.
 
 ---
 
@@ -404,19 +426,20 @@ public HTTPS domain are configured but not yet validated in production.
 | Check | Result |
 | --- | --- |
 | Root Python suite (`pytest --cov --cov-branch`) | **351 passed, 100% line/branch** |
-| Backend SQLite suite | **370 passed, 13 PostgreSQL tests skipped, 100%** |
-| Backend with PostgreSQL test URLs | **383 passed, 100%** |
+| Backend SQLite suite | **384 passed, 13 PostgreSQL tests skipped, 100%** |
+| Backend with PostgreSQL test URLs | **397 passed, 100%** |
 | Backend PostgreSQL-only suite (RLS, customer claiming, notifications, locking) | **13 passed** |
+| Backend staff notification tests | `tests/test_staff_notifications.py`: inbox listing/pagination, unread counts, read/read-all, tenant isolation, inactive staff, and every event render/enqueue path |
 | Backend account/session tests | `tests/test_customer_accounts.py`: **22 passed**, including per-device logout |
 | Backend Ruff lint / changed-file formatting / mypy | Clean |
 | Alembic `0008_customer_notifications` downgrade → upgrade | Verified on SQLite and PostgreSQL; notification customer RLS policy and push diagnostics recreated; `alembic_version` widened to 64 chars |
 | Admin ESLint / TypeScript / production build | Clean |
 | Admin Vitest logic/API-client coverage | **23 passed, 100% statements/branches/functions/lines** |
 | Admin production source maps | **0** `.map` files in `dist/` |
-| Admin Playwright suite | **9 passed** |
+| Admin Playwright suite | **9 passed** including owner notifications, unread badge, mark-all-read, card thumbnails, and the archive flows |
 | Generated API snapshot/types | `admin/openapi.json` and admin/mobile `schema.d.ts` regenerated; archive delete/retention endpoints and fields present, no manual type edits |
 | Mobile TypeScript / ESLint | Clean |
-| Mobile Vitest `src/lib/**` coverage | **49 passed, 100% statements/branches/functions/lines** |
+| Mobile Vitest `src/lib/**` coverage | **54 passed, 100% statements/branches/functions/lines** |
 | Mobile `expo-doctor` | **20/20** |
 | Mobile production web export | Passed |
 | Mobile browser smoke test (local API) | Passed: scan entry → storefront → card detail → add to hold; restock subscribe/unsubscribe; special-order create → staff quote → customer accept |
@@ -510,6 +533,25 @@ Latest archive deletion/retention validation (2026-11-09):
   statements/branches/functions/lines.
 - `admin/openapi.json` and both generated `schema.d.ts` files were regenerated
   from the app; no manual API type edits.
+
+Latest staff notification validation (2026-11-13):
+
+- Backend suite: **384 passed, 13 PostgreSQL-only skipped**, 100% statement and
+  branch coverage. The new `tests/test_staff_notifications.py` covers inbox
+  listing and pagination, unread counts, mark-one/mark-all read, tenant and user
+  isolation, inactive-staff filtering, every staff render kind, and the
+  reservation/expiry/special-order enqueue paths.
+- Backend with PostgreSQL test URLs: **397 passed**, 100% statement and branch
+  coverage.
+- Admin ESLint, TypeScript, Vitest (**23 passed**, 100% logic coverage), and
+  production build: clean. Playwright smoke suite: **9 passed**, including the
+  staff notification list, unread badge, mark-all-read, and all prior flows.
+- Mobile TypeScript and ESLint: clean; Vitest **54 passed**, 100%
+  statements/branches/functions/lines.
+- Root Ruff lint/format and mypy: clean.
+- `admin/openapi.json` and both generated `schema.d.ts` files were regenerated
+  from the running app; the staff notification endpoints and schemas are
+  present with no manual API type edits.
 
 The Python coverage floors are 100% line and branch for both the root and
 backend suites. Admin and mobile keep their explicitly included logic/API
@@ -732,9 +774,9 @@ Implementation and QA task list (in order):
    - Add monitoring for notification failures, token expiration, and
      rate-limit events; review operational edge cases with pilot feedback.
    - Move in-process rate limiting to Redis before running multiple API workers.
-   - Revisit staff in-app notifications only if pilot workflows require them;
-     customer in-app and push notifications remain the supported delivery
-     channels today.
+   - Monitor staff notification volume and add per-event preferences if the
+     pilot inbox becomes noisy; customer in-app and push notifications remain
+     the primary delivery channels.
    - **Done when:** observed pilot needs are addressed and multi-worker behavior
      is deliberately supported before scaling.
 

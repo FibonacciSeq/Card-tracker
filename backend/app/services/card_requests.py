@@ -97,6 +97,19 @@ def create(
     )
     db.add(row)
     db.flush()
+    notifications.enqueue_staff(
+        db,
+        tenant.id,
+        "CARD_REQUEST_CREATED",
+        {
+            "request_id": str(row.id),
+            "public_ref": row.public_ref,
+            "customer_name": row.customer_name,
+            "requested_name": row.requested_name,
+            "quantity": row.quantity,
+            "customer_note": row.customer_note,
+        },
+    )
     db.commit()
     db.refresh(row)
     return row, token
@@ -211,6 +224,17 @@ def accept(db: Session, tenant: models.Tenant, row: models.CardRequest) -> model
 
     row.status = "ACCEPTED"
     row.updated_at = now
+    notifications.enqueue_staff(
+        db,
+        tenant.id,
+        "CARD_REQUEST_ACCEPTED",
+        {
+            "request_id": str(row.id),
+            "public_ref": row.public_ref,
+            "customer_name": row.customer_name,
+            "requested_name": row.requested_name,
+        },
+    )
     db.commit()
     db.refresh(row)
     return row
@@ -221,6 +245,17 @@ def cancel(db: Session, tenant: models.Tenant, row: models.CardRequest) -> model
         raise CardRequestError("invalid_status", f"Cannot cancel a {row.status.lower()} request.", 409)
     row.status = "CANCELLED"
     row.updated_at = _now()
+    notifications.enqueue_staff(
+        db,
+        tenant.id,
+        "CARD_REQUEST_CANCELLED",
+        {
+            "request_id": str(row.id),
+            "public_ref": row.public_ref,
+            "customer_name": row.customer_name,
+            "requested_name": row.requested_name,
+        },
+    )
     db.commit()
     db.refresh(row)
     return row

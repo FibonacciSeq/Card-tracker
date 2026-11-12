@@ -267,14 +267,21 @@ def test_settings_do_not_leak_staff_only_fields_to_the_public_profile(client, te
     assert "notification_email" not in public.json()
 
 
-def test_no_staff_alert_is_queued_when_a_reservation_is_created(client, tenant, stock, reservation_payload, db):
+def test_staff_get_an_in_app_alert_when_a_reservation_is_created(
+    client, tenant, stock, reservation_payload, db, owner
+):
     created = _create(client, tenant, reservation_payload)
     assert created.status_code == 201, created.text
 
     db.expire_all()
-    # Shop-side event emails are gone: new reservations surface in the
-    # admin dashboard instead of an inbox.
-    assert db.query(models.Notification).filter_by(kind="RESERVATION_CREATED").count() == 0
+    # Shop-side events no longer send email: the owner's admin inbox is the
+    # delivery, so there is one in-app row per active staff account.
+    notes = list(db.query(models.Notification).filter_by(kind="RESERVATION_CREATED").all())
+    assert len(notes) == 1
+    assert notes[0].user_id == owner.id
+    assert notes[0].channel == "in_app"
+    assert notes[0].recipient is None
+    assert notes[0].sent_at is not None
 
 
 def test_new_stock_rejects_a_mismatched_currency(client, tenant, card, auth):
