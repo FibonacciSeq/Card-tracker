@@ -4,15 +4,36 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import CursorResult, func, or_, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app import models, schemas, serializers
 from app.config import settings
+from app.constants import (
+    CARD_REQUEST_ACTIVE_STATUSES,
+    DEFAULT_CURRENCY,
+    DEFAULT_ROUNDING_INCREMENT_MINOR,
+    MAX_STOCK_IMPORT_BYTES,
+    MINOR_UNITS_PER_MAJOR,
+    RESERVATION_ACTIVE_STATUSES,
+    SALE_MOVEMENT_KINDS,
+    STAFF_CARD_SEARCH_MAX_PAGE_SIZE,
+    STAFF_CARD_SEARCH_PAGE_SIZE,
+    STAFF_MAX_PAGE_SIZE,
+    STAFF_PAGE_SIZE,
+    STAFF_REQUEST_MAX_PAGE_SIZE,
+    STAFF_REQUEST_PAGE_SIZE,
+    STAFF_RESERVATION_MAX_PAGE_SIZE,
+    STAFF_RESERVATION_PAGE_SIZE,
+    STAFF_ROLES,
+    STAFF_STOCK_MAX_PAGE_SIZE,
+    STAFF_STOCK_PAGE_SIZE,
+)
 from app.db import get_db, set_tenant_context
 from app.deps import get_current_staff, require_owner
 from app.security import create_access_token, hash_password, verify_password
@@ -22,10 +43,6 @@ from app.services import exchange_rates as exchange_rate_service
 from app.services import reservations as reservation_service
 
 router = APIRouter(prefix="/v1/staff", tags=["staff"])
-
-
-def _now() -> datetime:
-    return datetime.now(UTC)
 
 
 def _day_start(timezone_name: str) -> datetime:
@@ -84,7 +101,7 @@ def login(payload: schemas.StaffLoginIn, request: Request, db: Session = Depends
         select(models.User).where(
             models.User.tenant_id == tenant.id,
             func.lower(models.User.email) == str(payload.email).lower(),
-            models.User.role.in_(("owner", "staff")),
+            models.User.role.in_(STAFF_ROLES),
         )
     )
     if (
@@ -113,7 +130,7 @@ def me(user: models.User = Depends(get_current_staff)):
 @router.get("/notifications", response_model=schemas.StaffNotificationListOut)
 def list_staff_notifications(
     cursor: int | None = Query(default=None, ge=1),
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: int = Query(default=STAFF_PAGE_SIZE, ge=1, le=STAFF_MAX_PAGE_SIZE),
     user: models.User = Depends(get_current_staff),
     db: Session = Depends(get_db),
 ):
@@ -156,10 +173,10 @@ def mark_all_staff_notifications_read(
             models.Notification.channel == "in_app",
             models.Notification.read_at.is_(None),
         )
-        .values(read_at=_now())
+        .values(read_at=models.utcnow())
     )
     db.commit()
-    return schemas.NotificationReadResultOut(updated=int(result.rowcount or 0))
+    return schemas.NotificationReadResultOut(updated=int(cast(CursorResult[Any], result).rowcount or 0))
 
 
 @router.post("/notifications/{notification_id}/read", response_model=schemas.StaffNotificationOut)
@@ -179,7 +196,7 @@ def mark_staff_notification_read(
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Notification not found")
     if row.read_at is None:
-        row.read_at = _now()
+        row.read_at = models.utcnow()
         db.commit()
         db.refresh(row)
     return _staff_notification_out(row, _tenant(db, user))
@@ -201,7 +218,7 @@ def _get_shop_user(db: Session, tenant_id: uuid.UUID, user_id: uuid.UUID) -> mod
         select(models.User).where(
             models.User.id == user_id,
             models.User.tenant_id == tenant_id,
-            models.User.role.in_(("owner", "staff")),
+            models.User.role.in_(STAFF_ROLES),
         )
     )
     if row is None:
@@ -233,7 +250,7 @@ def list_users(
         select(models.User)
         .where(
             models.User.tenant_id == _staff_tenant(user),
-            models.User.role.in_(("owner", "staff")),
+            models.User.role.in_(STAFF_ROLES),
         )
         .order_by(func.lower(models.User.email))
     ).all()
@@ -346,7 +363,7 @@ def update_user(
 def list_audit_events(
     action: str | None = Query(default=None, max_length=80),
     entity_type: str | None = Query(default=None, max_length=40),
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: int = Query(default=STAFF_PAGE_SIZE, ge=1, le=STAFF_MAX_PAGE_SIZE),
     user: models.User = Depends(require_owner),
     db: Session = Depends(get_db),
 ):
@@ -381,7 +398,7 @@ def list_audit_events(
 @router.get("/cards", response_model=list[schemas.CardOut])
 def search_cards(
     query: str | None = Query(default=None, max_length=200),
-    limit: int = Query(default=25, ge=1, le=100),
+    limit: int = Query(default=STAFF_CARD_SEARCH_PAGE_SIZE, ge=1, le=STAFF_CARD_SEARCH_MAX_PAGE_SIZE),
     user: models.User = Depends(get_current_staff),
     db: Session = Depends(get_db),
 ):
@@ -398,8 +415,8 @@ def search_cards(
     return [serializers.card_out(card) for card in db.scalars(stmt).all()]
 
 
-def _sold_30d(db: Session, tenant_id: uuid.UUID) -> dict[uuid.UUID, int]:
-    since = _now() - timedelta(days=30)
+def _sold_in_window(db: Session, tenant_id: uuid.UUID) -> dict[uuid.UUID, int]:
+    since = models.utcnow() - timedelta(days=settings.dashboard_sold_window_days)
     rows = db.execute(
         select(
             models.StockMovement.stock_id,
@@ -407,7 +424,7 @@ def _sold_30d(db: Session, tenant_id: uuid.UUID) -> dict[uuid.UUID, int]:
         )
         .where(
             models.StockMovement.tenant_id == tenant_id,
-            models.StockMovement.kind.in_(("SELL", "SALE")),
+            models.StockMovement.kind.in_(SALE_MOVEMENT_KINDS),
             models.StockMovement.created_at >= since,
         )
         .group_by(models.StockMovement.stock_id)
@@ -420,7 +437,7 @@ def list_stock(
     query: str | None = Query(default=None, max_length=200),
     only_online: bool = Query(default=False),
     archived: bool = Query(default=False),
-    limit: int = Query(default=200, ge=1, le=500),
+    limit: int = Query(default=STAFF_STOCK_PAGE_SIZE, ge=1, le=STAFF_STOCK_MAX_PAGE_SIZE),
     user: models.User = Depends(get_current_staff),
     db: Session = Depends(get_db),
 ):
@@ -457,7 +474,7 @@ def list_stock(
         if only_online:
             stmt = stmt.where(models.Stock.is_online.is_(True))
 
-    sold = _sold_30d(db, tenant_id)
+    sold = _sold_in_window(db, tenant_id)
     waiting_rows = db.execute(
         select(
             models.RestockAlert.card_id,
@@ -492,7 +509,7 @@ def list_stock(
     return schemas.StaffStockListOut(items=items)
 
 
-MAX_IMPORT_BYTES = 5 * 1024 * 1024
+MAX_IMPORT_BYTES = MAX_STOCK_IMPORT_BYTES
 
 
 @router.get("/stock/export.csv")
@@ -682,7 +699,7 @@ def archive_all_stock(
             )
         ).all()
     )
-    now = _now()
+    now = models.utcnow()
     reserved = 0
     for stock in rows:
         reserved += stock.reserved
@@ -849,7 +866,7 @@ def create_stock(
         existing.price_minor = payload.price_minor
         existing.currency = currency
         existing.is_online = payload.is_online
-        existing.updated_at = _now()
+        existing.updated_at = models.utcnow()
         if delta:
             db.add(
                 models.StockMovement(
@@ -950,7 +967,7 @@ def restore_stock(
     stock = _get_stock(db, _staff_tenant(user), stock_id, allow_archived=True)
     if stock.archived_at is not None:
         stock.archived_at = None
-        stock.updated_at = _now()
+        stock.updated_at = models.utcnow()
         restock.notify_waiting(db, _tenant(db, user), stock)
         audit.record(
             db,
@@ -991,7 +1008,7 @@ def update_stock(
         stock.price_minor = payload.price_minor
     if payload.is_online is not None:
         stock.is_online = payload.is_online
-    stock.updated_at = _now()
+    stock.updated_at = models.utcnow()
 
     if delta:
         db.add(
@@ -1044,7 +1061,7 @@ def adjust_stock(
         )
 
     stock.quantity = new_quantity
-    stock.updated_at = _now()
+    stock.updated_at = models.utcnow()
     db.add(
         models.StockMovement(
             tenant_id=_staff_tenant(user),
@@ -1090,7 +1107,7 @@ def sell_stock(
         )
 
     stock.quantity -= payload.quantity
-    stock.updated_at = _now()
+    stock.updated_at = models.utcnow()
     db.add(
         models.StockMovement(
             tenant_id=_staff_tenant(user),
@@ -1123,7 +1140,7 @@ def sell_stock(
 def list_reservations(
     status_filter: str | None = Query(default=None, alias="status", max_length=20),
     query: str | None = Query(default=None, max_length=200),
-    limit: int = Query(default=100, ge=1, le=300),
+    limit: int = Query(default=STAFF_RESERVATION_PAGE_SIZE, ge=1, le=STAFF_RESERVATION_MAX_PAGE_SIZE),
     user: models.User = Depends(get_current_staff),
     db: Session = Depends(get_db),
 ):
@@ -1209,7 +1226,7 @@ def update_reservation_status(
                 detail=f"Cannot change {reservation.status} to {payload.status}",
             )
         reservation.status = payload.status
-        reservation.updated_at = _now()
+        reservation.updated_at = models.utcnow()
         if reservation.customer_id is not None:
             notifications.enqueue(
                 db,
@@ -1282,7 +1299,7 @@ def _get_card_request(db: Session, tenant_id: uuid.UUID, request_id: uuid.UUID) 
 @router.get("/card-requests", response_model=list[schemas.StaffCardRequestOut])
 def list_card_requests(
     status_filter: str | None = Query(default=None, alias="status", max_length=20),
-    limit: int = Query(default=200, ge=1, le=500),
+    limit: int = Query(default=STAFF_REQUEST_PAGE_SIZE, ge=1, le=STAFF_REQUEST_MAX_PAGE_SIZE),
     user: models.User = Depends(get_current_staff),
     db: Session = Depends(get_db),
 ):
@@ -1380,7 +1397,7 @@ def dashboard(
     db: Session = Depends(get_db),
 ):
     tenant = _tenant(db, user)
-    now = _now()
+    now = models.utcnow()
     today_start = _day_start(tenant.timezone)
 
     pending = db.scalar(
@@ -1396,13 +1413,13 @@ def dashboard(
         .select_from(models.Reservation)
         .where(
             models.Reservation.tenant_id == _staff_tenant(user),
-            models.Reservation.status.in_(reservation_service.ACTIVE_STATUSES),
+            models.Reservation.status.in_(RESERVATION_ACTIVE_STATUSES),
         )
     )
     today_sales = db.scalar(
         select(func.coalesce(func.sum(-models.StockMovement.on_hand_delta), 0)).where(
             models.StockMovement.tenant_id == _staff_tenant(user),
-            models.StockMovement.kind.in_(("SELL", "SALE")),
+            models.StockMovement.kind.in_(SALE_MOVEMENT_KINDS),
             models.StockMovement.created_at >= today_start,
         )
     )
@@ -1413,7 +1430,7 @@ def dashboard(
             models.Stock.tenant_id == _staff_tenant(user),
             models.Stock.archived_at.is_(None),
             models.Stock.is_online.is_(True),
-            (models.Stock.quantity - models.Stock.reserved) <= 2,
+            (models.Stock.quantity - models.Stock.reserved) <= settings.dashboard_low_stock_threshold,
         )
     )
     open_requests = db.scalar(
@@ -1421,7 +1438,7 @@ def dashboard(
         .select_from(models.CardRequest)
         .where(
             models.CardRequest.tenant_id == _staff_tenant(user),
-            models.CardRequest.status.in_(card_request_service.ACTIVE_STATUSES),
+            models.CardRequest.status.in_(CARD_REQUEST_ACTIVE_STATUSES),
         )
     )
     stale = db.scalar(
@@ -1431,7 +1448,7 @@ def dashboard(
             models.Stock.tenant_id == _staff_tenant(user),
             models.Stock.archived_at.is_(None),
             models.Stock.is_online.is_(True),
-            models.Stock.updated_at < now - timedelta(days=7),
+            models.Stock.updated_at < now - timedelta(days=settings.dashboard_stale_stock_days),
         )
     )
 
@@ -1440,7 +1457,7 @@ def dashboard(
         active_reservations=int(active or 0),
         open_requests=int(open_requests or 0),
         today_sales_minor=int(today_sales or 0),
-        currency=tenant.currency if tenant else "EUR",
+        currency=tenant.currency if tenant else DEFAULT_CURRENCY,
         low_stock=int(low_stock or 0),
         stale_stock=int(stale or 0),
     )
@@ -1483,7 +1500,7 @@ def update_settings(
             "enabled": current.get("enabled") is True,
             "minimum_price_minor": current.get("minimum_price_minor", 0),
             "markup_percent": current.get("markup_percent", 0),
-            "rounding_increment_minor": current.get("rounding_increment_minor", 500),
+            "rounding_increment_minor": current.get("rounding_increment_minor", DEFAULT_ROUNDING_INCREMENT_MINOR),
         }
         if "scryfall_pricing_enabled" in changes:
             pricing["enabled"] = changes.pop("scryfall_pricing_enabled")
@@ -1492,7 +1509,7 @@ def update_settings(
         if "scryfall_markup_percent" in changes:
             pricing["markup_percent"] = changes.pop("scryfall_markup_percent")
         if "scryfall_rounding_increment" in changes:
-            pricing["rounding_increment_minor"] = changes.pop("scryfall_rounding_increment") * 100
+            pricing["rounding_increment_minor"] = changes.pop("scryfall_rounding_increment") * MINOR_UNITS_PER_MAJOR
         settings_row.scryfall_pricing = pricing
         changes["scryfall_pricing"] = pricing
 

@@ -2636,7 +2636,7 @@ export interface components {
              * @default staff
              * @enum {string}
              */
-            role: "staff" | "owner";
+            role: "owner" | "staff";
         };
         /** StaffUserOut */
         StaffUserOut: {
@@ -2669,7 +2669,7 @@ export interface components {
             /** Password */
             password?: string | null;
             /** Role */
-            role?: ("staff" | "owner") | null;
+            role?: ("owner" | "staff") | null;
             /** Is Active */
             is_active?: boolean | null;
         };

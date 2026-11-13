@@ -8,18 +8,28 @@ stock, at which point it becomes an ordinary CONFIRMED reservation.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import and_, or_, select
 from sqlalchemy.orm import Session
 
 from app import models, schemas
+from app.constants import (
+    CARD_REQUEST_ACCEPTED,
+    CARD_REQUEST_ACTIVE_STATUSES,
+    CARD_REQUEST_CANCELLED,
+    CARD_REQUEST_CONVERTED,
+    CARD_REQUEST_CREATED,
+    CARD_REQUEST_DECLINED,
+    CARD_REQUEST_EXPIRED,
+    CARD_REQUEST_QUOTED,
+)
 from app.db import set_tenant_context
 from app.security import hash_guest_token, new_guest_token, new_request_ref, normalize_email
 from app.services import notifications
 from app.services import reservations as reservation_service
+from app.timeutils import as_utc
 
-ACTIVE_STATUSES = ("REQUESTED", "QUOTED", "ACCEPTED")
 # An accepted quote should not sit forever if the shop never converts it.
 ACCEPTED_EXPIRY_DAYS = 14
 
@@ -30,17 +40,6 @@ class CardRequestError(Exception):
         self.code = code
         self.message = message
         self.status_code = status_code
-
-
-def _now() -> datetime:
-    return datetime.now(UTC)
-
-
-def _as_utc(value: datetime | None) -> datetime | None:
-    """SQLite drops tzinfo on read, so normalise before Python comparisons."""
-    if value is None:
-        return None
-    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
 
 
 def _unique_ref(db: Session, tenant_id: uuid.UUID) -> str:
@@ -100,7 +99,7 @@ def create(
     notifications.enqueue_staff(
         db,
         tenant.id,
-        "CARD_REQUEST_CREATED",
+        CARD_REQUEST_CREATED,
         {
             "request_id": str(row.id),
             "public_ref": row.public_ref,
@@ -143,8 +142,8 @@ def quote(
     if row.status not in ("REQUESTED", "QUOTED"):
         raise CardRequestError("invalid_status", f"Cannot quote a {row.status.lower()} request.", 409)
 
-    quote_expires_at = _as_utc(payload.quote_expires_at)
-    if quote_expires_at is not None and quote_expires_at <= _now():
+    quote_expires_at = as_utc(payload.quote_expires_at)
+    if quote_expires_at is not None and quote_expires_at <= models.utcnow():
         raise CardRequestError("invalid_expiry", "The quote expiry must be in the future.", 422)
 
     row.quote_price_minor = payload.quote_price_minor
@@ -152,13 +151,13 @@ def quote(
     row.quote_expires_at = payload.quote_expires_at
     row.vendor_note = payload.vendor_note.strip()
     row.status = "QUOTED"
-    row.updated_at = _now()
+    row.updated_at = models.utcnow()
 
     if row.customer_id is not None:
         notifications.enqueue(
             db,
             tenant.id,
-            "CARD_REQUEST_QUOTED",
+            CARD_REQUEST_QUOTED,
             {
                 "public_ref": row.public_ref,
                 "requested_name": row.requested_name,
@@ -183,12 +182,12 @@ def decline(db: Session, tenant: models.Tenant, row: models.CardRequest, note: s
 
     row.status = "DECLINED"
     row.vendor_note = note.strip()
-    row.updated_at = _now()
+    row.updated_at = models.utcnow()
     if row.customer_id is not None:
         notifications.enqueue(
             db,
             tenant.id,
-            "CARD_REQUEST_DECLINED",
+            CARD_REQUEST_DECLINED,
             {
                 "public_ref": row.public_ref,
                 "requested_name": row.requested_name,
@@ -203,8 +202,8 @@ def decline(db: Session, tenant: models.Tenant, row: models.CardRequest, note: s
 
 
 def accept(db: Session, tenant: models.Tenant, row: models.CardRequest) -> models.CardRequest:
-    now = _now()
-    expires_at = _as_utc(row.quote_expires_at)
+    now = models.utcnow()
+    expires_at = as_utc(row.quote_expires_at)
     if row.status == "QUOTED" and expires_at is not None and expires_at <= now:
         row.status = "EXPIRED"
         row.updated_at = now
@@ -212,7 +211,7 @@ def accept(db: Session, tenant: models.Tenant, row: models.CardRequest) -> model
             notifications.enqueue(
                 db,
                 tenant.id,
-                "CARD_REQUEST_EXPIRED",
+                CARD_REQUEST_EXPIRED,
                 {"public_ref": row.public_ref, "requested_name": row.requested_name},
                 user_id=row.customer_id,
                 push=True,
@@ -227,7 +226,7 @@ def accept(db: Session, tenant: models.Tenant, row: models.CardRequest) -> model
     notifications.enqueue_staff(
         db,
         tenant.id,
-        "CARD_REQUEST_ACCEPTED",
+        CARD_REQUEST_ACCEPTED,
         {
             "request_id": str(row.id),
             "public_ref": row.public_ref,
@@ -241,14 +240,14 @@ def accept(db: Session, tenant: models.Tenant, row: models.CardRequest) -> model
 
 
 def cancel(db: Session, tenant: models.Tenant, row: models.CardRequest) -> models.CardRequest:
-    if row.status not in ACTIVE_STATUSES:
+    if row.status not in CARD_REQUEST_ACTIVE_STATUSES:
         raise CardRequestError("invalid_status", f"Cannot cancel a {row.status.lower()} request.", 409)
     row.status = "CANCELLED"
-    row.updated_at = _now()
+    row.updated_at = models.utcnow()
     notifications.enqueue_staff(
         db,
         tenant.id,
-        "CARD_REQUEST_CANCELLED",
+        CARD_REQUEST_CANCELLED,
         {
             "request_id": str(row.id),
             "public_ref": row.public_ref,
@@ -321,12 +320,12 @@ def convert(
 
     row.status = "CONVERTED"
     row.reservation_id = reservation.id
-    row.updated_at = _now()
+    row.updated_at = models.utcnow()
     if row.customer_id is not None:
         notifications.enqueue(
             db,
             tenant.id,
-            "CARD_REQUEST_CONVERTED",
+            CARD_REQUEST_CONVERTED,
             {
                 "public_ref": row.public_ref,
                 "reservation_ref": reservation.public_ref,
@@ -342,7 +341,7 @@ def convert(
 
 
 def expire_due_quotes(db: Session, now: datetime | None = None) -> int:
-    now = now or _now()
+    now = now or models.utcnow()
     db.expire_all()
     tenants = list(db.scalars(select(models.Tenant)).all())
     expired = 0
@@ -375,7 +374,7 @@ def expire_due_quotes(db: Session, now: datetime | None = None) -> int:
                 notifications.enqueue(
                     db,
                     tenant.id,
-                    "CARD_REQUEST_EXPIRED",
+                    CARD_REQUEST_EXPIRED,
                     {"public_ref": row.public_ref, "requested_name": row.requested_name},
                     user_id=row.customer_id,
                     push=True,

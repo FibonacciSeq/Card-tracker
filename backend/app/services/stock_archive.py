@@ -16,8 +16,9 @@ from sqlalchemy import ColumnElement, delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app import models
+from app.constants import RESERVATION_ACTIVE_STATUSES
 from app.db import set_tenant_context
-from app.services import audit, reservations
+from app.services import audit
 
 _DELETE_CHUNK = 500
 
@@ -36,7 +37,7 @@ def _active_hold_exists() -> ColumnElement[bool]:
         .where(
             models.ReservationLine.stock_id == models.Stock.id,
             models.Reservation.tenant_id == models.Stock.tenant_id,
-            models.Reservation.status.in_(reservations.ACTIVE_STATUSES),
+            models.Reservation.status.in_(RESERVATION_ACTIVE_STATUSES),
             models.ReservationLine.quantity
             - models.ReservationLine.completed_quantity
             - models.ReservationLine.cancelled_quantity
@@ -97,7 +98,7 @@ def stock_has_active_hold(db: Session, stock: models.Stock) -> bool:
         .where(
             models.ReservationLine.stock_id == stock.id,
             models.Reservation.tenant_id == stock.tenant_id,
-            models.Reservation.status.in_(reservations.ACTIVE_STATUSES),
+            models.Reservation.status.in_(RESERVATION_ACTIVE_STATUSES),
             models.ReservationLine.quantity
             - models.ReservationLine.completed_quantity
             - models.ReservationLine.cancelled_quantity

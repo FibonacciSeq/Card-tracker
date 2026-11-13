@@ -65,12 +65,24 @@ python3 -m virtualenv .venv
 .venv/bin/pip install -e "backend[dev]"
 ```
 
-Run the API from `backend/`:
+Run the API and its background workers from the repository root:
+
+```bash
+make dev-api
+```
+
+This applies migrations, starts the notification and expiry workers, then runs
+the API on `127.0.0.1:8000`.
+
+If you start `uvicorn` manually instead, start the notification worker in a
+second terminal as well:
 
 ```bash
 cd backend
-CARDTRACKER_AUTO_CREATE_TABLES=true ../.venv/bin/uvicorn app.main:app --reload
+../.venv/bin/python -m app.workers.notifications
 ```
+
+OTP sign-in, email, and push delivery stay queued until that worker runs.
 
 Interactive docs: `http://127.0.0.1:8000/docs`.
 

@@ -193,4 +193,5 @@ component READMEs for the exact commands.
 
 Dependabot checks Python dependencies and GitHub Actions monthly. If you add a
 dependency, pin a lower bound that contains the current security fixes and
-update `requirements-dev.txt` as well as `pyproject.toml` when applicable.
+update `pyproject.toml` (the single dev-dependency source). `requirements.txt`
+remains the runtime-only install list for the legacy desktop app.

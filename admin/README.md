@@ -142,13 +142,13 @@ It uses `CARDTRACKER_E2E_PYTHON` if set, otherwise `../.venv/bin/python`.
 ## API types
 
 `openapi.json` is a snapshot of the backend contract and
-`src/api/schema.d.ts` is generated from it, so request and response types cannot
-drift by hand.
+`../shared/api/schema.d.ts` is generated from it, so request and response types
+cannot drift by hand.
 
 ```bash
 # with the API running on :8000
 npm run api:dump     # refresh openapi.json
-npm run api:types    # regenerate src/api/schema.d.ts
+npm run api:types    # regenerate ../shared/api/schema.d.ts
 ```
 
 `src/api/types.ts` gives those generated shapes short names.

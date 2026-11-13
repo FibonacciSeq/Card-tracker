@@ -10,12 +10,30 @@ challenge tables.
 from __future__ import annotations
 
 import uuid
-from typing import Literal
 
 from sqlalchemy import select
 
 from app import models
 from app.config import settings
+from app.constants import (
+    CARD_REQUEST_ACCEPTED,
+    CARD_REQUEST_CANCELLED,
+    CARD_REQUEST_CONVERTED,
+    CARD_REQUEST_CREATED,
+    CARD_REQUEST_DECLINED,
+    CARD_REQUEST_EXPIRED,
+    CARD_REQUEST_QUOTED,
+    RESERVATION_CANCELLED,
+    RESERVATION_COMPLETED,
+    RESERVATION_CONFIRMED,
+    RESERVATION_CREATED,
+    RESERVATION_EXPIRED,
+    RESERVATION_READY,
+    RESERVATION_UPDATED,
+    RESTOCK_AVAILABLE,
+    STAFF_ROLES,
+    NotificationStatus,
+)
 from app.security import restock_unsubscribe_token
 
 
@@ -64,7 +82,7 @@ def enqueue_staff(db, tenant_id: uuid.UUID, kind: str, payload: dict) -> list[mo
     user_ids = db.scalars(
         select(models.User.id).where(
             models.User.tenant_id == tenant_id,
-            models.User.role.in_(("owner", "staff")),
+            models.User.role.in_(STAFF_ROLES),
             models.User.is_active.is_(True),
         )
     ).all()
@@ -75,9 +93,6 @@ SKIPPED_DELIVERY_ERRORS = (
     "Customer notification preferences disabled",
     "No active push token",
 )
-
-
-NotificationStatus = Literal["pending", "retrying", "sent", "skipped", "failed"]
 
 
 def delivery_status(row: models.Notification) -> NotificationStatus:
@@ -144,7 +159,7 @@ def unsubscribe_url(
 
 def headers(row: models.Notification, tenant: models.Tenant) -> dict[str, str]:
     """Extra transport headers for one queued notification."""
-    if row.kind != "RESTOCK_AVAILABLE":
+    if row.kind != RESTOCK_AVAILABLE:
         return {}
     url = unsubscribe_url(row, tenant, one_click=True)
     if not url:
@@ -228,7 +243,7 @@ def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
     ref = payload.get("public_ref", "")
     kind = row.kind
 
-    if kind == "RESERVATION_CREATED":
+    if kind == RESERVATION_CREATED:
         subject = f"New reservation {ref} at {shop}"
         body = (
             f"{payload.get('customer_name', 'A customer')} requested "
@@ -240,7 +255,7 @@ def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
         )
         return subject, body
 
-    if kind == "RESERVATION_CONFIRMED":
+    if kind == RESERVATION_CONFIRMED:
         subject = f"Reservation {ref} confirmed"
         body = (
             f"Good news — your reservation {ref} at {shop} is confirmed.\n"
@@ -248,7 +263,7 @@ def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
         )
         return subject, body
 
-    if kind == "RESERVATION_READY":
+    if kind == RESERVATION_READY:
         subject = f"Your cards are ready — {ref}"
         body = (
             f"Your reservation {ref} at {shop} is ready for pickup.\n"
@@ -256,12 +271,12 @@ def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
         )
         return subject, body
 
-    if kind == "RESERVATION_CANCELLED":
+    if kind == RESERVATION_CANCELLED:
         subject = f"Reservation {ref} cancelled"
         body = f"Reservation {ref} at {shop} has been cancelled and the cards released."
         return subject, body
 
-    if kind == "RESERVATION_EXPIRED":
+    if kind == RESERVATION_EXPIRED:
         subject = f"Reservation {ref} expired"
         body = (
             f"The hold on reservation {ref} at {shop} has expired and the cards were released.\n"
@@ -269,17 +284,17 @@ def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
         )
         return subject, body
 
-    if kind == "RESERVATION_COMPLETED":
+    if kind == RESERVATION_COMPLETED:
         subject = f"Thanks for collecting {ref}"
         body = f"Reservation {ref} at {shop} is complete. The cards are now marked as sold."
         return subject, body
 
-    if kind == "RESERVATION_UPDATED":
+    if kind == RESERVATION_UPDATED:
         subject = f"Reservation {ref} updated"
         body = f"Reservation {ref} at {shop} was updated.\nCurrent status: {payload.get('status', 'UPDATED')}."
         return subject, body
 
-    if kind == "CARD_REQUEST_CREATED":
+    if kind == CARD_REQUEST_CREATED:
         subject = f"Special-order request {ref} at {shop}"
         body = (
             f"{payload.get('customer_name', 'A customer')} asked for "
@@ -290,7 +305,7 @@ def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
         )
         return subject, body
 
-    if kind == "CARD_REQUEST_QUOTED":
+    if kind == CARD_REQUEST_QUOTED:
         subject = f"We found your card — quote for {ref}"
         body = (
             f"{shop} can source {payload.get('requested_name', 'your card')} "
@@ -302,7 +317,7 @@ def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
         )
         return subject, body
 
-    if kind == "CARD_REQUEST_EXPIRED":
+    if kind == CARD_REQUEST_EXPIRED:
         subject = f"Your quote for {ref} expired"
         body = (
             f"The quote for {payload.get('requested_name', 'your card')} at {shop} has expired.\n"
@@ -310,7 +325,7 @@ def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
         )
         return subject, body
 
-    if kind == "CARD_REQUEST_DECLINED":
+    if kind == CARD_REQUEST_DECLINED:
         subject = f"Update on your request {ref}"
         body = (
             f"{shop} could not source {payload.get('requested_name', 'your card')} this time.\n\n"
@@ -318,7 +333,7 @@ def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
         )
         return subject, body
 
-    if kind == "CARD_REQUEST_ACCEPTED":
+    if kind == CARD_REQUEST_ACCEPTED:
         subject = f"Customer accepted quote {ref}"
         body = (
             f"{payload.get('customer_name', 'The customer')} accepted the quote for "
@@ -328,7 +343,7 @@ def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
         )
         return subject, body
 
-    if kind == "CARD_REQUEST_CONVERTED":
+    if kind == CARD_REQUEST_CONVERTED:
         subject = f"Your special order {ref} is reserved"
         body = (
             f"The card you asked for is in and reserved under {payload.get('reservation_ref', '')}.\n"
@@ -336,7 +351,7 @@ def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
         )
         return subject, body
 
-    if kind == "RESTOCK_AVAILABLE":
+    if kind == RESTOCK_AVAILABLE:
         subject = f"Back in stock at {shop}: {payload.get('name', 'a card')}"
         link = app_card_url(tenant, payload)
         unsubscribe = unsubscribe_url(row, tenant)
@@ -373,7 +388,7 @@ def render_staff(row: models.Notification, tenant: models.Tenant) -> tuple[str, 
     ref = payload.get("public_ref", "")
     kind = row.kind
 
-    if kind == "RESERVATION_CREATED":
+    if kind == RESERVATION_CREATED:
         title = f"New reservation {ref}"
         body = (
             f"{payload.get('customer_name', 'A customer')} is holding "
@@ -383,7 +398,7 @@ def render_staff(row: models.Notification, tenant: models.Tenant) -> tuple[str, 
         )
         return title, body
 
-    if kind == "RESERVATION_CANCELLED":
+    if kind == RESERVATION_CANCELLED:
         title = f"Reservation {ref} cancelled"
         reason = payload.get("reason")
         body = f"{payload.get('customer_name', 'The customer')} cancelled the hold. The cards are back in stock."
@@ -391,12 +406,12 @@ def render_staff(row: models.Notification, tenant: models.Tenant) -> tuple[str, 
             body += f" Reason: {reason}."
         return title, body
 
-    if kind == "RESERVATION_EXPIRED":
+    if kind == RESERVATION_EXPIRED:
         title = f"Reservation {ref} expired"
         body = f"The hold for {payload.get('customer_name', 'a customer')} expired and the cards are back in stock."
         return title, body
 
-    if kind == "CARD_REQUEST_CREATED":
+    if kind == CARD_REQUEST_CREATED:
         title = f"New special order {ref}"
         body = (
             f"{payload.get('customer_name', 'A customer')} asked for "
@@ -405,7 +420,7 @@ def render_staff(row: models.Notification, tenant: models.Tenant) -> tuple[str, 
         )
         return title, body
 
-    if kind == "CARD_REQUEST_ACCEPTED":
+    if kind == CARD_REQUEST_ACCEPTED:
         title = f"Quote {ref} accepted"
         body = (
             f"{payload.get('customer_name', 'The customer')} accepted the quote for "
@@ -414,7 +429,7 @@ def render_staff(row: models.Notification, tenant: models.Tenant) -> tuple[str, 
         )
         return title, body
 
-    if kind == "CARD_REQUEST_CANCELLED":
+    if kind == CARD_REQUEST_CANCELLED:
         title = f"Special order {ref} cancelled"
         body = (
             f"{payload.get('customer_name', 'The customer')} cancelled the request for "

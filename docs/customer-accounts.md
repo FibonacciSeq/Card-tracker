@@ -866,7 +866,7 @@ Docs:
 
 - update `README.md`, `STATUS.md`, `SECURITY.md`, `backend/README.md`,
   `mobile/README.md`, and `.env.example`;
-- refresh `admin/openapi.json` and generated admin/mobile types.
+- refresh `admin/openapi.json` and the generated shared API types.
 
 ## 12. Rollout and rollback
 

@@ -12,6 +12,14 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import models
+from app.constants import (
+    DEFAULT_ROUNDING_INCREMENT_MINOR,
+    MAX_MARKUP_PERCENT,
+    MAX_PRICE_MINOR,
+    MAX_ROUNDING_INCREMENT_MINOR,
+    MIN_ROUNDING_INCREMENT_MINOR,
+    MINOR_UNITS_PER_MAJOR,
+)
 from app.services import exchange_rates, stock_csv
 
 PRICE_FIELDS = {
@@ -42,14 +50,17 @@ def pricing_settings(settings_row: models.TenantSettings | None) -> dict[str, in
         return None
     if not all(type(config.get(field)) is int for field in fields):
         return None
-    if not 0 <= config["minimum_price_minor"] <= 2_147_483_647:
+    if not 0 <= config["minimum_price_minor"] <= MAX_PRICE_MINOR:
         return None
-    if not 0 <= config["markup_percent"] <= 10_000:
+    if not 0 <= config["markup_percent"] <= MAX_MARKUP_PERCENT:
         return None
-    rounding_increment_minor = config.get("rounding_increment_minor", 500)
-    if type(rounding_increment_minor) is not int or not 100 <= rounding_increment_minor <= 2_147_483_600:
+    rounding_increment_minor = config.get("rounding_increment_minor", DEFAULT_ROUNDING_INCREMENT_MINOR)
+    if (
+        type(rounding_increment_minor) is not int
+        or not MIN_ROUNDING_INCREMENT_MINOR <= rounding_increment_minor <= MAX_ROUNDING_INCREMENT_MINOR
+    ):
         return None
-    if rounding_increment_minor % 100 != 0:
+    if rounding_increment_minor % MINOR_UNITS_PER_MAJOR != 0:
         return None
     return {
         **{field: config[field] for field in fields},
@@ -114,7 +125,7 @@ def calculate_sale_price(
     )
     rounding_increment_minor = pricing["rounding_increment_minor"]
     rounded_minor = (marked_up_minor // rounding_increment_minor + 1) * rounding_increment_minor
-    if rounded_minor > 2_147_483_647:
+    if rounded_minor > MAX_PRICE_MINOR:
         raise ValueError("Calculated sale price exceeds the supported range.")
     return rounded_minor
 

@@ -31,6 +31,8 @@ import { useAuth } from "../../state/auth";
 import { useReservations } from "../../state/reservations";
 import { colors, radii, spacing, type } from "../../theme";
 
+// UI-only copy of the backend RESERVATION_ACTIVE_STATUSES tuple; the API
+// serializes status as a plain string.
 const ACTIVE = new Set(["REQUESTED", "CONFIRMED", "READY"]);
 
 function shopInfo(reservation: SavedReservation | Reservation): {

@@ -4,11 +4,30 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Annotated, Literal
+from typing import Annotated
 
 from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field
 from pydantic_core import PydanticCustomError
 
+from app.constants import (
+    CONDITIONS,
+    DEFAULT_HOLD_HOURS,
+    DEFAULT_LOCALE,
+    DEFAULT_ROUNDING_INCREMENT_MINOR,
+    FINISHES,
+    MAX_ARCHIVE_RETENTION_DAYS,
+    MAX_HOLD_HOURS,
+    MAX_MARKUP_PERCENT,
+    MAX_PRICE_MINOR,
+    MAX_ROUNDING_INCREMENT_MINOR,
+    MINOR_UNITS_PER_MAJOR,
+    Condition,
+    Finish,
+    NotificationStatus,
+    PushPlatform,
+    ReservationStatusUpdate,
+    StaffRole,
+)
 from app.services.email_validation import EmailValidationError, validate_email_address
 
 
@@ -46,7 +65,7 @@ class ShopOut(BaseModel):
     contact: dict = Field(default_factory=dict)
     hours: dict = Field(default_factory=dict)
     payment_instructions: str = ""
-    hold_hours: int = 24
+    hold_hours: int = DEFAULT_HOLD_HOURS
     allow_backorders: bool = False
     directory_opt_in: bool = False
 
@@ -57,7 +76,7 @@ class StaffShopOut(ShopOut):
     scryfall_pricing_enabled: bool = False
     scryfall_min_price_minor: int = 0
     scryfall_markup_percent: int = 0
-    scryfall_rounding_increment: int = 5
+    scryfall_rounding_increment: int = DEFAULT_ROUNDING_INCREMENT_MINOR // MINOR_UNITS_PER_MAJOR
     repriced_stock: int | None = None
     stock_without_scryfall_prices: int | None = None
     archive_retention_days: int = 0
@@ -291,7 +310,7 @@ class CustomerTokenOut(BaseModel):
 
 class PushTokenIn(BaseModel):
     token: str = Field(min_length=16, max_length=4096)
-    platform: Literal["ios", "android"]
+    platform: PushPlatform
 
 
 class PushTokenOut(BaseModel):
@@ -315,7 +334,7 @@ class MeNotificationOut(BaseModel):
     id: int
     kind: str
     channel: str
-    status: Literal["pending", "retrying", "sent", "skipped", "failed"]
+    status: NotificationStatus
     title: str
     shop: dict
     attempts: int
@@ -411,9 +430,9 @@ class StockDeleteResultOut(BaseModel):
 
 class StockCreateIn(BaseModel):
     card_id: uuid.UUID
-    finish: Literal["nonfoil", "foil", "etched"] = "nonfoil"
-    condition: Literal["NM", "LP", "MP", "HP", "DMG"] = "NM"
-    language: str = "en"
+    finish: Finish = FINISHES[0]
+    condition: Condition = CONDITIONS[0]
+    language: str = DEFAULT_LOCALE
     quantity: int = Field(default=0, ge=0)
     price_minor: int = Field(default=0, ge=0)
     currency: str | None = None
@@ -437,7 +456,7 @@ class StockSellIn(BaseModel):
 
 
 class StatusUpdateIn(BaseModel):
-    status: Literal["CONFIRMED", "READY", "CANCELLED"]
+    status: ReservationStatusUpdate
     reason: str | None = Field(default=None, max_length=2000)
 
 
@@ -455,9 +474,9 @@ class RestockAlertCreateIn(BaseModel):
     email: DeliverableEmail
     name: str | None = Field(default=None, max_length=200)
     card_id: uuid.UUID
-    finish: Literal["nonfoil", "foil", "etched"] = "nonfoil"
-    condition: Literal["NM", "LP", "MP", "HP", "DMG"] = "NM"
-    language: str = Field(default="en", min_length=2, max_length=5)
+    finish: Finish = FINISHES[0]
+    condition: Condition = CONDITIONS[0]
+    language: str = Field(default=DEFAULT_LOCALE, min_length=2, max_length=5)
 
 
 class RestockUnsubscribeIn(BaseModel):
@@ -483,9 +502,9 @@ class CardRequestCreateIn(BaseModel):
     requested_name: str = Field(default="", max_length=300)
     set_code: str = Field(default="", max_length=20)
     collector_number: str = Field(default="", max_length=40)
-    finish: Literal["nonfoil", "foil", "etched"] = "nonfoil"
-    condition: Literal["NM", "LP", "MP", "HP", "DMG"] = "NM"
-    language: str = Field(default="en", min_length=2, max_length=5)
+    finish: Finish = FINISHES[0]
+    condition: Condition = CONDITIONS[0]
+    language: str = Field(default=DEFAULT_LOCALE, min_length=2, max_length=5)
     quantity: int = Field(default=1, ge=1, le=999)
     target_price_minor: int | None = Field(default=None, ge=0)
     note: str = Field(default="", max_length=2000)
@@ -558,13 +577,13 @@ class StaffUserCreateIn(BaseModel):
     email: DeliverableEmail
     display_name: str | None = Field(default=None, max_length=200)
     password: str = Field(min_length=10, max_length=200)
-    role: Literal["staff", "owner"] = "staff"
+    role: StaffRole = "staff"
 
 
 class StaffUserUpdateIn(BaseModel):
     display_name: str | None = Field(default=None, max_length=200)
     password: str | None = Field(default=None, min_length=10, max_length=200)
-    role: Literal["staff", "owner"] | None = None
+    role: StaffRole | None = None
     is_active: bool | None = None
 
 
@@ -604,9 +623,9 @@ class StockImportReportOut(BaseModel):
 
 
 class StockImportPricingIn(BaseModel):
-    threshold_minor: int = Field(ge=0, le=2_147_483_647)
-    fixed_price_minor: int = Field(ge=0, le=2_147_483_647)
-    markup_percent: int = Field(ge=0, le=10000)
+    threshold_minor: int = Field(ge=0, le=MAX_PRICE_MINOR)
+    fixed_price_minor: int = Field(ge=0, le=MAX_PRICE_MINOR)
+    markup_percent: int = Field(ge=0, le=MAX_MARKUP_PERCENT)
 
 
 class StockImportPricingOut(BaseModel):
@@ -635,14 +654,16 @@ class SettingsUpdateIn(BaseModel):
     contact: dict | None = None
     hours: dict | None = None
     payment_instructions: str | None = Field(default=None, max_length=4000)
-    hold_hours: int | None = Field(default=None, ge=1, le=720)
+    hold_hours: int | None = Field(default=None, ge=1, le=MAX_HOLD_HOURS)
     allow_backorders: bool | None = None
     directory_opt_in: bool | None = None
     scryfall_pricing_enabled: bool | None = None
-    scryfall_min_price_minor: int | None = Field(default=None, ge=0, le=2_147_483_647)
-    scryfall_markup_percent: int | None = Field(default=None, ge=0, le=10_000)
-    scryfall_rounding_increment: int | None = Field(default=None, ge=1, le=21_474_836)
-    archive_retention_days: int | None = Field(default=None, ge=0, le=3650)
+    scryfall_min_price_minor: int | None = Field(default=None, ge=0, le=MAX_PRICE_MINOR)
+    scryfall_markup_percent: int | None = Field(default=None, ge=0, le=MAX_MARKUP_PERCENT)
+    scryfall_rounding_increment: int | None = Field(
+        default=None, ge=1, le=MAX_ROUNDING_INCREMENT_MINOR // MINOR_UNITS_PER_MAJOR
+    )
+    archive_retention_days: int | None = Field(default=None, ge=0, le=MAX_ARCHIVE_RETENTION_DAYS)
 
 
 class ScryfallRefreshOut(BaseModel):

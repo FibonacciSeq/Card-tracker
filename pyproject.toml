@@ -44,6 +44,7 @@ dev = [
     "mypy>=1.11",
     "bandit>=1.7",
     "pip-audit>=2.7",
+    "tox>=4.0",
 ]
 
 [project.urls]

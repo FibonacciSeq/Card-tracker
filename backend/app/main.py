@@ -74,15 +74,20 @@ async def validation_error_handler(_request: Request, exc: RequestValidationErro
     return JSONResponse(status_code=422, content={"detail": errors})
 
 
-@app.exception_handler(ReservationError)
-async def reservation_error_handler(_request: Request, exc: ReservationError) -> JSONResponse:
-    content = {
-        "type": f"https://api.cardtracker.local/problems/{exc.code}",
+def _problem_content(exc: ReservationError | CardRequestError) -> dict:
+    base = settings.problem_type_base_url.rstrip("/")
+    return {
+        "type": f"{base}/{exc.code}",
         "title": exc.code.replace("_", " ").title(),
         "status": exc.status_code,
         "code": exc.code,
         "detail": exc.message,
     }
+
+
+@app.exception_handler(ReservationError)
+async def reservation_error_handler(_request: Request, exc: ReservationError) -> JSONResponse:
+    content = _problem_content(exc)
     content.update(exc.details)
     return JSONResponse(
         status_code=exc.status_code,
@@ -95,13 +100,7 @@ async def reservation_error_handler(_request: Request, exc: ReservationError) ->
 async def card_request_error_handler(_request: Request, exc: CardRequestError) -> JSONResponse:
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "type": f"https://api.cardtracker.local/problems/{exc.code}",
-            "title": exc.code.replace("_", " ").title(),
-            "status": exc.status_code,
-            "code": exc.code,
-            "detail": exc.message,
-        },
+        content=_problem_content(exc),
         media_type="application/problem+json",
     )
 

@@ -1,4 +1,4 @@
-import type { components } from "./schema";
+import type { components } from "../../../shared/api/schema";
 
 type Schemas = components["schemas"];
 
@@ -43,7 +43,14 @@ export type StaffNotification = Schemas["StaffNotificationOut"];
 export type StaffNotificationList = Schemas["StaffNotificationListOut"];
 export type NotificationReadResult = Schemas["NotificationReadResultOut"];
 
-/** Statuses that still hold stock. Mirrors the backend ACTIVE_STATUSES tuple. */
+/** Card variant values, derived from the generated request schema. */
+export type Finish = Schemas["StockCreateIn"]["finish"];
+export type Condition = Schemas["StockCreateIn"]["condition"];
+
+/**
+ * Statuses that still hold stock. UI-only copy of the backend
+ * RESERVATION_ACTIVE_STATUSES tuple; the API serializes status as a string.
+ */
 export const ACTIVE_STATUSES = ["REQUESTED", "CONFIRMED", "READY"] as const;
 
 /** Transitions a vendor may make from the queue. Mirrors the staff API. */

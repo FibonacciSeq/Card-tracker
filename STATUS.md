@@ -36,14 +36,15 @@ client/server stack side by side:
 
 | Part | Location | Status |
 | --- | --- | --- |
-| Legacy Tkinter desktop shop (customer + owner + collection tool) | root `*.py`, `ui/`, `services/`, `database/` | Working; kept unchanged as a fallback |
+| Legacy Tkinter desktop shop (customer + owner + collection tool) | root `*.py`, `ui/`, `services/`, `database/` | Working; frozen fallback (critical fixes only) |
 | Multi-vendor platform API | `backend/` | Implemented through Step 4 + audit hardening, plus Step 5 accounts |
 | Vendor web admin | `admin/` | Implemented through Step 4 + audit hardening |
 | Customer mobile app | `mobile/` | Password accounts with forced sign-in (Step 5 in progress) |
 
 The platform is the forward path: one cloud API and one admin codebase serving
 many shops, with a native customer app on top. The legacy desktop app remains
-for the original single-shop workflow until the new stack replaces it.
+for the original single-shop workflow until the new stack replaces it; it is
+frozen and receives critical fixes only.
 
 ### Architecture at a glance
 
@@ -502,7 +503,7 @@ public HTTPS domain are configured but not yet validated in production.
 | Admin Vitest logic/API-client coverage | **23 passed, 100% statements/branches/functions/lines** |
 | Admin production source maps | **0** `.map` files in `dist/` |
 | Admin Playwright suite | **9 passed** including owner notifications, unread badge, mark-all-read, card thumbnails, and the archive flows |
-| Generated API snapshot/types | `admin/openapi.json` and admin/mobile `schema.d.ts` regenerated; archive delete/retention endpoints and fields present, no manual type edits |
+| Generated API snapshot/types | `admin/openapi.json` and the shared `shared/api/schema.d.ts` regenerated; archive delete/retention endpoints and fields present, no manual type edits |
 | Mobile TypeScript / ESLint | Clean |
 | Mobile Vitest `src/lib/**` coverage | **54 passed, 100% statements/branches/functions/lines** |
 | Mobile `expo-doctor` | **20/20** |

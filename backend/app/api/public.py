@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas, serializers
 from app.config import settings
+from app.constants import PUBLIC_MAX_PAGE_SIZE, PUBLIC_PAGE_SIZE, TENANT_ACTIVE_STATUSES
 from app.db import get_db
 from app.deps import get_optional_customer, get_tenant_by_slug
 from app.security import hash_guest_token, restock_unsubscribe_token, verify_restock_unsubscribe_token
@@ -45,7 +46,7 @@ def _decode_cursor(cursor: str) -> dict:
 @router.get("/shops", response_model=list[schemas.ShopOut])
 def list_shops(
     query: str | None = Query(default=None, max_length=200),
-    limit: int = Query(default=50, ge=1, le=100),
+    limit: int = Query(default=PUBLIC_PAGE_SIZE, ge=1, le=PUBLIC_MAX_PAGE_SIZE),
     db: Session = Depends(get_db),
 ):
     stmt = (
@@ -53,7 +54,7 @@ def list_shops(
         .join(models.TenantSettings, models.TenantSettings.tenant_id == models.Tenant.id)
         .options(joinedload(models.Tenant.settings))
         .where(
-            models.Tenant.status.in_(("active", "trialing")),
+            models.Tenant.status.in_(TENANT_ACTIVE_STATUSES),
             models.TenantSettings.directory_opt_in.is_(True),
         )
         .order_by(func.lower(models.Tenant.name))
@@ -90,7 +91,7 @@ def list_stock(
     max_price_minor: int | None = Query(default=None, ge=0),
     available_only: bool = Query(default=False),
     sort: str = Query(default="relevance", pattern="^(relevance|name|price_asc|price_desc|newest)$"),
-    limit: int = Query(default=50, ge=1, le=100),
+    limit: int = Query(default=PUBLIC_PAGE_SIZE, ge=1, le=PUBLIC_MAX_PAGE_SIZE),
     cursor: str | None = Query(default=None),
     db: Session = Depends(get_db),
 ):

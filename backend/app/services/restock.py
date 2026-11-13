@@ -5,6 +5,7 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app import models
+from app.constants import RESTOCK_AVAILABLE
 from app.services import notifications
 
 
@@ -46,7 +47,7 @@ def notify_waiting(db, tenant: models.Tenant, stock: models.Stock) -> int:
         notifications.enqueue(
             db,
             tenant.id,
-            "RESTOCK_AVAILABLE",
+            RESTOCK_AVAILABLE,
             {
                 "name": card.name,
                 "set_code": card.set_code,

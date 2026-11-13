@@ -3,9 +3,9 @@ name: Customer mobile app
 on:
   push:
     branches: ["main"]
-    paths: ["mobile/**", ".github/workflows/mobile.yml"]
+    paths: ["mobile/**", "shared/**", ".github/workflows/mobile.yml"]
   pull_request:
-    paths: ["mobile/**", ".github/workflows/mobile.yml"]
+    paths: ["mobile/**", "shared/**", ".github/workflows/mobile.yml"]
   workflow_dispatch:
 
 permissions:

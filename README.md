@@ -20,6 +20,12 @@ Built with Python + Tkinter (legacy desktop apps).
 > design. The Tkinter apps described below remain the legacy single-shop
 > desktop version.
 >
+> **The legacy desktop app is frozen.** The root Tkinter programs
+> (`main.py`, `customer_app.py`, `owner_app.py`), `services/`, `ui/`, `models/`,
+> and `database/` are kept as a fallback for the original single-shop workflow.
+> They receive critical fixes only; new features go into the platform under
+> `backend/`, `admin/`, and `mobile/`.
+>
 > The legacy and platform stacks have separate checks: root `make check` covers
 > the Tkinter apps, while `backend/`, `admin/`, and `mobile/` have their own
 > commands in their READMEs.
@@ -29,9 +35,8 @@ Built with Python + Tkinter (legacy desktop apps).
 Run each block in its own terminal, starting from this repository root:
 
 ```bash
-# API (SQLite for local development)
-cd backend
-CARDTRACKER_AUTO_CREATE_TABLES=true ../.venv/bin/uvicorn app.main:app --reload
+# API plus notification/expiry workers (SQLite for local development)
+make dev-api
 
 # Vendor web admin (second terminal)
 cd admin

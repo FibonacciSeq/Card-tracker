@@ -15,16 +15,13 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { createCardRequest } from "../../api/client";
 import { accountKeys, useShops } from "../../api/queries";
-import type { CardRequestCreate } from "../../api/types";
+import type { CardRequestCreate, Condition, Finish } from "../../api/types";
 import { Field } from "../../components/Field";
 import { LoadingState } from "../../components/LoadingState";
 import { PrimaryButton } from "../../components/PrimaryButton";
 import { useAuth } from "../../state/auth";
 import { useSpecialOrders } from "../../state/specialOrders";
 import { colors, radii, spacing, type } from "../../theme";
-
-type Finish = "nonfoil" | "foil" | "etched";
-type Condition = "NM" | "LP" | "MP" | "HP" | "DMG";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const FINISHES: { value: Finish; label: string }[] = [

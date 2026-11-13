@@ -5,6 +5,8 @@ from functools import lru_cache
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from app.constants import DEFAULT_HOLD_HOURS
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
@@ -46,7 +48,7 @@ class Settings(BaseSettings):
     # production. Disable the lookup for air-gapped deployments.
     email_domain_check_enabled: bool = True
     email_domain_check_timeout_seconds: float = 3.0
-    default_hold_hours: int = 24
+    default_hold_hours: int = DEFAULT_HOLD_HOURS
     # Production must use `alembic upgrade head`; only local SQLite runs enable
     # auto-create explicitly.
     auto_create_tables: bool = False
@@ -61,6 +63,12 @@ class Settings(BaseSettings):
     # JWT secret so existing deployments keep working without new config.
     unsubscribe_secret: str = ""
     min_app_version: str = "0.1.0"
+    # RFC 9457 problem-type namespace embedded in API error responses.
+    problem_type_base_url: str = "https://api.cardtracker.local/problems"
+    # Operational thresholds surfaced on the staff dashboard.
+    dashboard_sold_window_days: int = 30
+    dashboard_stale_stock_days: int = 7
+    dashboard_low_stock_threshold: int = 2
     # In-process sliding windows; move to Redis when the API runs multiple
     # workers. Generous enough to never bother a person, tight enough to stop
     # scripted password guessing and reservation spam.

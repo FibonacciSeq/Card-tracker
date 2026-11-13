@@ -1,4 +1,4 @@
-import type { components } from "./schema";
+import type { components } from "../../../shared/api/schema";
 
 type Schemas = components["schemas"];
 
@@ -14,6 +14,10 @@ export type RestockAlert = Schemas["RestockAlertOut"];
 export type RestockAlertCreate = Schemas["RestockAlertCreateIn"];
 export type CardRequest = Schemas["CardRequestOut"];
 export type CardRequestCreate = Schemas["CardRequestCreateIn"];
+
+/** Card variant values, derived from the generated request schema. */
+export type Finish = CardRequestCreate["finish"];
+export type Condition = CardRequestCreate["condition"];
 export type Customer = Schemas["CustomerIn"];
 export type CustomerAccount = Schemas["CustomerOut"];
 export type CustomerProfileUpdate = {

@@ -20,6 +20,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app import models
+from app.constants import CONDITION_ALIASES, CONDITIONS, FINISHES, MAX_STOCK_IMPORT_ROWS
 from app.services import restock
 
 COLUMNS = [
@@ -47,19 +48,10 @@ HEADER_ALIASES = {
     "purchase price currency": "currency",
 }
 
-FINISHES = {"nonfoil", "foil", "etched"}
-CONDITIONS = {"NM", "LP", "MP", "HP", "DMG"}
-CONDITION_ALIASES = {
-    "near_mint": "NM",
-    "lightly_played": "LP",
-    "moderately_played": "MP",
-    "heavily_played": "HP",
-    "damaged": "DMG",
-}
 TRUE_VALUES = {"true", "yes", "1", "y"}
 FALSE_VALUES = {"false", "no", "0", "n"}
 
-MAX_ROWS = 20_000
+MAX_ROWS = MAX_STOCK_IMPORT_ROWS
 
 
 @dataclass

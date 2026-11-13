@@ -43,10 +43,12 @@ export default defineConfig({
       },
     },
     {
-      command: `npx vite --port ${ADMIN_PORT} --strictPort`,
+      // Bind explicitly to IPv4 so the readiness probe for ADMIN_URL
+      // (127.0.0.1) works on CI hosts that resolve localhost to ::1 first.
+      command: `npx vite --host 127.0.0.1 --port ${ADMIN_PORT} --strictPort`,
       url: ADMIN_URL,
       reuseExistingServer: false,
-      timeout: 60_000,
+      timeout: 120_000,
       env: {
         ...process.env,
         CARDTRACKER_API_URL: API_URL,

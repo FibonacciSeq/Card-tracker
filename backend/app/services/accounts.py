@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from fastapi import HTTPException, Request, status
 from sqlalchemy import func, select, update
@@ -24,16 +24,10 @@ from app.security import (
     verify_password,
 )
 from app.services import audit, ratelimit
+from app.timeutils import as_utc
 
-
-def _now() -> datetime:
-    return datetime.now(UTC)
-
-
-def _as_utc(value: datetime | None) -> datetime | None:
-    if value is None:
-        return None
-    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+# Kept as a private alias for callers and tests that already use this name.
+_as_utc = as_utc
 
 
 def _email_rate_key(email: str) -> str:
@@ -94,7 +88,7 @@ def _request_challenge(
         extra=email_key,
     )
 
-    now = _now()
+    now = models.utcnow()
     latest = _latest_challenge(db, email)
     latest_created = _as_utc(latest.created_at) if latest else None
     if latest_created is not None:
@@ -193,7 +187,7 @@ def _verified_challenge(
         extra=email_key,
     )
 
-    now = _now()
+    now = models.utcnow()
     stmt = select(models.CustomerOtpChallenge).where(
         models.CustomerOtpChallenge.email == email,
         models.CustomerOtpChallenge.purpose == purpose,
@@ -464,7 +458,7 @@ def login_with_password(
             detail="Invalid email or password",
         )
 
-    now = _now()
+    now = models.utcnow()
     if customer.email_verified_at is None:
         customer.email_verified_at = now
     customer.email = email
@@ -554,7 +548,7 @@ def change_password(
             detail="Current password is incorrect",
         )
 
-    now = _now()
+    now = models.utcnow()
     customer.password_hash = hash_password(new_password)
     if customer.email_verified_at is None:
         customer.email_verified_at = now
@@ -647,7 +641,6 @@ def verify_email_change(
         commit=False,
         action="account.sessions_revoked",
     )
-    refresh_token = _issue_refresh_token(db, customer.id)
     audit.record_customer(
         db,
         customer_id=customer.id,
@@ -659,18 +652,7 @@ def verify_email_change(
             "claimed": claimed.model_dump(),
         },
     )
-    db.commit()
-
-    set_customer_context(db, customer.id)
-    return schemas.CustomerTokenOut(
-        access_token=create_customer_access_token(customer.id),
-        expires_in=settings.customer_access_token_minutes * 60,
-        refresh_token=refresh_token,
-        refresh_expires_in=settings.customer_refresh_token_minutes * 60,
-        is_new_account=False,
-        customer=schemas.CustomerOut.model_validate(customer),
-        claimed=claimed,
-    )
+    return _finish_session(db, customer, is_new_account=False, claimed=claimed)
 
 
 def _refresh_token_hash(token: str) -> str:
@@ -682,8 +664,8 @@ def _issue_refresh_token(db: Session, customer_id: uuid.UUID) -> str:
     row = models.CustomerRefreshToken(
         user_id=customer_id,
         token_hash=_refresh_token_hash(token),
-        issued_at=_now(),
-        expires_at=_now() + timedelta(minutes=settings.customer_refresh_token_minutes),
+        issued_at=models.utcnow(),
+        expires_at=models.utcnow() + timedelta(minutes=settings.customer_refresh_token_minutes),
     )
     db.add(row)
     db.flush()
@@ -703,7 +685,7 @@ def revoke_customer_refresh_tokens(
         stmt = stmt.where(models.CustomerRefreshToken.token_hash == _refresh_token_hash(refresh_token))
     rows = db.scalars(stmt).all()
     for row in rows:
-        row.revoked_at = _now()
+        row.revoked_at = models.utcnow()
     audit.record_customer(
         db,
         customer_id=customer_id,
@@ -725,18 +707,18 @@ def refresh_customer_session(db: Session, refresh_token: str) -> schemas.Custome
     if row is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
     expires_at = _as_utc(row.expires_at)
-    if row.revoked_at is not None or expires_at is None or expires_at <= _now():
-        row.revoked_at = _now()
+    if row.revoked_at is not None or expires_at is None or expires_at <= models.utcnow():
+        row.revoked_at = models.utcnow()
         db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token expired")
 
     customer = db.get(models.User, row.user_id)
     if customer is None or not customer.is_active or customer.role != "customer" or customer.tenant_id is not None:
-        row.revoked_at = _now()
+        row.revoked_at = models.utcnow()
         db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid customer session")
 
-    row.revoked_at = _now()
+    row.revoked_at = models.utcnow()
     new_refresh = _issue_refresh_token(db, customer.id)
     db.flush()
     row.replaced_by = db.scalar(
@@ -776,7 +758,7 @@ def register_push_token(
     """Register or refresh one native APNs/FCM token for the signed-in customer."""
     token = payload.token.strip()
     token_hash = _push_token_hash(token)
-    now = _now()
+    now = models.utcnow()
     row = db.scalar(select(models.PushToken).where(models.PushToken.token_hash == token_hash))
     if row is not None:
         if row.user_id != customer.id:
@@ -814,5 +796,5 @@ def unregister_push_token(db: Session, customer: models.User, token: str) -> Non
     )
     if row is None or row.revoked_at is not None:
         return
-    row.revoked_at = _now()
+    row.revoked_at = models.utcnow()
     db.commit()

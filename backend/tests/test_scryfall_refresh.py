@@ -165,7 +165,7 @@ def test_refresh_without_scryfall_cards_avoids_the_network(db, tenant, card, sto
 
 
 def test_refresh_owns_a_default_http_client(db, tenant, card, stock, monkeypatch):
-    instances: list[object] = []
+    instances: list[FakeClient] = []
 
     class FakeClient:
         def __init__(self, **kwargs):

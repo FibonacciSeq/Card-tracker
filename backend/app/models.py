@@ -22,6 +22,23 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
+from app.constants import (
+    CARD_REQUEST_STATUSES,
+    CONDITIONS,
+    DEFAULT_CURRENCY,
+    DEFAULT_HOLD_HOURS,
+    DEFAULT_LOCALE,
+    DEFAULT_TIMEZONE,
+    FINISHES,
+    MAX_ARCHIVE_RETENTION_DAYS,
+    MAX_HOLD_HOURS,
+    PUSH_PLATFORMS,
+    RESERVATION_STATUSES,
+    STOCK_MOVEMENT_KINDS,
+    USER_ROLES,
+    sql_in,
+)
+
 
 def utcnow() -> datetime:
     return datetime.now(UTC)
@@ -38,9 +55,9 @@ class Tenant(Base):
     slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
     name: Mapped[str] = mapped_column(String(200))
     status: Mapped[str] = mapped_column(String(20), default="active")
-    locale: Mapped[str] = mapped_column(String(10), default="en")
-    currency: Mapped[str] = mapped_column(String(3), default="EUR")
-    timezone: Mapped[str] = mapped_column(String(64), default="Europe/Belgrade")
+    locale: Mapped[str] = mapped_column(String(10), default=DEFAULT_LOCALE)
+    currency: Mapped[str] = mapped_column(String(3), default=DEFAULT_CURRENCY)
+    timezone: Mapped[str] = mapped_column(String(64), default=DEFAULT_TIMEZONE)
     plan_code: Mapped[str] = mapped_column(String(40), default="starter")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
@@ -61,7 +78,7 @@ class TenantSettings(Base):
     contact: Mapped[dict] = mapped_column(JSON, default=dict)
     hours: Mapped[dict] = mapped_column(JSON, default=dict)
     payment_instructions: Mapped[str] = mapped_column(Text, default="")
-    hold_hours: Mapped[int] = mapped_column(Integer, default=24)
+    hold_hours: Mapped[int] = mapped_column(Integer, default=DEFAULT_HOLD_HOURS)
     allow_backorders: Mapped[bool] = mapped_column(Boolean, default=False)
     directory_opt_in: Mapped[bool] = mapped_column(Boolean, default=True)
     notification_email: Mapped[str | None] = mapped_column(String(320))
@@ -74,9 +91,9 @@ class TenantSettings(Base):
     tenant: Mapped[Tenant] = relationship(back_populates="settings")
 
     __table_args__ = (
-        CheckConstraint("hold_hours >= 1 AND hold_hours <= 720", name="ck_settings_hold_hours"),
+        CheckConstraint(f"hold_hours >= 1 AND hold_hours <= {MAX_HOLD_HOURS}", name="ck_settings_hold_hours"),
         CheckConstraint(
-            "archive_retention_days >= 0 AND archive_retention_days <= 3650",
+            f"archive_retention_days >= 0 AND archive_retention_days <= {MAX_ARCHIVE_RETENTION_DAYS}",
             name="ck_settings_archive_retention_days",
         ),
     )
@@ -107,7 +124,7 @@ class User(Base):
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),
-        CheckConstraint("role IN ('platform_admin','owner','staff','customer')", name="ck_users_role"),
+        CheckConstraint(sql_in("role", USER_ROLES), name="ck_users_role"),
         Index(
             "uq_users_customer_global_email",
             func.lower(email),
@@ -174,7 +191,7 @@ class PushToken(Base):
 
     __table_args__ = (
         UniqueConstraint("token_hash", name="uq_push_tokens_hash"),
-        CheckConstraint("platform IN ('ios','android')", name="ck_push_tokens_platform"),
+        CheckConstraint(sql_in("platform", PUSH_PLATFORMS), name="ck_push_tokens_platform"),
         Index("ix_push_tokens_user_active", "user_id", "revoked_at"),
     )
 
@@ -231,13 +248,13 @@ class Stock(Base):
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     tenant_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("tenants.id", ondelete="CASCADE"), index=True)
     card_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("cards.id"), index=True)
-    finish: Mapped[str] = mapped_column(String(20), default="nonfoil")
-    condition: Mapped[str] = mapped_column(String(10), default="NM")
-    language: Mapped[str] = mapped_column(String(10), default="en")
+    finish: Mapped[str] = mapped_column(String(20), default=FINISHES[0])
+    condition: Mapped[str] = mapped_column(String(10), default=CONDITIONS[0])
+    language: Mapped[str] = mapped_column(String(10), default=DEFAULT_LOCALE)
     quantity: Mapped[int] = mapped_column(Integer, default=0)
     reserved: Mapped[int] = mapped_column(Integer, default=0)
     price_minor: Mapped[int] = mapped_column(Integer, default=0)
-    currency: Mapped[str] = mapped_column(String(3), default="EUR")
+    currency: Mapped[str] = mapped_column(String(3), default=DEFAULT_CURRENCY)
     is_online: Mapped[bool] = mapped_column(Boolean, default=True)
     archived_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
@@ -255,8 +272,8 @@ class Stock(Base):
         CheckConstraint("reserved >= 0", name="ck_stock_reserved"),
         CheckConstraint("reserved <= quantity", name="ck_stock_reserved_le_quantity"),
         CheckConstraint("price_minor >= 0", name="ck_stock_price"),
-        CheckConstraint("finish IN ('nonfoil','foil','etched')", name="ck_stock_finish"),
-        CheckConstraint("condition IN ('NM','LP','MP','HP','DMG')", name="ck_stock_condition"),
+        CheckConstraint(sql_in("finish", FINISHES), name="ck_stock_finish"),
+        CheckConstraint(sql_in("condition", CONDITIONS), name="ck_stock_condition"),
         Index("ix_stock_tenant_card", "tenant_id", "card_id"),
         Index("ix_stock_tenant_archived", "tenant_id", "archived_at"),
     )
@@ -275,7 +292,7 @@ class Reservation(Base):
     note: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(20), default="REQUESTED")
     total_minor: Mapped[int] = mapped_column(Integer, default=0)
-    currency: Mapped[str] = mapped_column(String(3), default="EUR")
+    currency: Mapped[str] = mapped_column(String(3), default=DEFAULT_CURRENCY)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     source: Mapped[str] = mapped_column(String(10), default="app")
     access_token_hash: Mapped[str | None] = mapped_column(String(64))
@@ -291,10 +308,7 @@ class Reservation(Base):
 
     __table_args__ = (
         UniqueConstraint("tenant_id", "public_ref", name="uq_reservations_ref"),
-        CheckConstraint(
-            "status IN ('REQUESTED','CONFIRMED','READY','COMPLETED','CANCELLED','EXPIRED')",
-            name="ck_reservations_status",
-        ),
+        CheckConstraint(sql_in("status", RESERVATION_STATUSES), name="ck_reservations_status"),
         Index("ix_reservations_due", "status", "expires_at"),
         Index("ix_reservations_tenant_status", "tenant_id", "status", "created_at"),
         Index("ix_reservations_customer", "customer_id", "created_at"),
@@ -357,10 +371,7 @@ class StockMovement(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     __table_args__ = (
-        CheckConstraint(
-            "kind IN ('RESERVE','RELEASE','SELL','SALE','ADJUST','IMPORT')",
-            name="ck_movements_kind",
-        ),
+        CheckConstraint(sql_in("kind", STOCK_MOVEMENT_KINDS), name="ck_movements_kind"),
         Index("ix_movements_tenant_time", "tenant_id", "created_at"),
         Index("ix_movements_stock_time", "stock_id", "created_at"),
     )
@@ -405,12 +416,12 @@ class CardRequest(Base):
     requested_name: Mapped[str] = mapped_column(String(300))
     set_code: Mapped[str] = mapped_column(String(20), default="")
     collector_number: Mapped[str] = mapped_column(String(40), default="")
-    finish: Mapped[str] = mapped_column(String(20), default="nonfoil")
-    condition: Mapped[str] = mapped_column(String(10), default="NM")
-    language: Mapped[str] = mapped_column(String(10), default="en")
+    finish: Mapped[str] = mapped_column(String(20), default=FINISHES[0])
+    condition: Mapped[str] = mapped_column(String(10), default=CONDITIONS[0])
+    language: Mapped[str] = mapped_column(String(10), default=DEFAULT_LOCALE)
     quantity: Mapped[int] = mapped_column(Integer, default=1)
     target_price_minor: Mapped[int | None] = mapped_column(Integer)
-    currency: Mapped[str] = mapped_column(String(3), default="EUR")
+    currency: Mapped[str] = mapped_column(String(3), default=DEFAULT_CURRENCY)
     customer_note: Mapped[str] = mapped_column(Text, default="")
     status: Mapped[str] = mapped_column(String(20), default="REQUESTED")
     quote_price_minor: Mapped[int | None] = mapped_column(Integer)
@@ -428,10 +439,7 @@ class CardRequest(Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "public_ref", name="uq_card_requests_ref"),
         CheckConstraint("quantity > 0", name="ck_card_requests_quantity"),
-        CheckConstraint(
-            "status IN ('REQUESTED','QUOTED','ACCEPTED','DECLINED','EXPIRED','CONVERTED','CANCELLED')",
-            name="ck_card_requests_status",
-        ),
+        CheckConstraint(sql_in("status", CARD_REQUEST_STATUSES), name="ck_card_requests_status"),
         Index("ix_card_requests_queue", "tenant_id", "status", "created_at"),
         Index("ix_card_requests_customer", "customer_id", "created_at"),
     )
@@ -449,9 +457,9 @@ class RestockAlert(Base):
     email: Mapped[str] = mapped_column(String(320))
     card_id: Mapped[uuid.UUID] = mapped_column(Uuid, ForeignKey("cards.id"), index=True)
     stock_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, ForeignKey("stock.id", ondelete="SET NULL"))
-    finish: Mapped[str] = mapped_column(String(20), default="nonfoil")
-    condition: Mapped[str] = mapped_column(String(10), default="NM")
-    language: Mapped[str] = mapped_column(String(10), default="en")
+    finish: Mapped[str] = mapped_column(String(20), default=FINISHES[0])
+    condition: Mapped[str] = mapped_column(String(10), default=CONDITIONS[0])
+    language: Mapped[str] = mapped_column(String(10), default=DEFAULT_LOCALE)
     notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

@@ -1,0 +1,36 @@
+name: Python environment
+description: Set up Python with pip caching, optional Tk, and project dependencies.
+
+inputs:
+  python-version:
+    description: Python version to install.
+    required: false
+    default: "3.12"
+  requirements:
+    description: Requirements file to install.
+    required: false
+    default: requirements-dev.txt
+  cache-dependency-path:
+    description: File(s) whose changes invalidate the pip cache.
+    required: false
+    default: requirements-dev.txt
+  install-tk:
+    description: Install python3-tk for the legacy Tkinter app.
+    required: false
+    default: "false"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v7
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: pip
+        cache-dependency-path: ${{ inputs.cache-dependency-path }}
+    - name: Install Tk
+      if: inputs.install-tk == 'true'
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y python3-tk
+    - name: Install dependencies
+      shell: bash
+      run: pip install -r "${{ inputs.requirements }}"

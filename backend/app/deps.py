@@ -10,6 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app import models
+from app.constants import STAFF_ROLES, TENANT_ACTIVE_STATUSES
 from app.db import get_db, set_customer_context, set_tenant_context
 from app.security import decode_access_token
 
@@ -77,7 +78,7 @@ def get_current_staff(
 
     set_tenant_context(db, tenant_id)
     user = db.get(models.User, user_id)
-    if user is None or not user.is_active or user.role not in ("owner", "staff"):
+    if user is None or not user.is_active or user.role not in STAFF_ROLES:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid user")
     if user.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid tenant")
@@ -92,7 +93,7 @@ def require_owner(user: models.User = Depends(get_current_staff)) -> models.User
 
 def get_tenant_by_slug(slug: str, db: Session) -> models.Tenant:
     tenant = db.scalar(select(models.Tenant).where(models.Tenant.slug == slug))
-    if tenant is None or tenant.status not in ("active", "trialing"):
+    if tenant is None or tenant.status not in TENANT_ACTIVE_STATUSES:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shop not found")
     set_tenant_context(db, tenant.id)
     return tenant

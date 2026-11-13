@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app import models, schemas, serializers
+from app.constants import ACCOUNT_MAX_PAGE_SIZE, ACCOUNT_PAGE_SIZE, MAX_ACCOUNT_ROWS
 from app.db import get_db, set_tenant_context
 from app.deps import get_current_customer
 from app.services import accounts, audit, notifications
@@ -16,8 +17,6 @@ from app.services import card_requests as card_request_service
 from app.services import reservations as reservation_service
 
 router = APIRouter(prefix="/v1", tags=["customer-account"])
-
-MAX_ACCOUNT_ROWS = 200
 
 
 @router.post("/auth/otp/request", response_model=schemas.OtpRequestOut, status_code=status.HTTP_202_ACCEPTED)
@@ -279,7 +278,7 @@ def list_my_push_tokens(
 @router.get("/me/notifications", response_model=schemas.MeNotificationListOut)
 def list_my_notifications(
     cursor: int | None = Query(default=None, ge=1),
-    limit: int = Query(default=50, ge=1, le=200),
+    limit: int = Query(default=ACCOUNT_PAGE_SIZE, ge=1, le=ACCOUNT_MAX_PAGE_SIZE),
     customer: models.User = Depends(get_current_customer),
     db: Session = Depends(get_db),
 ):

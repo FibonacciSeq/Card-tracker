@@ -29,6 +29,8 @@ import { useAuth } from "../../state/auth";
 import { useSpecialOrders } from "../../state/specialOrders";
 import { colors, radii, spacing, type } from "../../theme";
 
+// UI-only copy of the backend CARD_REQUEST_ACTIVE_STATUSES tuple; the API
+// serializes status as a plain string.
 const ACTIVE = new Set(["REQUESTED", "QUOTED", "ACCEPTED"]);
 
 export default function RequestScreen() {

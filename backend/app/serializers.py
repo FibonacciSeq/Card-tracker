@@ -3,6 +3,13 @@
 from __future__ import annotations
 
 from app import models, schemas
+from app.constants import (
+    DEFAULT_HOLD_HOURS,
+    DEFAULT_ROUNDING_INCREMENT_MINOR,
+    MAX_ROUNDING_INCREMENT_MINOR,
+    MIN_ROUNDING_INCREMENT_MINOR,
+    MINOR_UNITS_PER_MAJOR,
+)
 
 
 def shop_out(tenant: models.Tenant) -> schemas.ShopOut:
@@ -20,7 +27,7 @@ def shop_out(tenant: models.Tenant) -> schemas.ShopOut:
         contact=settings.contact if settings else {},
         hours=settings.hours if settings else {},
         payment_instructions=settings.payment_instructions if settings else "",
-        hold_hours=settings.hold_hours if settings else 24,
+        hold_hours=settings.hold_hours if settings else DEFAULT_HOLD_HOURS,
         allow_backorders=settings.allow_backorders if settings else False,
         directory_opt_in=settings.directory_opt_in if settings else False,
     )
@@ -38,18 +45,18 @@ def staff_shop_out(
         pricing = {}
     minimum_price = pricing.get("minimum_price_minor", 0)
     markup_percent = pricing.get("markup_percent", 0)
-    rounding_increment_minor = pricing.get("rounding_increment_minor", 500)
+    rounding_increment_minor = pricing.get("rounding_increment_minor", DEFAULT_ROUNDING_INCREMENT_MINOR)
     return schemas.StaffShopOut(
         **base.model_dump(),
         scryfall_pricing_enabled=pricing.get("enabled") is True,
         scryfall_min_price_minor=minimum_price if type(minimum_price) is int else 0,
         scryfall_markup_percent=markup_percent if type(markup_percent) is int else 0,
         scryfall_rounding_increment=(
-            rounding_increment_minor // 100
+            rounding_increment_minor // MINOR_UNITS_PER_MAJOR
             if type(rounding_increment_minor) is int
-            and 100 <= rounding_increment_minor <= 2_147_483_600
-            and rounding_increment_minor % 100 == 0
-            else 5
+            and MIN_ROUNDING_INCREMENT_MINOR <= rounding_increment_minor <= MAX_ROUNDING_INCREMENT_MINOR
+            and rounding_increment_minor % MINOR_UNITS_PER_MAJOR == 0
+            else DEFAULT_ROUNDING_INCREMENT_MINOR // MINOR_UNITS_PER_MAJOR
         ),
         repriced_stock=repriced_stock,
         stock_without_scryfall_prices=stock_without_scryfall_prices,

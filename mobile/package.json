@@ -11,7 +11,7 @@
     "export:web": "expo export --platform web",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "api:types": "npx -y openapi-typescript@7.13.0 ../admin/openapi.json -o src/api/schema.d.ts",
+    "api:types": "npx -y openapi-typescript@7.13.0 ../admin/openapi.json -o ../shared/api/schema.d.ts",
     "doctor": "npx expo-doctor",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",

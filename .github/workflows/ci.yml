@@ -20,11 +20,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
+      - uses: ./.github/actions/python-env
         with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install -r requirements-dev.txt
+          cache-dependency-path: |
+            requirements-dev.txt
+            pyproject.toml
       - name: ruff check
         run: ruff check --output-format=github .
       - name: ruff format --check
@@ -36,11 +36,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
+      - uses: ./.github/actions/python-env
         with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install -r requirements-dev.txt
+          cache-dependency-path: |
+            requirements-dev.txt
+            pyproject.toml
       - name: mypy
         run: mypy .
 
@@ -50,11 +50,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
+      - uses: ./.github/actions/python-env
         with:
-          python-version: "3.12"
-          cache: pip
-      - run: pip install -r requirements-dev.txt
+          cache-dependency-path: |
+            requirements-dev.txt
+            pyproject.toml
       - name: bandit
         run: bandit -q -c pyproject.toml -r .
       - name: pip-audit
@@ -70,13 +70,13 @@ jobs:
         python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
+      - uses: ./.github/actions/python-env
         with:
           python-version: ${{ matrix.python-version }}
-          cache: pip
-      - name: Install Tk
-        run: sudo apt-get update && sudo apt-get install -y python3-tk
-      - run: pip install -r requirements-dev.txt
+          cache-dependency-path: |
+            requirements-dev.txt
+            pyproject.toml
+          install-tk: "true"
       - name: Run tests
         run: pytest --cov --cov-branch --cov-report=term-missing
 
@@ -97,13 +97,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v7
+      - uses: ./.github/actions/python-env
         with:
-          python-version: "3.12"
-          cache: pip
-      - name: Install Tk
-        run: sudo apt-get update && sudo apt-get install -y python3-tk
-      - run: pip install -r requirements.txt
+          requirements: requirements.txt
+          cache-dependency-path: requirements.txt
+          install-tk: "true"
       - name: Every module imports
         run: |
           python - <<'PY'

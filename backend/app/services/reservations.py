@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.exc import IntegrityError
@@ -11,6 +11,15 @@ from sqlalchemy.orm import Session
 
 from app import models, schemas
 from app.config import settings
+from app.constants import (
+    RESERVATION_ACTIVE_STATUSES,
+    RESERVATION_CANCELLED,
+    RESERVATION_COMPLETED,
+    RESERVATION_CREATED,
+    RESERVATION_EXPIRED,
+    RESERVATION_TERMINAL_STATUSES,
+    RESERVATION_UPDATED,
+)
 from app.db import set_tenant_context
 from app.security import (
     derive_guest_token,
@@ -20,9 +29,6 @@ from app.security import (
     normalize_email,
 )
 from app.services import notifications
-
-ACTIVE_STATUSES = ("REQUESTED", "CONFIRMED", "READY")
-TERMINAL_STATUSES = ("COMPLETED", "CANCELLED", "EXPIRED")
 
 
 class ReservationError(Exception):
@@ -38,10 +44,6 @@ class ReservationError(Exception):
         self.message = message
         self.status_code = status_code
         self.details = details or {}
-
-
-def _now() -> datetime:
-    return datetime.now(UTC)
 
 
 def _request_hash(payload: schemas.ReservationCreate, customer_id: uuid.UUID | None) -> str:
@@ -105,7 +107,7 @@ def create_reservation(
 ) -> tuple[models.Reservation, str | None]:
     customer_id = customer.id if customer is not None else None
     request_hash = _request_hash(payload, customer_id)
-    now = _now()
+    now = models.utcnow()
 
     if idempotency_key:
         # Expired keys are never reused; prune them while the tenant context is
@@ -250,7 +252,7 @@ def create_reservation(
         notifications.enqueue_staff(
             db,
             tenant.id,
-            "RESERVATION_CREATED",
+            RESERVATION_CREATED,
             {
                 "reservation_id": str(reservation.id),
                 "public_ref": reservation.public_ref,
@@ -331,7 +333,7 @@ def create_staff_hold(
     Does not commit: the caller may still need to update a request row, and
     both changes should land together.
     """
-    now = _now()
+    now = models.utcnow()
     locked = db.scalar(
         select(models.Stock)
         .where(
@@ -429,7 +431,7 @@ def _release(
     reason: str | None,
     actor_id: uuid.UUID | None,
 ) -> None:
-    if reservation.status in TERMINAL_STATUSES:
+    if reservation.status in RESERVATION_TERMINAL_STATUSES:
         raise ReservationError("invalid_state", "This reservation is already closed.", status_code=409)
 
     stocks = _lock_stocks(
@@ -455,7 +457,7 @@ def _release(
                 status_code=500,
             )
         stock.reserved -= remaining
-        stock.updated_at = _now()
+        stock.updated_at = models.utcnow()
         line.cancelled_quantity += remaining
         db.add(
             _movement(
@@ -470,7 +472,7 @@ def _release(
             )
         )
 
-    now = _now()
+    now = models.utcnow()
     sold_any = any(line.completed_quantity > 0 for line in reservation.lines)
     if sold_any:
         # A partly-fulfilled reservation stays a completed sale even when the
@@ -484,7 +486,7 @@ def _release(
     if reason:
         reservation.cancel_reason = reason
 
-    kind = "RESERVATION_COMPLETED" if sold_any else f"RESERVATION_{new_status}"
+    kind = RESERVATION_COMPLETED if sold_any else f"RESERVATION_{new_status}"
     if reservation.customer_id is not None:
         notifications.enqueue(
             db,
@@ -501,7 +503,7 @@ def _release(
         )
 
     if actor_id is None:
-        staff_kind = "RESERVATION_EXPIRED" if new_status == "EXPIRED" else "RESERVATION_CANCELLED"
+        staff_kind = RESERVATION_EXPIRED if new_status == "EXPIRED" else RESERVATION_CANCELLED
         notifications.enqueue_staff(
             db,
             reservation.tenant_id,
@@ -573,7 +575,7 @@ def complete_reservation(
     )
     if locked is None:
         raise ReservationError("not_found", "Reservation not found.", status_code=404)
-    if locked.status not in ACTIVE_STATUSES:
+    if locked.status not in RESERVATION_ACTIVE_STATUSES:
         raise ReservationError("invalid_state", "Only active reservations can be completed.", status_code=409)
 
     requested: dict[uuid.UUID, schemas.CompleteLineIn] = {}
@@ -616,7 +618,7 @@ def complete_reservation(
         locked.tenant_id,
         {res_line.stock_id for res_line, _, _ in plan if res_line.stock_id is not None},
     )
-    now = _now()
+    now = models.utcnow()
     released_stocks: list[models.Stock] = []
 
     try:
@@ -687,7 +689,7 @@ def complete_reservation(
             locked.cancelled_at = None if sold_any else now
         locked.updated_at = now
 
-        kind = ("RESERVATION_COMPLETED" if sold_any else "RESERVATION_CANCELLED") if resolved else "RESERVATION_UPDATED"
+        kind = (RESERVATION_COMPLETED if sold_any else RESERVATION_CANCELLED) if resolved else RESERVATION_UPDATED
         if locked.customer_id is not None:
             notifications.enqueue(
                 db,
@@ -720,7 +722,7 @@ def complete_reservation(
 
 
 def expire_due_reservations(db: Session, now: datetime | None = None) -> int:
-    now = now or _now()
+    now = now or models.utcnow()
     # The worker normally gets a fresh session; expiring here also makes the
     # function safe to call from long-lived sessions and tests.
     db.expire_all()
@@ -735,7 +737,7 @@ def expire_due_reservations(db: Session, now: datetime | None = None) -> int:
             select(models.Reservation)
             .where(
                 models.Reservation.tenant_id == tenant.id,
-                models.Reservation.status.in_(ACTIVE_STATUSES),
+                models.Reservation.status.in_(RESERVATION_ACTIVE_STATUSES),
                 models.Reservation.expires_at <= now,
             )
             .order_by(models.Reservation.expires_at)
@@ -768,7 +770,7 @@ def recompute_reserved(db: Session, tenant_id: uuid.UUID) -> list[dict]:
         .join(models.Reservation, models.Reservation.id == models.ReservationLine.reservation_id)
         .where(
             models.Reservation.tenant_id == tenant_id,
-            models.Reservation.status.in_(ACTIVE_STATUSES),
+            models.Reservation.status.in_(RESERVATION_ACTIVE_STATUSES),
         )
         .group_by(models.ReservationLine.stock_id)
         .subquery()

@@ -42,6 +42,14 @@ The platform components have separate setup instructions:
 - [`mobile/README.md`](mobile/README.md) — Expo customer app, API host
   resolution, guest flow, current scope.
 
+## Legacy desktop app is frozen
+
+The root Tkinter app (`main.py`, `customer_app.py`, `owner_app.py`, `services/`,
+`ui/`, `models/`, and `database/`) is kept as a fallback for the original
+single-shop workflow. It receives critical fixes only. Do not refactor or
+modernize it as part of platform work; new features belong in `backend/`,
+`admin/`, or `mobile/`.
+
 ## Quality gates
 
 Before opening a pull request, run the checks for the parts you changed. The

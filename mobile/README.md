@@ -248,7 +248,7 @@ npm run lint          # expo lint
 npm audit --audit-level=high  # dependency advisories
 npm run test:coverage # Vitest + 100% line/branch/function gate
 npm run web           # browser preview
-npm run api:types     # regenerate src/api/schema.d.ts from ../admin/openapi.json
+npm run api:types     # regenerate ../shared/api/schema.d.ts from ../admin/openapi.json
 npm run doctor        # expo-doctor
 ```
 
@@ -258,14 +258,13 @@ Expo dependencies while keeping the public package names and APIs used by the
 Expo CLI.
 
 The API types are generated from the same committed OpenAPI snapshot as the
-admin. Regenerate the snapshot in `admin/` first if the backend contract
-changed:
+admin and live in `../shared/api/schema.d.ts`, so both apps consume one file.
+Regenerate the snapshot in `admin/` first if the backend contract changed, then
+run the generator once:
 
 ```bash
 cd admin
 npm run api:dump
-npm run api:types
-cd ../mobile
 npm run api:types
 ```
 

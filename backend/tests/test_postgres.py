@@ -30,6 +30,7 @@ from sqlalchemy.exc import DBAPIError
 from sqlalchemy.orm import Session, sessionmaker
 
 from app import models, schemas
+from app.constants import RESERVATION_ACTIVE_STATUSES
 from app.db import set_customer_context, set_push_worker_context, set_tenant_context
 from app.services import accounts, audit, reservations
 
@@ -653,7 +654,7 @@ def test_last_copy_race_has_exactly_one_winner(app_engine: Engine, admin_engine:
             .select_from(models.Reservation)
             .where(
                 models.Reservation.tenant_id == shop["tenant_id"],
-                models.Reservation.status.in_(reservations.ACTIVE_STATUSES),
+                models.Reservation.status.in_(RESERVATION_ACTIVE_STATUSES),
             )
         )
         assert active == 1
