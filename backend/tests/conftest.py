@@ -10,6 +10,7 @@ import pytest
 os.environ["CARDTRACKER_DATABASE_URL"] = "sqlite+pysqlite://"
 os.environ["CARDTRACKER_AUTO_CREATE_TABLES"] = "false"
 os.environ["CARDTRACKER_JWT_SECRET"] = "test-secret-test-secret-test-secret-32"
+os.environ["CARDTRACKER_ENVIRONMENT"] = "test"
 # Keep the suite hermetic: a developer's backend/.env may enable the debug code.
 os.environ["CARDTRACKER_OTP_DEBUG_CODE"] = "false"
 
@@ -23,6 +24,7 @@ from app.db import get_db  # noqa: E402
 from app.main import app  # noqa: E402
 from app.models import Base  # noqa: E402
 from app.security import create_access_token, hash_password  # noqa: E402
+from app.services import email_validation  # noqa: E402
 from app.services.ratelimit import limiter  # noqa: E402
 
 engine = create_engine(
@@ -39,6 +41,13 @@ def _reset_rate_limits():
     limiter.reset()
     yield
     limiter.reset()
+
+
+@pytest.fixture(autouse=True)
+def _reset_email_domain_cache():
+    email_validation.domain_has_mx.cache_clear()
+    yield
+    email_validation.domain_has_mx.cache_clear()
 
 
 @pytest.fixture(autouse=True)

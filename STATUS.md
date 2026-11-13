@@ -2,8 +2,9 @@
 
 Last updated: **2026-11-13**
 Latest commit: see `git log -1`
-Working tree: customer password authentication and a forced mobile sign-in gate,
-owner/staff in-app notification inbox, account lifecycle/session-safety work,
+Working tree: customer password authentication, a forced mobile sign-in gate,
+and email authenticity checks; owner/staff in-app notification inbox,
+account lifecycle/session-safety work,
 offline/cache safety, Scryfall market-based stock pricing, and stock archiving
 are implemented and verified. Customers sign in with email + password; OTP
 codes are reserved for signup verification, password reset, and email change.
@@ -461,6 +462,26 @@ public HTTPS domain are configured but not yet validated in production.
 - The legacy `/v1/auth/otp/request` and `/v1/auth/otp/verify` routes remain for
   older clients, but the mobile app no longer uses OTP for everyday sign-in.
 
+### Email authenticity checks — 2026-11-13
+
+- Every email entry point now normalizes the address and requires the domain to
+  publish MX records: customer signup, password reset, email change, guest
+  reservations, restock alerts, special orders, staff creation, and the demo
+  seed. Addresses on known disposable/temporary providers are rejected.
+- Login and OTP-verification payloads intentionally skip the DNS check so an
+  existing account can still sign in during a resolver outage; OTP verification
+  already proves control of the mailbox.
+- The check is DNS-only. It does not connect to remote SMTP servers, which would
+  be slow, unreliable, and an SSRF risk. A definitive "no MX" response is
+  rejected; a transient resolver failure is logged and allowed so a DNS outage
+  does not block all signups.
+- `CARDTRACKER_EMAIL_DOMAIN_CHECK_ENABLED` (default `true`) is a kill switch and
+  `CARDTRACKER_EMAIL_DOMAIN_CHECK_TIMEOUT_SECONDS` (default 3) bounds lookups.
+  Reserved `example.com`/`.test`/`.invalid` domains are exempt only outside
+  production so the demo seed and tests stay offline-friendly.
+- Mobile already renders the API's 422 detail in the sign-in, create-account,
+  reset, and email-change forms, so no client-side change was required.
+
 ---
 
 ## 3. Verification status
@@ -468,10 +489,11 @@ public HTTPS domain are configured but not yet validated in production.
 | Check | Result |
 | --- | --- |
 | Root Python suite (`pytest --cov --cov-branch`) | **351 passed, 100% line/branch** |
-| Backend SQLite suite | **397 passed, 13 PostgreSQL tests skipped, 100% line/branch** |
-| Backend with PostgreSQL test URLs | **410 passed, 100% line/branch** |
+| Backend SQLite suite | **411 passed, 13 PostgreSQL tests skipped, 100% line/branch** |
+| Backend with PostgreSQL test URLs | **424 passed, 100% line/branch** |
 | Backend PostgreSQL-only suite (RLS, customer claiming, notifications, locking) | **13 passed** |
 | Backend customer password tests | `tests/test_customer_passwords.py`: signup, login, reset, change, purpose isolation, rate limits, and session revocation |
+| Backend email validation tests | `tests/test_email_validation.py`: normalization, MX checks, disposable providers, resolver outages, production/dev exemptions, caching, API 422s, and demo-seed rejection |
 | Backend staff notification tests | `tests/test_staff_notifications.py`: inbox listing/pagination, unread counts, read/read-all, tenant isolation, inactive staff, and every event render/enqueue path |
 | Backend account/session tests | `tests/test_customer_accounts.py`: **22 passed**, including per-device logout |
 | Backend Ruff lint / changed-file formatting / mypy | Clean |
@@ -617,6 +639,20 @@ Latest customer password auth validation (2026-11-13):
   **2 passed** (forced sign-in + locale toggle, and protected-route redirect).
 - Backend Ruff lint/format and mypy on changed code: clean; two pre-existing
   mypy errors remain in `tests/test_scryfall_refresh.py` and `api/staff.py`.
+
+Latest email authenticity validation (2026-11-13):
+
+- Backend SQLite suite: **411 passed, 13 PostgreSQL-only skipped**, 100% line
+  and branch coverage. Backend with PostgreSQL test URLs: **424 passed**, 100%.
+- `tests/test_email_validation.py` adds 14 tests for normalization, disposable
+  providers (including subdomains), MX success, NXDOMAIN/NoAnswer rejection,
+  transient DNS failures, the development/production reserved-domain split, the
+  disabled-check switch, caching, API 422 responses, and demo-seed rejection.
+- Verified against real DNS: `gmail.com` and `outlook.com` accepted;
+  `mailinator.com` and a nonexistent domain rejected.
+- Ruff lint/format and mypy on the changed backend files: clean.
+- No mobile code change was needed; the API client already displays the 422
+  detail in the sign-in, create-account, reset, and email-change error text.
 
 The Python coverage floors are 100% line and branch for both the root and
 backend suites. Admin and mobile keep their explicitly included logic/API

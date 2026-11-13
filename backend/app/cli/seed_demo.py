@@ -9,6 +9,7 @@ from sqlalchemy import select
 from app.db import SessionLocal, set_tenant_context
 from app.models import Card, Stock, Tenant, TenantSettings, User
 from app.security import hash_password
+from app.services.email_validation import EmailValidationError, validate_email_address
 
 
 def main() -> None:
@@ -19,6 +20,11 @@ def main() -> None:
     parser.add_argument("--password", default="secret-password")
     parser.add_argument("--currency", default="RSD")
     args = parser.parse_args()
+
+    try:
+        args.email = validate_email_address(args.email)
+    except EmailValidationError as exc:
+        parser.error(str(exc))
 
     with SessionLocal() as db:
         existing = db.scalar(select(Tenant).where(Tenant.slug == args.slug))

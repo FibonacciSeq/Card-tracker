@@ -4,9 +4,26 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import AfterValidator, BaseModel, ConfigDict, EmailStr, Field
+from pydantic_core import PydanticCustomError
+
+from app.services.email_validation import EmailValidationError, validate_email_address
+
+
+def _deliverable_email(value: str) -> str:
+    try:
+        return validate_email_address(value)
+    except EmailValidationError as exc:
+        raise PydanticCustomError("email_not_deliverable", str(exc)) from exc
+
+
+# Input addresses that must point at a domain able to receive mail. Login and
+# OTP-verification payloads deliberately keep plain EmailStr: an existing
+# account must still be able to sign in if its DNS records are temporarily
+# unavailable, and OTP verification already proves control of the mailbox.
+DeliverableEmail = Annotated[EmailStr, AfterValidator(_deliverable_email)]
 
 
 class Money(BaseModel):
@@ -80,7 +97,7 @@ class StockListOut(BaseModel):
 
 class CustomerIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
-    email: EmailStr
+    email: DeliverableEmail
     phone: str = Field(default="", max_length=50)
 
 
@@ -165,7 +182,7 @@ class StaffMeOut(BaseModel):
 
 
 class OtpRequestIn(BaseModel):
-    email: EmailStr
+    email: DeliverableEmail
 
 
 class OtpRequestOut(BaseModel):
@@ -208,7 +225,7 @@ class PasswordChangeIn(BaseModel):
 
 
 class EmailChangeRequestIn(BaseModel):
-    email: EmailStr
+    email: DeliverableEmail
 
 
 class EmailChangeVerifyIn(BaseModel):
@@ -435,7 +452,7 @@ class CompleteIn(BaseModel):
 
 
 class RestockAlertCreateIn(BaseModel):
-    email: EmailStr
+    email: DeliverableEmail
     name: str | None = Field(default=None, max_length=200)
     card_id: uuid.UUID
     finish: Literal["nonfoil", "foil", "etched"] = "nonfoil"
@@ -538,7 +555,7 @@ class StaffUserOut(BaseModel):
 
 
 class StaffUserCreateIn(BaseModel):
-    email: EmailStr
+    email: DeliverableEmail
     display_name: str | None = Field(default=None, max_length=200)
     password: str = Field(min_length=10, max_length=200)
     role: Literal["staff", "owner"] = "staff"

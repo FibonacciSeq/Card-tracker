@@ -23,6 +23,7 @@ dependencies = [
     "cryptography>=42",
     "requests>=2.32",
     "ijson>=3.3",
+    "dnspython>=2.6",
 ]
 
 [project.optional-dependencies]

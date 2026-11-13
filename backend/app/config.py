@@ -41,6 +41,11 @@ class Settings(BaseSettings):
     # Empty falls back to jwt_secret, so existing deployments need no new secret.
     otp_secret: str = ""
     otp_debug_code: bool = False
+    # Email authenticity: require the domain to publish MX records and reject
+    # known disposable providers. Reserved example domains skip DNS outside
+    # production. Disable the lookup for air-gapped deployments.
+    email_domain_check_enabled: bool = True
+    email_domain_check_timeout_seconds: float = 3.0
     default_hold_hours: int = 24
     # Production must use `alembic upgrade head`; only local SQLite runs enable
     # auto-create explicitly.
