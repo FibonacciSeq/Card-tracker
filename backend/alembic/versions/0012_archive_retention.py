@@ -23,17 +23,21 @@ RETENTION_CHECK = "ck_settings_archive_retention_days"
 
 def _stock_fk_name() -> str:
     """Find the existing stock foreign key on Postgres."""
-    return op.get_bind().execute(
-        text(
-            """
+    return (
+        op.get_bind()
+        .execute(
+            text(
+                """
             SELECT conname
             FROM pg_constraint
             WHERE conrelid = 'reservation_lines'::regclass
               AND contype = 'f'
               AND pg_get_constraintdef(oid) LIKE 'FOREIGN KEY (stock_id) REFERENCES stock(id)%'
             """
+            )
         )
-    ).scalar_one()
+        .scalar_one()
+    )
 
 
 def upgrade() -> None:

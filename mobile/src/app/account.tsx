@@ -3,9 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-  KeyboardAvoidingView,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -25,60 +23,47 @@ import { useAuth } from "../state/auth";
 import { usePush, type PushStatus } from "../state/push";
 import { colors, radii, spacing, type } from "../theme";
 
-type Step = "email" | "code";
 type EmailChangeStep = "idle" | "code";
 type AccountAction = "delete" | "sign-out" | "sign-out-all" | null;
 
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const { locale, setLocale, t } = useLocale();
+  const { t } = useLocale();
   const {
+    changePassword,
     customer,
     deleteAccount,
     hydrated,
     isAuthenticated,
     lastClaimed,
     refreshCustomer,
-    requestCode,
     requestEmailChange,
     signOut,
     signOutEverywhere,
     token,
     updateProfile,
-    verifyCode,
     verifyEmailChange,
   } = useAuth();
   const push = usePush();
   const router = useRouter();
 
-  const [step, setStep] = useState<Step>("email");
-  const [email, setEmail] = useState("");
-  const [code, setCode] = useState("");
-  const [debugCode, setDebugCode] = useState<string | null>(null);
-  const [resendIn, setResendIn] = useState(0);
-  const [busy, setBusy] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [emailStep, setEmailStep] = useState<EmailChangeStep>("idle");
   const [newEmail, setNewEmail] = useState("");
   const [emailCode, setEmailCode] = useState("");
   const [emailDebugCode, setEmailDebugCode] = useState<string | null>(null);
   const [emailResendIn, setEmailResendIn] = useState(0);
   const [changingEmail, setChangingEmail] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [accountAction, setAccountAction] = useState<AccountAction>(null);
   const [accountActionError, setAccountActionError] = useState<string | null>(null);
 
   const reservations = useMyReservations(token);
   const requests = useMyCardRequests(token);
   const alerts = useMyRestockAlerts(token);
-
-  useEffect(() => {
-    if (resendIn <= 0) return;
-    const timer = setInterval(() => setResendIn((value) => Math.max(0, value - 1)), 1000);
-    return () => clearInterval(timer);
-  }, [resendIn]);
 
   useEffect(() => {
     if (emailResendIn <= 0) return;
@@ -104,10 +89,7 @@ export default function AccountScreen() {
     setAccountAction(action);
   }
 
-  function resetSignInForm() {
-    setStep("email");
-    setCode("");
-    setDebugCode(null);
+  function resetEmailChangeForm() {
     setEmailStep("idle");
     setNewEmail("");
     setEmailCode("");
@@ -129,11 +111,11 @@ export default function AccountScreen() {
         );
       } else if (accountAction === "sign-out-all") {
         await signOutEverywhere();
-        resetSignInForm();
+        resetEmailChangeForm();
         setNotice("Signed out on every device that was using this account.");
       } else {
         await signOut();
-        resetSignInForm();
+        resetEmailChangeForm();
         setNotice("Signed out on this device. Other devices stay signed in.");
       }
       setAccountAction(null);
@@ -198,37 +180,15 @@ export default function AccountScreen() {
     setEmailResendIn(0);
   }
 
-  async function sendCode() {
+  async function savePassword(currentPassword: string | null, newPassword: string) {
     setError(null);
     setNotice(null);
-    setBusy(true);
     try {
-      const result = await requestCode(email);
-      setStep("code");
-      setCode("");
-      setDebugCode(result.debug_code ?? null);
-      setResendIn(result.resend_after);
-      setNotice(`We sent a 6-digit code to ${email.trim().toLowerCase()}.`);
+      const hadPassword = customer?.has_password ?? false;
+      await changePassword(currentPassword, newPassword);
+      setNotice(hadPassword ? t("passwordUpdated") : t("passwordSet"));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not send a code.");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function verify() {
-    setError(null);
-    setNotice(null);
-    setBusy(true);
-    try {
-      const result = await verifyCode(email, code);
-      setDebugCode(null);
-      setNotice(claimMessage(result.claimed));
-      await queryClient.invalidateQueries({ queryKey: accountKeys.all });
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not verify this code.");
-    } finally {
-      setBusy(false);
+      setError(caught instanceof Error ? caught.message : "Could not update your password.");
     }
   }
 
@@ -245,7 +205,9 @@ export default function AccountScreen() {
     }
   }
 
-  if (!hydrated) return <LoadingState label="Loading your account…" />;
+  if (!hydrated || !isAuthenticated || !customer) {
+    return <LoadingState label="Loading your account…" />;
+  }
 
   if (isAuthenticated && customer) {
     const counts = {
@@ -301,6 +263,11 @@ export default function AccountScreen() {
         </View>
 
         <ProfileCard customer={customer} onSave={saveProfile} />
+
+        <PasswordCard
+          hasPassword={customer.has_password ?? false}
+          onSave={savePassword}
+        />
 
         <View style={styles.profileCard}>
           <Text style={styles.pushTitle}>Email address</Text>
@@ -492,134 +459,100 @@ export default function AccountScreen() {
     );
   }
 
+  return <LoadingState label="Redirecting to sign in…" />;
+}
+
+function PasswordCard({
+  hasPassword,
+  onSave,
+}: {
+  hasPassword: boolean;
+  onSave: (currentPassword: string | null, newPassword: string) => Promise<void>;
+}) {
+  const { t } = useLocale();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  async function save() {
+    setLocalError(null);
+    if (newPassword.length < 8) {
+      setLocalError(t("passwordHint"));
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setLocalError(t("passwordsDoNotMatch"));
+      return;
+    }
+    setSaving(true);
+    try {
+      await onSave(hasPassword ? currentPassword : null, newPassword);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-      style={styles.screen}
-    >
-      <ScrollView
-        contentContainerStyle={{
-          padding: spacing.lg,
-          paddingBottom: insets.bottom + spacing.xxl,
-          gap: spacing.lg,
-        }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <View style={styles.hero}>
-          <View style={styles.heroIcon}>
-            <Ionicons name="mail-outline" size={22} color={colors.primary} />
-          </View>
-          <Text style={styles.heroEyebrow}>{t("optionalAccount")}</Text>
-          <Text style={styles.heroTitle}>{t("accountHeroTitle")}</Text>
-          <Text style={styles.heroBody}>{t("accountHeroBody")}</Text>
-        </View>
-
-        {error ? <ErrorBox text={error} /> : null}
-        {notice ? <Notice text={notice} /> : null}
-
-        <View style={styles.localeCard}>
-          <Text style={styles.localeLabel}>{t("language")}</Text>
-          <View style={styles.localeRow}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setLocale("en")}
-              style={({ pressed }) => [
-                styles.localeButton,
-                locale === "en" && styles.localeButtonActive,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={[styles.localeButtonText, locale === "en" && styles.localeButtonTextActive]}>
-                {t("english")}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setLocale("sr")}
-              style={({ pressed }) => [
-                styles.localeButton,
-                locale === "sr" && styles.localeButtonActive,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text style={[styles.localeButtonText, locale === "sr" && styles.localeButtonTextActive]}>
-                {t("serbian")}
-              </Text>
-            </Pressable>
-          </View>
-          <Text style={styles.localeHint}>{t("languageHint")}</Text>
-        </View>
-
-        <View style={styles.form}>
-          <Field
-            autoCapitalize="none"
-            autoComplete="email"
-            keyboardType="email-address"
-            label="Email"
-            onChangeText={setEmail}
-            placeholder="you@example.com"
-            textContentType="emailAddress"
-            value={email}
-          />
-
-          {step === "code" ? (
-            <>
-              <Field
-                autoCapitalize="none"
-                keyboardType="number-pad"
-                label="6-digit code"
-                maxLength={6}
-                onChangeText={(value) => setCode(value.replace(/\D/g, "").slice(0, 6))}
-                placeholder="000000"
-                returnKeyType="done"
-                textContentType="oneTimeCode"
-                value={code}
-              />
-              <PrimaryButton
-                disabled={email.trim().length === 0 || code.length !== 6}
-                label={t("verifyAndSignIn")}
-                loading={busy}
-                onPress={() => void verify()}
-              />
-              <Pressable
-                accessibilityRole="button"
-                disabled={busy || resendIn > 0}
-                onPress={() => void sendCode()}
-                style={({ pressed }) => [styles.resend, pressed && styles.pressed]}
-              >
-                <Text style={[styles.resendLabel, resendIn > 0 && styles.resendDisabled]}>
-                  {resendIn > 0 ? `Send a new code in ${resendIn}s` : "Send a new code"}
-                </Text>
-              </Pressable>
-              {__DEV__ && debugCode ? (
-                <View style={styles.debug}>
-                  <Text style={styles.debugLabel}>Development code</Text>
-                  <Text selectable style={styles.debugCode}>
-                    {debugCode}
-                  </Text>
-                </View>
-              ) : null}
-            </>
-          ) : (
-            <PrimaryButton
-              disabled={email.trim().length === 0}
-              label={t("emailMeCode")}
-              loading={busy}
-              onPress={() => void sendCode()}
-            />
-          )}
-        </View>
-
-        <View style={styles.privacy}>
-          <Ionicons name="lock-closed-outline" size={16} color={colors.primary} />
-          <Text style={styles.privacyText}>
-            The code expires in 10 minutes. Signing in links unclaimed guest items with the same
-            email; it never changes another account&apos;s data.
-          </Text>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+    <View style={styles.profileCard}>
+      <View style={styles.pushHeader}>
+        <Ionicons name="key-outline" size={18} color={colors.primary} />
+        <Text style={styles.pushTitle}>{t("accountPasswordTitle")}</Text>
+      </View>
+      <Text style={styles.pushBody}>{t("accountPasswordBody")}</Text>
+      {hasPassword ? (
+        <Field
+          autoCapitalize="none"
+          autoComplete="current-password"
+          autoCorrect={false}
+          label={t("currentPasswordLabel")}
+          onChangeText={setCurrentPassword}
+          placeholder="••••••••"
+          secureTextEntry
+          textContentType="password"
+          value={currentPassword}
+        />
+      ) : null}
+      <Field
+        autoCapitalize="none"
+        autoComplete="new-password"
+        autoCorrect={false}
+        label={t("newPasswordLabel")}
+        onChangeText={setNewPassword}
+        placeholder="••••••••"
+        secureTextEntry
+        textContentType="newPassword"
+        value={newPassword}
+      />
+      <Field
+        autoCapitalize="none"
+        autoComplete="new-password"
+        autoCorrect={false}
+        label={t("confirmPasswordLabel")}
+        onChangeText={setConfirmPassword}
+        placeholder="••••••••"
+        secureTextEntry
+        textContentType="newPassword"
+        value={confirmPassword}
+      />
+      <Text style={styles.cardHint}>{t("passwordHint")}</Text>
+      {localError ? <Text style={styles.pushError}>{localError}</Text> : null}
+      <PrimaryButton
+        disabled={
+          newPassword.length < 8 ||
+          confirmPassword.length === 0 ||
+          (hasPassword && currentPassword.length === 0)
+        }
+        label={hasPassword ? t("changePassword") : t("setPassword")}
+        loading={saving}
+        onPress={() => void save()}
+        variant="secondary"
+      />
+    </View>
   );
 }
 
@@ -640,12 +573,6 @@ function pushMessage(status: PushStatus): string {
 
 function totalClaimed(claimed: ClaimedCounts): number {
   return claimed.reservations + claimed.restock_alerts + claimed.card_requests;
-}
-
-function claimMessage(claimed: ClaimedCounts): string {
-  const total = totalClaimed(claimed);
-  if (total === 0) return "Signed in. No older guest items needed linking.";
-  return `Signed in and linked ${total} earlier item${total === 1 ? "" : "s"}.`;
 }
 
 function emailChangeMessage(claimed: ClaimedCounts): string {
@@ -827,7 +754,6 @@ function ErrorBox({ text }: { text: string }) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colors.background },
   hero: {
     backgroundColor: colors.primary,
     borderRadius: radii.lg,
@@ -849,12 +775,6 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 1.4,
   },
-  heroTitle: {
-    color: colors.white,
-    fontSize: type.title,
-    fontWeight: "900",
-    letterSpacing: -0.4,
-  },
   heroEmail: {
     color: colors.white,
     fontSize: type.title,
@@ -862,58 +782,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.4,
   },
   heroBody: { color: "#D8E8E1", fontSize: type.small, lineHeight: 19 },
-  localeCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.line,
-    padding: spacing.lg,
-    gap: spacing.sm,
-  },
-  localeLabel: {
-    color: colors.ink,
-    fontSize: type.small,
-    fontWeight: "800",
-  },
-  localeRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  localeButton: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.line,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.background,
-  },
-  localeButtonActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primarySoft,
-  },
-  localeButtonText: {
-    color: colors.ink,
-    fontSize: type.small,
-    fontWeight: "700",
-  },
-  localeButtonTextActive: {
-    color: colors.primary,
-  },
-  localeHint: {
-    color: colors.inkMuted,
-    fontSize: type.tiny,
-    lineHeight: 18,
-  },
-  form: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.lg,
-    borderWidth: 1,
-    borderColor: colors.line,
-    padding: spacing.lg,
-    gap: spacing.md,
-  },
   resend: { minHeight: 40, alignItems: "center", justifyContent: "center" },
   resendLabel: { color: colors.primary, fontSize: type.small, fontWeight: "800" },
   resendDisabled: { color: colors.inkMuted },
@@ -931,13 +799,6 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     letterSpacing: 3,
   },
-  privacy: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-    gap: spacing.sm,
-    paddingHorizontal: spacing.xs,
-  },
-  privacyText: { flex: 1, color: colors.inkMuted, fontSize: type.small, lineHeight: 19 },
   notice: {
     flexDirection: "row",
     alignItems: "flex-start",
@@ -1004,6 +865,7 @@ const styles = StyleSheet.create({
   pushHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   pushTitle: { color: colors.ink, fontSize: type.heading, fontWeight: "800" },
   pushBody: { color: colors.inkMuted, fontSize: type.small, lineHeight: 19 },
+  cardHint: { color: colors.inkMuted, fontSize: type.tiny, lineHeight: 17 },
   pushError: { color: colors.danger, fontSize: type.small, lineHeight: 19 },
   row: { flexDirection: "row", justifyContent: "space-between", gap: spacing.md },
   rowLabel: { color: colors.inkMuted, fontSize: type.small },

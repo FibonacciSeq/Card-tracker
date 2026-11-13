@@ -100,6 +100,11 @@ class User(Base):
     notifications_opt_out: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
+    @property
+    def has_password(self) -> bool:
+        """True when this customer can sign in with a password."""
+        return bool(self.password_hash)
+
     __table_args__ = (
         UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),
         CheckConstraint("role IN ('platform_admin','owner','staff','customer')", name="ck_users_role"),
@@ -124,7 +129,10 @@ class CustomerOtpChallenge(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
     email: Mapped[str] = mapped_column(String(320), index=True)
-    # Set for an email-change challenge; login challenges leave it NULL.
+    # login, signup, password_reset, or email_change. Scoping the challenge
+    # stops a code issued for one flow from being redeemed by another.
+    purpose: Mapped[str] = mapped_column(String(20), default="login", server_default="login")
+    # Set for an email-change challenge; account flows leave it NULL.
     user_id: Mapped[uuid.UUID | None] = mapped_column(Uuid)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     attempts: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
@@ -137,6 +145,7 @@ class CustomerOtpChallenge(Base):
 
     __table_args__ = (
         Index("ix_otp_email_created", "email", "created_at"),
+        Index("ix_otp_email_purpose_created", "email", "purpose", "created_at"),
         Index("ix_otp_pending_email", "email_sent_at", "next_email_attempt_at"),
         Index("ix_otp_expires", "expires_at"),
         Index("ix_otp_user_created", "user_id", "created_at"),

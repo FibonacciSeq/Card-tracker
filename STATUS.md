@@ -2,11 +2,12 @@
 
 Last updated: **2026-11-13**
 Latest commit: see `git log -1`
-Working tree: owner/staff in-app notification inbox, account lifecycle/session-safety
-work, offline/cache safety, Scryfall market-based stock pricing, and stock
-archiving are implemented and verified. Email is now reserved for
-account-security OTP codes (sign-in/account creation and email change); all
-business-event updates are in-app notifications plus optional push for
+Working tree: customer password authentication and a forced mobile sign-in gate,
+owner/staff in-app notification inbox, account lifecycle/session-safety work,
+offline/cache safety, Scryfall market-based stock pricing, and stock archiving
+are implemented and verified. Customers sign in with email + password; OTP
+codes are reserved for signup verification, password reset, and email change.
+All business-event updates are in-app notifications plus optional push for
 signed-in customers, and owners/staff get a per-user inbox in the admin app.
 No staff alert emails or guest customer deliveries are sent. Shop Settings reprice existing stock from catalog market prices when
 rules change; the nightly worker refreshes prices and recalculates eligible
@@ -37,7 +38,7 @@ client/server stack side by side:
 | Legacy Tkinter desktop shop (customer + owner + collection tool) | root `*.py`, `ui/`, `services/`, `database/` | Working; kept unchanged as a fallback |
 | Multi-vendor platform API | `backend/` | Implemented through Step 4 + audit hardening, plus Step 5 accounts |
 | Vendor web admin | `admin/` | Implemented through Step 4 + audit hardening |
-| Customer mobile app | `mobile/` | Guest vertical slice plus optional OTP accounts (Step 5 in progress) |
+| Customer mobile app | `mobile/` | Password accounts with forced sign-in (Step 5 in progress) |
 
 The platform is the forward path: one cloud API and one admin codebase serving
 many shops, with a native customer app on top. The legacy desktop app remains
@@ -55,9 +56,10 @@ for the original single-shop workflow until the new stack replaces it.
 - **Admin:** Vite + React 19 + TypeScript + TanStack Query, no SSR and no
   second backend. Types are generated from a committed OpenAPI snapshot.
 - **Mobile:** Expo SDK 58 + React Native + TypeScript + Expo Router +
-  TanStack Query. The customer app is guest-first with an optional account
-  session persisted in secure device storage and rotated by refresh token; types
-  come from the same OpenAPI snapshot.
+  TanStack Query. The customer app requires a password sign-in before any shop,
+  cart, hold, or account screen opens. The session is persisted in secure device
+  storage and rotated by refresh token; types come from the same OpenAPI
+  snapshot.
 - **Workers:** expiry worker (holds and quotes) and notification outbox worker.
 - **Notifications:** transactional outbox with console or SMTP delivery for
   account-security OTP codes plus push delivery; business-event updates are
@@ -279,10 +281,10 @@ bundle has no source maps; `admin/public/_headers` supplies CSP and browser
 security headers. Client logging is development-only and records sanitized
 error metadata (type/status), never request bodies or tokens.
 
-### Step 5 — customer mobile app and optional accounts (2026-10-29)
+### Step 5 — customer mobile app and password accounts (2026-10-29)
 
-The customer app now exists as a working guest vertical slice, with optional
-email-OTP accounts on top:
+The customer app now exists as a working vertical slice behind a mandatory
+email + password sign-in:
 
 - Expo SDK 58 + React Native + TypeScript + Expo Router, with a generated API
   types snapshot and TanStack Query hooks.
@@ -311,9 +313,13 @@ email-OTP accounts on top:
   the app, an HTML confirmation page, or a one-click POST.
 - Special-order request form, local request list, live status detail, quote
   accept, and cancel. The guest request token is stored in SecureStore.
-- Optional global customer account per verified email, with 6-digit email OTP
-  sign-in. The API stores only an HMAC-derived code/challenge, not plaintext,
-  and the notification worker delivers the code through the existing outbox.
+- Global customer account per verified email, secured by a password. New
+  customers verify ownership of the email with a six-digit OTP, then choose a
+  password; returning customers sign in with email + password. The API stores
+  the code as an HMAC-derived challenge, never plaintext, and the notification
+  worker delivers signup, reset, and email-change codes through the existing
+  outbox. `CustomerOut.has_password` tells the app whether a password is set
+  without exposing the hash.
 - `/v1/me` profile, reservations, card requests, restock alerts, notification
   delivery rows, and push devices, including account-side cancel, quote accept,
   and alert deletion. The delivery log returns rendered titles only, and the
@@ -350,10 +356,12 @@ email-OTP accounts on top:
   sanitized failures, active/revoked push devices, pull-to-refresh, and
   cursor-based load-more. It links back to Account for preference changes.
 - Mobile checks: TypeScript, ESLint, Vitest logic coverage, `expo-doctor`,
-  production web export, and a local browser smoke test through QR/manual entry,
-  card detail, add-to-hold, restock subscribe/unsubscribe, special-order create,
-  staff quote, and quote accept. Account/OTP/claim behavior is covered by
-  backend SQLite and PostgreSQL tests.
+  production web export, and a local browser smoke test that confirms the forced
+  sign-in gate, the sign-in screen, protected-route redirects, and the locale
+  toggle, plus authenticated QR/manual entry, card detail, add-to-hold, restock
+  subscribe/unsubscribe, special-order create, staff quote, and quote accept.
+  Password signup/login/reset, account/OTP/claim behavior, and session safety
+  are covered by backend SQLite and PostgreSQL tests.
 
 The main Step 5 items are now implemented: push notifications, persisted
 offline caching, locale support, mobile browser smoke coverage, account
@@ -378,7 +386,8 @@ public HTTPS domain are configured but not yet validated in production.
 ### Notification rework — email is OTP-only — 2026-11-12
 
 - Business events no longer send email. Email is reserved for account-security
-  OTP codes: customer sign-in/account creation and email-change verification.
+  OTP codes: customer signup verification, password reset, and email-change
+  verification. Everyday customer sign-in uses a password and sends no email.
 - Customer event notifications — reservation status changes, quote
   quoted/declined/expired/converted, and restock available — are in-app rows in
   the signed-in customer feed plus a push row when the customer allows push.
@@ -419,6 +428,39 @@ public HTTPS domain are configured but not yet validated in production.
   unread counts, tenant/user isolation, inactive-staff filtering, and event
   enqueue paths for reservations, expiry, and special orders.
 
+### Customer passwords and forced sign-in — 2026-11-13
+
+- Customer accounts now use email + password for sign-in. `POST /v1/auth/login`
+  verifies the stored password hash and returns a short-lived access token plus
+  a rotated refresh token. Failed passwords return the same generic error as an
+  unknown email so the endpoint does not reveal which accounts exist.
+- New customers create an account with `POST /v1/auth/signup/request` followed
+  by `POST /v1/auth/signup/verify` (email, 6-digit code, password). A legacy
+  passwordless account sets its first password through the same flow; an
+  account that already has a password returns `409`.
+- Forgot-password uses `POST /v1/auth/password/reset/request` then
+  `POST /v1/auth/password/reset/verify` (email, code, new password). Resetting
+  or changing a password revokes every refresh token and returns a fresh
+  session. Signed-in customers can set or replace their password with
+  `POST /v1/me/password`, proving the current password when one exists.
+- OTP challenges now carry a `purpose` (`login`, `signup`, `password_reset`,
+  `email_change`), so a code issued for one flow cannot be replayed in another.
+  Migration `0014_customer_auth_purposes` adds the column and the
+  `ix_otp_email_purpose_created` index; the worker selects the matching email
+  template by purpose.
+- Email templates are purpose-specific: "Verify your Card Tracker email"
+  (signup), "Reset your Card Tracker password", "Confirm your new Card Tracker
+  email", and the legacy sign-in code template.
+- The mobile app gates the whole platform behind authentication. Expo Router's
+  `Stack.Protected` hides every shop, cart, hold, alert, request, and account
+  route until the session is hydrated and signed in; an unauthenticated visit to
+  a protected route redirects to `/login?next=...` and returns there after
+  sign-in. The sign-in screen also offers create-account and forgot-password
+  flows, keeps the English/Serbian toggle, and shows password-set status in
+  Account.
+- The legacy `/v1/auth/otp/request` and `/v1/auth/otp/verify` routes remain for
+  older clients, but the mobile app no longer uses OTP for everyday sign-in.
+
 ---
 
 ## 3. Verification status
@@ -426,9 +468,10 @@ public HTTPS domain are configured but not yet validated in production.
 | Check | Result |
 | --- | --- |
 | Root Python suite (`pytest --cov --cov-branch`) | **351 passed, 100% line/branch** |
-| Backend SQLite suite | **384 passed, 13 PostgreSQL tests skipped, 100%** |
-| Backend with PostgreSQL test URLs | **397 passed, 100%** |
+| Backend SQLite suite | **397 passed, 13 PostgreSQL tests skipped, 100% line/branch** |
+| Backend with PostgreSQL test URLs | **410 passed, 100% line/branch** |
 | Backend PostgreSQL-only suite (RLS, customer claiming, notifications, locking) | **13 passed** |
+| Backend customer password tests | `tests/test_customer_passwords.py`: signup, login, reset, change, purpose isolation, rate limits, and session revocation |
 | Backend staff notification tests | `tests/test_staff_notifications.py`: inbox listing/pagination, unread counts, read/read-all, tenant isolation, inactive staff, and every event render/enqueue path |
 | Backend account/session tests | `tests/test_customer_accounts.py`: **22 passed**, including per-device logout |
 | Backend Ruff lint / changed-file formatting / mypy | Clean |
@@ -442,7 +485,7 @@ public HTTPS domain are configured but not yet validated in production.
 | Mobile Vitest `src/lib/**` coverage | **54 passed, 100% statements/branches/functions/lines** |
 | Mobile `expo-doctor` | **20/20** |
 | Mobile production web export | Passed |
-| Mobile browser smoke test (local API) | Passed: scan entry → storefront → card detail → add to hold; restock subscribe/unsubscribe; special-order create → staff quote → customer accept |
+| Mobile browser smoke test (local API) | **2 passed**: forced sign-in + locale toggle, and protected-route redirect |
 | Mobile deep-link parser cases | Passed: custom scheme, https, Expo Go, path, slug, bad UUID, traversal, foreign scheme |
 | SQL Server Docker schema/E2E | Wired in CI/Makefile; 21/21 assertions pass locally; skips cleanly without Docker |
 | Alembic downgrade base → upgrade head | Verified on PostgreSQL |
@@ -553,6 +596,28 @@ Latest staff notification validation (2026-11-13):
   from the running app; the staff notification endpoints and schemas are
   present with no manual API type edits.
 
+Latest customer password auth validation (2026-11-13):
+
+- Backend SQLite suite: **397 passed, 13 PostgreSQL-only skipped**, 100%
+  statement and branch coverage (4,232 statements, 1,036 branches). Backend
+  with PostgreSQL test URLs: **410 passed**, 100% statement and branch coverage.
+  The new `tests/test_customer_passwords.py` covers signup verification,
+  password login, reset, change, per-purpose OTP isolation, rate limits, and
+  refresh-token revocation after credential changes.
+- Migration `0014_customer_auth_purposes` adds `customer_otp_challenges.purpose`
+  (server default `login`) and `ix_otp_email_purpose_created`. Responses expose
+  `CustomerOut.has_password`; no new password column was needed because
+  `users.password_hash` already existed for staff accounts.
+- `admin/openapi.json` and both generated `schema.d.ts` files were regenerated
+  from the running app; the login/signup/reset/change endpoints and the
+  `has_password` field are present with no manual API type edits.
+- Alembic head is now `0014_customer_auth_purposes`.
+- Mobile TypeScript, ESLint, and production web export: clean. Vitest:
+  **54 passed, 100% statements/branches/functions/lines**. Playwright:
+  **2 passed** (forced sign-in + locale toggle, and protected-route redirect).
+- Backend Ruff lint/format and mypy on changed code: clean; two pre-existing
+  mypy errors remain in `tests/test_scryfall_refresh.py` and `api/staff.py`.
+
 The Python coverage floors are 100% line and branch for both the root and
 backend suites. Admin and mobile keep their explicitly included logic/API
 client modules at 100%; admin screens are covered by Playwright rather than
@@ -613,9 +678,10 @@ runs unit coverage, lint, typecheck, and the production web export.
 
 ### Step 5 — customer mobile app (mostly implemented)
 
-The guest flow and optional OTP accounts are working, including QR/deep-link
-entry, card detail, restock alerts, special orders, `/v1/me`, guest-row
-claiming, and account profile update/deletion. The app also includes push
+The password-signup, sign-in, and reset flows are working behind a mandatory
+gate, including QR/deep-link entry, card detail, restock alerts, special orders,
+`/v1/me`, guest-row claiming, and account profile update/deletion. The app also
+includes push
 notification support, persisted query caching, locale selection, a
 Playwright smoke check for the web build, signed-in session persistence with
 refresh-token rotation, the customer notification preferences flow (display

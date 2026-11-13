@@ -12,12 +12,14 @@ type FieldProps = {
   TextInputProps,
   | "autoCapitalize"
   | "autoComplete"
+  | "autoCorrect"
   | "editable"
   | "keyboardType"
   | "maxLength"
   | "multiline"
   | "numberOfLines"
   | "returnKeyType"
+  | "secureTextEntry"
   | "textContentType"
 >;
 

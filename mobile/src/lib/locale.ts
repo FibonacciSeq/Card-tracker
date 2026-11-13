@@ -5,17 +5,37 @@ export type AppLocale = (typeof SUPPORTED_LOCALES)[number];
 export type TranslationKey =
   | "homeTitle"
   | "homeSubtitle"
-  | "signInToSync"
   | "scanShopCode"
   | "specialOrders"
   | "restockAlerts"
   | "yourHolds"
   | "shopsOnCardTracker"
-  | "optionalAccount"
-  | "accountHeroTitle"
-  | "accountHeroBody"
-  | "emailMeCode"
-  | "verifyAndSignIn"
+  | "loginTitle"
+  | "loginSubtitle"
+  | "signInTab"
+  | "createAccountTab"
+  | "resetPasswordTitle"
+  | "resetPasswordBody"
+  | "emailLabel"
+  | "passwordLabel"
+  | "currentPasswordLabel"
+  | "newPasswordLabel"
+  | "confirmPasswordLabel"
+  | "verificationCodeLabel"
+  | "signInAction"
+  | "sendVerificationCode"
+  | "sendResetCode"
+  | "verifyAndCreate"
+  | "saveNewPassword"
+  | "forgotPassword"
+  | "backToSignIn"
+  | "sendNewCode"
+  | "sendNewCodeIn"
+  | "verificationSent"
+  | "resetSent"
+  | "passwordHint"
+  | "passwordsDoNotMatch"
+  | "loginPrivacy"
   | "language"
   | "english"
   | "serbian"
@@ -27,24 +47,53 @@ export type TranslationKey =
   | "turnOnPush"
   | "pushInfo"
   | "deviceNeedsNativePush"
-  | "languageHint";
+  | "languageHint"
+  | "accountPasswordTitle"
+  | "accountPasswordBody"
+  | "setPassword"
+  | "changePassword"
+  | "savePassword"
+  | "passwordUpdated"
+  | "passwordSet";
 
 export const translationMap: Record<AppLocale, Record<TranslationKey, string>> = {
   en: {
     homeTitle: "Find the card you need.",
     homeSubtitle: "Browse local card shops, put a card on hold, and collect it in store.",
-    signInToSync: "Sign in to sync your list",
     scanShopCode: "Scan a shop code",
     specialOrders: "Special orders",
     restockAlerts: "Restock alerts",
     yourHolds: "Your holds",
     shopsOnCardTracker: "Shops on Card Tracker",
-    optionalAccount: "OPTIONAL ACCOUNT",
-    accountHeroTitle: "Keep your card list with you.",
-    accountHeroBody:
-      "Sign in with a one-time email code to see your holds, restock alerts, and special orders on another device. Guest checkout still works without an account.",
-    emailMeCode: "Email me a sign-in code",
-    verifyAndSignIn: "Verify and sign in",
+    loginTitle: "Your card list, secured.",
+    loginSubtitle:
+      "Sign in to browse shops, place holds, and follow your special orders.",
+    signInTab: "Sign in",
+    createAccountTab: "Create account",
+    resetPasswordTitle: "Reset your password",
+    resetPasswordBody:
+      "We will email a six-digit code. Enter it with a new password.",
+    emailLabel: "Email",
+    passwordLabel: "Password",
+    currentPasswordLabel: "Current password",
+    newPasswordLabel: "New password",
+    confirmPasswordLabel: "Confirm password",
+    verificationCodeLabel: "6-digit code",
+    signInAction: "Sign in",
+    sendVerificationCode: "Send verification code",
+    sendResetCode: "Send reset code",
+    verifyAndCreate: "Verify and create account",
+    saveNewPassword: "Save new password",
+    forgotPassword: "Forgot password?",
+    backToSignIn: "Back to sign in",
+    sendNewCode: "Send a new code",
+    sendNewCodeIn: "Send a new code in",
+    verificationSent: "We sent a verification code to",
+    resetSent: "We sent a reset code to",
+    passwordHint: "Use at least 8 characters.",
+    passwordsDoNotMatch: "Passwords do not match.",
+    loginPrivacy:
+      "We store your password securely. Email codes are only used to verify a new account or reset a forgotten password.",
     language: "Language",
     english: "English",
     serbian: "Srpski",
@@ -60,22 +109,51 @@ export const translationMap: Record<AppLocale, Record<TranslationKey, string>> =
     deviceNeedsNativePush:
       "Push notifications need a physical iOS or Android device. The web preview and simulators cannot register a native token.",
     languageHint: "Choose your preferred language for the app.",
+    accountPasswordTitle: "Password",
+    accountPasswordBody: "Your account uses a password to sign in.",
+    setPassword: "Set a password",
+    changePassword: "Change password",
+    savePassword: "Save password",
+    passwordUpdated: "Password updated. Other devices were signed out.",
+    passwordSet: "Password set. You can now sign in with it.",
   },
   sr: {
     homeTitle: "Pronađite kartu koju vam treba.",
     homeSubtitle: "Pregledajte lokalne prodavnice, rezervišite kartu i preuzmite je u prodavnici.",
-    signInToSync: "Prijavite se da sinhronizujete listu",
     scanShopCode: "Skeniraj kod prodavnice",
     specialOrders: "Specijalni zahtevi",
     restockAlerts: "Obaveštenja o ponovnom dolasku",
     yourHolds: "Vaše rezervacije",
     shopsOnCardTracker: "Prodavnice na Card Tracker-u",
-    optionalAccount: "OPCIONI NALOG",
-    accountHeroTitle: "Zadržite svoju listu karata sa sobom.",
-    accountHeroBody:
-      "Prijavite se jednim e-mail kodom da vidite svoje rezervacije, obaveštenja i specijalne zahteve na drugom uređaju. Gostovska kupovina i dalje radi bez naloga.",
-    emailMeCode: "Pošalji mi kod za prijavu",
-    verifyAndSignIn: "Potvrdi i prijavi se",
+    loginTitle: "Vaša lista karata, zaštićena.",
+    loginSubtitle:
+      "Prijavite se da pregledate prodavnice, rezervišete karte i pratite specijalne zahteve.",
+    signInTab: "Prijava",
+    createAccountTab: "Novi nalog",
+    resetPasswordTitle: "Resetujte lozinku",
+    resetPasswordBody:
+      "Poslaćemo vam šestocifreni kod. Unesite ga sa novom lozinkom.",
+    emailLabel: "E-mail",
+    passwordLabel: "Lozinka",
+    currentPasswordLabel: "Trenutna lozinka",
+    newPasswordLabel: "Nova lozinka",
+    confirmPasswordLabel: "Potvrdite lozinku",
+    verificationCodeLabel: "Šestocifreni kod",
+    signInAction: "Prijavi se",
+    sendVerificationCode: "Pošalji verifikacioni kod",
+    sendResetCode: "Pošalji kod za reset",
+    verifyAndCreate: "Potvrdi i otvori nalog",
+    saveNewPassword: "Sačuvaj novu lozinku",
+    forgotPassword: "Zaboravili ste lozinku?",
+    backToSignIn: "Nazad na prijavu",
+    sendNewCode: "Pošalji novi kod",
+    sendNewCodeIn: "Pošalji novi kod za",
+    verificationSent: "Poslali smo verifikacioni kod na",
+    resetSent: "Poslali smo kod za reset na",
+    passwordHint: "Koristite najmanje 8 karaktera.",
+    passwordsDoNotMatch: "Lozinke se ne poklapaju.",
+    loginPrivacy:
+      "Vaša lozinka se čuva bezbedno. E-mail kodovi se koriste samo za verifikaciju novog naloga ili reset zaboravljene lozinke.",
     language: "Jezik",
     english: "English",
     serbian: "Srpski",
@@ -90,6 +168,13 @@ export const translationMap: Record<AppLocale, Record<TranslationKey, string>> =
     deviceNeedsNativePush:
       "Obaveštenja zahtevaju fizički iOS ili Android uređaj. Web pregled i emulatori ne mogu da registruju native token.",
     languageHint: "Izaberite željeni jezik za aplikaciju.",
+    accountPasswordTitle: "Lozinka",
+    accountPasswordBody: "Vaš nalog koristi lozinku za prijavu.",
+    setPassword: "Postavi lozinku",
+    changePassword: "Promeni lozinku",
+    savePassword: "Sačuvaj lozinku",
+    passwordUpdated: "Lozinka je promenjena. Ostali uređaji su odjavljeni.",
+    passwordSet: "Lozinka je postavljena. Sada možete da se prijavite njom.",
   },
 };
 

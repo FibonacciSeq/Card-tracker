@@ -179,6 +179,48 @@ def render_email_change_otp(code: str, expires_seconds: int) -> tuple[str, str]:
     return subject, body
 
 
+def render_signup_otp(code: str, expires_seconds: int) -> tuple[str, str]:
+    """Render the code that verifies a new customer's email address."""
+    subject = "Verify your Card Tracker email"
+    minutes = max(1, expires_seconds // 60)
+    body = (
+        f"Your verification code is: {code}\n\n"
+        f"It expires in {minutes} minute(s). If you did not create an account, "
+        f"you can ignore this email."
+    )
+    return subject, body
+
+
+def render_password_reset_otp(code: str, expires_seconds: int) -> tuple[str, str]:
+    """Render the code that lets a customer choose a new password."""
+    subject = "Reset your Card Tracker password"
+    minutes = max(1, expires_seconds // 60)
+    body = (
+        f"Your password reset code is: {code}\n\n"
+        f"It expires in {minutes} minute(s). If you did not request a reset, "
+        f"you can ignore this email; your password will not change."
+    )
+    return subject, body
+
+
+_OTP_RENDERERS = {
+    "login": render_otp,
+    "signup": render_signup_otp,
+    "password_reset": render_password_reset_otp,
+    "email_change": render_email_change_otp,
+}
+
+
+def render_otp_for_purpose(
+    purpose: str,
+    code: str,
+    expires_seconds: int,
+) -> tuple[str, str]:
+    """Pick the email copy that matches the challenge's purpose."""
+    renderer = _OTP_RENDERERS.get(purpose, render_otp)
+    return renderer(code, expires_seconds)
+
+
 def render(row: models.Notification, tenant: models.Tenant) -> tuple[str, str]:
     """Return (subject, body) for one queued notification."""
     payload = row.payload or {}
@@ -344,20 +386,14 @@ def render_staff(row: models.Notification, tenant: models.Tenant) -> tuple[str, 
     if kind == "RESERVATION_CANCELLED":
         title = f"Reservation {ref} cancelled"
         reason = payload.get("reason")
-        body = (
-            f"{payload.get('customer_name', 'The customer')} cancelled the hold. "
-            f"The cards are back in stock."
-        )
+        body = f"{payload.get('customer_name', 'The customer')} cancelled the hold. The cards are back in stock."
         if reason:
             body += f" Reason: {reason}."
         return title, body
 
     if kind == "RESERVATION_EXPIRED":
         title = f"Reservation {ref} expired"
-        body = (
-            f"The hold for {payload.get('customer_name', 'a customer')} expired "
-            f"and the cards are back in stock."
-        )
+        body = f"The hold for {payload.get('customer_name', 'a customer')} expired and the cards are back in stock."
         return title, body
 
     if kind == "CARD_REQUEST_CREATED":

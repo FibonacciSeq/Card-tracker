@@ -1,17 +1,22 @@
 import { expect, test } from "@playwright/test";
 
-test("home page renders and locale toggle is interactive", async ({ page }) => {
+test("customers must sign in and the locale toggle is interactive", async ({ page }) => {
   await page.goto("/");
 
-  await expect(page.getByText("Find the card you need.")).toBeVisible();
-  await expect(page.getByText("Shops on Card Tracker")).toBeVisible();
-
-  await page.getByRole("button", { name: /Sign in to sync your list/i }).click();
-  await expect(page.getByText("OPTIONAL ACCOUNT")).toBeVisible();
+  await expect(page.getByText("Your card list, secured.")).toBeVisible();
+  await expect(page.getByText("Shops on Card Tracker")).toHaveCount(0);
+  await expect(page.getByLabel("Email")).toBeVisible();
+  await expect(page.getByLabel("Password")).toBeVisible();
 
   await page.getByRole("button", { name: /Srpski/i }).click();
-  await expect(page.getByText("OPCIONI NALOG")).toBeVisible();
+  await expect(page.getByText("Vaša lista karata, zaštićena.")).toBeVisible();
 
   await page.getByRole("button", { name: /English/i }).click();
-  await expect(page.getByText("OPTIONAL ACCOUNT")).toBeVisible();
+  await expect(page.getByText("Your card list, secured.")).toBeVisible();
+});
+
+test("a protected route redirects to the sign-in screen", async ({ page }) => {
+  await page.goto("/account");
+
+  await expect(page.getByText("Your card list, secured.")).toBeVisible();
 });

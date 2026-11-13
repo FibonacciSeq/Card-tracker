@@ -10,18 +10,22 @@ import {
 } from "react";
 
 import {
+  changeCustomerPassword,
   deleteMe,
   getMe,
+  loginCustomer,
   logoutCustomerSession,
   refreshCustomerToken,
   requestEmailChange as requestEmailChangeApi,
-  requestOtp,
+  requestPasswordReset as requestPasswordResetApi,
+  requestSignupCode as requestSignupCodeApi,
   revokeAllCustomerSessions,
   setAccountRefreshHandler,
   setAccountUnauthorizedHandler,
   updateMe,
   verifyEmailChange as verifyEmailChangeApi,
-  verifyOtp,
+  verifyPasswordReset as verifyPasswordResetApi,
+  verifySignup as verifySignupApi,
 } from "../api/client";
 import { clearAccountCache } from "../lib/accountCache";
 import { readAuthToken, removeAuthToken, writeAuthToken } from "../lib/tokenStore";
@@ -38,8 +42,23 @@ type AuthContextValue = {
   customer: CustomerAccount | null;
   lastClaimed: ClaimedCounts | null;
   isAuthenticated: boolean;
-  requestCode: (email: string) => Promise<OtpRequestResult>;
-  verifyCode: (email: string, code: string) => Promise<CustomerToken>;
+  login: (email: string, password: string) => Promise<CustomerToken>;
+  requestSignupCode: (email: string) => Promise<OtpRequestResult>;
+  verifySignup: (
+    email: string,
+    code: string,
+    password: string,
+  ) => Promise<CustomerToken>;
+  requestPasswordReset: (email: string) => Promise<OtpRequestResult>;
+  resetPassword: (
+    email: string,
+    code: string,
+    password: string,
+  ) => Promise<CustomerToken>;
+  changePassword: (
+    currentPassword: string | null,
+    newPassword: string,
+  ) => Promise<CustomerToken>;
   refreshCustomer: () => Promise<void>;
   updateProfile: (values: {
     display_name?: string | null;
@@ -215,21 +234,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [persistTokens]);
 
-  const requestCode = useCallback(async (email: string) => requestOtp(email.trim()), []);
+  /**
+   * Apply a fresh session after any flow that can switch identity or claim
+   * guest rows. The account cache is dropped before the new token is exposed.
+   */
+  const applySession = useCallback(
+    async (result: CustomerToken) => {
+      await clearAccountCache(queryClient);
+      setToken(result.access_token);
+      setRefreshToken(result.refresh_token ?? null);
+      setCustomer(result.customer);
+      setLastClaimed(result.claimed);
+      await persistTokens(result.access_token, result.refresh_token ?? null);
+      return result;
+    },
+    [persistTokens, queryClient],
+  );
 
-  const verifyCode = useCallback(async (email: string, code: string) => {
-    const result = await verifyOtp(email.trim(), code.trim());
-    // Verification can be an account switch or a first sign-in that claims
-    // guest rows. Drop the previous identity's cached rows before exposing the
-    // new session; guest stores and the cart stay untouched.
-    await clearAccountCache(queryClient);
-    setToken(result.access_token);
-    setRefreshToken(result.refresh_token ?? null);
-    setCustomer(result.customer);
-    setLastClaimed(result.claimed);
-    await persistTokens(result.access_token, result.refresh_token ?? null);
-    return result;
-  }, [persistTokens, queryClient]);
+  const login = useCallback(
+    async (email: string, password: string) =>
+      applySession(await loginCustomer(email.trim(), password)),
+    [applySession],
+  );
+
+  const requestSignupCode = useCallback(
+    async (email: string) => requestSignupCodeApi(email.trim()),
+    [],
+  );
+
+  const verifySignup = useCallback(
+    async (email: string, code: string, password: string) =>
+      applySession(
+        await verifySignupApi(email.trim(), code.trim(), password),
+      ),
+    [applySession],
+  );
+
+  const requestPasswordReset = useCallback(
+    async (email: string) => requestPasswordResetApi(email.trim()),
+    [],
+  );
+
+  const resetPassword = useCallback(
+    async (email: string, code: string, password: string) =>
+      applySession(
+        await verifyPasswordResetApi(email.trim(), code.trim(), password),
+      ),
+    [applySession],
+  );
+
+  const changePassword = useCallback(
+    async (currentPassword: string | null, newPassword: string) => {
+      if (!token) throw new Error("Not signed in.");
+      return applySession(
+        await changeCustomerPassword(token, currentPassword, newPassword),
+      );
+    },
+    [applySession, token],
+  );
 
   const refreshCustomer = useCallback(async () => {
     if (!refreshToken) {
@@ -285,17 +347,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!token) throw new Error("Not signed in.");
       const result = await verifyEmailChangeApi(token, email.trim(), code.trim());
       // The address and claimed rows changed, even though the account id did
-      // not. Clear the account cache so no pre-change rows can render after the
-      // new token is applied.
-      await clearAccountCache(queryClient);
-      setToken(result.access_token);
-      setRefreshToken(result.refresh_token ?? null);
-      setCustomer(result.customer);
-      setLastClaimed(result.claimed);
-      await persistTokens(result.access_token, result.refresh_token ?? null);
-      return result;
+      // not. applySession clears the account cache so pre-change rows cannot
+      // render after the new token is applied.
+      return applySession(result);
     },
-    [persistTokens, queryClient, token],
+    [applySession, token],
   );
 
   const value = useMemo<AuthContextValue>(
@@ -305,8 +361,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       customer,
       lastClaimed,
       isAuthenticated: Boolean(token && customer),
-      requestCode,
-      verifyCode,
+      login,
+      requestSignupCode,
+      verifySignup,
+      requestPasswordReset,
+      resetPassword,
+      changePassword,
       refreshCustomer,
       updateProfile,
       requestEmailChange,
@@ -316,19 +376,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signOutEverywhere,
     }),
     [
+      changePassword,
       customer,
       deleteAccount,
       hydrated,
       lastClaimed,
+      login,
       refreshCustomer,
-      requestCode,
       requestEmailChange,
+      requestPasswordReset,
+      requestSignupCode,
+      resetPassword,
       signOut,
       signOutEverywhere,
       token,
       updateProfile,
-      verifyCode,
       verifyEmailChange,
+      verifySignup,
     ],
   );
 

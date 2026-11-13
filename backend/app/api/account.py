@@ -38,6 +38,92 @@ def verify_otp(
     return accounts.verify_otp(db, str(payload.email), payload.code, request)
 
 
+@router.post(
+    "/auth/signup/request",
+    response_model=schemas.OtpRequestOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def request_signup(
+    payload: schemas.OtpRequestIn,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    return accounts.request_signup_otp(db, str(payload.email), request)
+
+
+@router.post("/auth/signup/verify", response_model=schemas.CustomerTokenOut)
+def verify_signup(
+    payload: schemas.SignupVerifyIn,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    return accounts.verify_signup(
+        db,
+        str(payload.email),
+        payload.code,
+        payload.password,
+        request,
+    )
+
+
+@router.post("/auth/login", response_model=schemas.CustomerTokenOut)
+def login_with_password(
+    payload: schemas.PasswordLoginIn,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    return accounts.login_with_password(
+        db,
+        str(payload.email),
+        payload.password,
+        request,
+    )
+
+
+@router.post(
+    "/auth/password/reset/request",
+    response_model=schemas.OtpRequestOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def request_password_reset(
+    payload: schemas.OtpRequestIn,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    return accounts.request_password_reset(db, str(payload.email), request)
+
+
+@router.post("/auth/password/reset/verify", response_model=schemas.CustomerTokenOut)
+def reset_password(
+    payload: schemas.PasswordResetVerifyIn,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    return accounts.reset_password(
+        db,
+        str(payload.email),
+        payload.code,
+        payload.password,
+        request,
+    )
+
+
+@router.post("/me/password", response_model=schemas.CustomerTokenOut)
+def change_password(
+    payload: schemas.PasswordChangeIn,
+    request: Request,
+    customer: models.User = Depends(get_current_customer),
+    db: Session = Depends(get_db),
+):
+    return accounts.change_password(
+        db,
+        customer,
+        payload.current_password,
+        payload.new_password,
+        request,
+    )
+
+
 @router.post("/auth/refresh", response_model=schemas.CustomerTokenOut)
 def refresh_customer_token(
     payload: schemas.CustomerRefreshIn,

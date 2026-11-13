@@ -93,25 +93,19 @@ export default function HomeScreen() {
           <Text style={styles.title}>{t("homeTitle")}</Text>
           <Text style={styles.subtitle}>{t("homeSubtitle")}</Text>
           <Pressable
-            accessibilityHint="Opens your account and sign-in options"
-            accessibilityLabel={isAuthenticated ? "Your account" : "Sign in to sync your list"}
+            accessibilityHint="Opens your account and password settings"
+            accessibilityLabel="Your account"
             accessibilityRole="button"
             onPress={() => router.push("/account")}
             style={({ pressed }) => [styles.accountBar, pressed && styles.scanPressed]}
           >
-            <Ionicons
-              name={isAuthenticated ? "person-circle" : "person-circle-outline"}
-              size={22}
-              color={colors.white}
-            />
+            <Ionicons name="person-circle" size={22} color={colors.white} />
             <View style={styles.accountText}>
               <Text numberOfLines={1} style={styles.accountTitle}>
-                {isAuthenticated ? customer?.email : t("signInToSync")}
+                {customer?.email ?? "Your account"}
               </Text>
               <Text style={styles.accountSubtitle}>
-                {isAuthenticated
-                  ? "Holds, alerts, and requests across devices"
-                  : "Optional — guest checkout still works"}
+                Holds, alerts, and requests across devices
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color="#D8E8E1" />

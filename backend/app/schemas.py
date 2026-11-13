@@ -179,6 +179,34 @@ class OtpVerifyIn(BaseModel):
     code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
 
 
+class PasswordLoginIn(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
+
+
+class SignupVerifyIn(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+    password: str = Field(min_length=8, max_length=128)
+
+
+class PasswordResetVerifyIn(BaseModel):
+    email: EmailStr
+    code: str = Field(min_length=6, max_length=6, pattern=r"^\d{6}$")
+    password: str = Field(min_length=8, max_length=128)
+
+
+class PasswordChangeIn(BaseModel):
+    """Set a password, or replace one after proving the current password.
+
+    ``current_password`` is omitted only for a legacy account that signed in
+    through a one-time code and does not have a password yet.
+    """
+
+    current_password: str | None = Field(default=None, max_length=128)
+    new_password: str = Field(min_length=8, max_length=128)
+
+
 class EmailChangeRequestIn(BaseModel):
     email: EmailStr
 
@@ -209,6 +237,7 @@ class CustomerOut(BaseModel):
     email: EmailStr
     display_name: str | None = None
     phone: str | None = None
+    has_password: bool = False
     push_notifications_enabled: bool = True
     email_notifications_enabled: bool = True
     quiet_hours_enabled: bool = False

@@ -119,9 +119,7 @@ def test_marking_notifications_read_is_scoped_to_the_signed_in_staff(client, aut
     assert client.post("/v1/staff/notifications/read-all").status_code == 401
 
 
-def test_new_reservations_notify_every_active_staff_member(
-    client, auth, tenant, owner, stock, reservation_payload, db
-):
+def test_new_reservations_notify_every_active_staff_member(client, auth, tenant, owner, stock, reservation_payload, db):
     inactive = models.User(
         id=uuid.uuid4(),
         tenant_id=tenant.id,

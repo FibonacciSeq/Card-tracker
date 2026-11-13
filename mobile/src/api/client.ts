@@ -288,17 +288,62 @@ export function cancelCardRequest(
   });
 }
 
-export function requestOtp(email: string): Promise<OtpRequestResult> {
-  return request<OtpRequestResult>("/v1/auth/otp/request", {
+export function loginCustomer(email: string, password: string): Promise<CustomerToken> {
+  return request<CustomerToken>("/v1/auth/login", {
+    method: "POST",
+    body: { email, password },
+  });
+}
+
+export function requestSignupCode(email: string): Promise<OtpRequestResult> {
+  return request<OtpRequestResult>("/v1/auth/signup/request", {
     method: "POST",
     body: { email },
   });
 }
 
-export function verifyOtp(email: string, code: string): Promise<CustomerToken> {
-  return request<CustomerToken>("/v1/auth/otp/verify", {
+export function verifySignup(
+  email: string,
+  code: string,
+  password: string,
+): Promise<CustomerToken> {
+  return request<CustomerToken>("/v1/auth/signup/verify", {
     method: "POST",
-    body: { email, code },
+    body: { email, code, password },
+  });
+}
+
+export function requestPasswordReset(email: string): Promise<OtpRequestResult> {
+  return request<OtpRequestResult>("/v1/auth/password/reset/request", {
+    method: "POST",
+    body: { email },
+  });
+}
+
+export function verifyPasswordReset(
+  email: string,
+  code: string,
+  password: string,
+): Promise<CustomerToken> {
+  return request<CustomerToken>("/v1/auth/password/reset/verify", {
+    method: "POST",
+    body: { email, code, password },
+  });
+}
+
+export function changeCustomerPassword(
+  token: string,
+  currentPassword: string | null,
+  newPassword: string,
+): Promise<CustomerToken> {
+  return request<CustomerToken>("/v1/me/password", {
+    method: "POST",
+    body: {
+      current_password: currentPassword,
+      new_password: newPassword,
+    },
+    headers: bearer(token),
+    auth: true,
   });
 }
 

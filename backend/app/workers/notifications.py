@@ -157,10 +157,11 @@ def deliver_otp_challenges(
     for challenge in pending:
         try:
             code = derive_otp_code(challenge.id, challenge.email)
-            if challenge.user_id is None:
-                subject, body = notifications.render_otp(code, settings.otp_expiry_seconds)
-            else:
-                subject, body = notifications.render_email_change_otp(code, settings.otp_expiry_seconds)
+            subject, body = notifications.render_otp_for_purpose(
+                challenge.purpose,
+                code,
+                settings.otp_expiry_seconds,
+            )
             sender.send(recipient=challenge.email, subject=subject, body=body)
         except Exception as exc:
             challenge.email_attempts += 1
