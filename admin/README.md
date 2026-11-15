@@ -20,7 +20,7 @@ staff-only.
 | `/requests` | Special orders: quote, decline, and convert an accepted request into a reservation |
 | `/team` | Owner-only: add staff, change roles, deactivate accounts |
 | `/activity` | Owner-only: audit trail with action filters |
-| `/settings` | Branding, hold duration, payment instructions, contact, directory opt-in, printable shop QR code |
+| `/settings` | Branding, hold duration, payment instructions, contact, shop coordinates, directory opt-in, printable shop QR code |
 
 Stock numbers always pair colour with a text label (available / reserved / out)
 so they remain readable without colour vision. A "N waiting" badge on a stock
@@ -51,6 +51,10 @@ preview catalog issues and see the rate used before changing stock.
 
 Owner-only actions: saving settings uses `PATCH /v1/staff/settings`, which the
 API restricts to the `owner` role. Staff get a clear message instead of a crash.
+
+**Settings → Shop location** stores optional latitude and longitude for the
+customer app's near-me radius filter. Enter the coordinates manually or use the
+browser location button while at the shop. Both fields must be set together.
 
 Settings also renders the shop QR code for the canonical public app URL
 `https://app.cardtracker.local/shop/<slug>` (with a `cardtracker://shop/<slug>`

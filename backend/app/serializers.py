@@ -12,7 +12,7 @@ from app.constants import (
 )
 
 
-def shop_out(tenant: models.Tenant) -> schemas.ShopOut:
+def shop_out(tenant: models.Tenant, distance_km: float | None = None) -> schemas.ShopOut:
     settings = tenant.settings
     return schemas.ShopOut(
         slug=tenant.slug,
@@ -25,11 +25,14 @@ def shop_out(tenant: models.Tenant) -> schemas.ShopOut:
         colors=settings.colors if settings else {},
         hero=settings.hero if settings else {},
         contact=settings.contact if settings else {},
+        latitude=settings.latitude if settings else None,
+        longitude=settings.longitude if settings else None,
         hours=settings.hours if settings else {},
         payment_instructions=settings.payment_instructions if settings else "",
         hold_hours=settings.hold_hours if settings else DEFAULT_HOLD_HOURS,
         allow_backorders=settings.allow_backorders if settings else False,
         directory_opt_in=settings.directory_opt_in if settings else False,
+        distance_km=distance_km,
     )
 
 

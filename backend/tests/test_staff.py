@@ -267,6 +267,35 @@ def test_settings_do_not_leak_staff_only_fields_to_the_public_profile(client, te
     assert "notification_email" not in public.json()
 
 
+def test_shop_location_is_saved_and_exposed_publicly(client, tenant, auth):
+    saved = client.patch(
+        "/v1/staff/settings",
+        headers=auth,
+        json={"latitude": 44.8125, "longitude": 20.4612},
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["latitude"] == 44.8125
+    assert saved.json()["longitude"] == 20.4612
+
+    public = client.get(f"/v1/shops/{tenant.slug}")
+    assert public.status_code == 200
+    assert public.json()["latitude"] == 44.8125
+    assert public.json()["longitude"] == 20.4612
+
+    partial = client.patch("/v1/staff/settings", headers=auth, json={"latitude": None})
+    assert partial.status_code == 422
+    assert partial.json()["detail"] == "Set both latitude and longitude, or clear both."
+
+    cleared = client.patch(
+        "/v1/staff/settings",
+        headers=auth,
+        json={"latitude": None, "longitude": None},
+    )
+    assert cleared.status_code == 200
+    assert cleared.json()["latitude"] is None
+    assert cleared.json()["longitude"] is None
+
+
 def test_staff_get_an_in_app_alert_when_a_reservation_is_created(client, tenant, stock, reservation_payload, db, owner):
     created = _create(client, tenant, reservation_payload)
     assert created.status_code == 201, created.text

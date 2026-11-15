@@ -10,6 +10,7 @@ from sqlalchemy import (
     Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
@@ -76,6 +77,8 @@ class TenantSettings(Base):
     colors: Mapped[dict] = mapped_column(JSON, default=dict)
     hero: Mapped[dict] = mapped_column(JSON, default=dict)
     contact: Mapped[dict] = mapped_column(JSON, default=dict)
+    latitude: Mapped[float | None] = mapped_column(Float)
+    longitude: Mapped[float | None] = mapped_column(Float)
     hours: Mapped[dict] = mapped_column(JSON, default=dict)
     payment_instructions: Mapped[str] = mapped_column(Text, default="")
     hold_hours: Mapped[int] = mapped_column(Integer, default=DEFAULT_HOLD_HOURS)
@@ -95,6 +98,14 @@ class TenantSettings(Base):
         CheckConstraint(
             f"archive_retention_days >= 0 AND archive_retention_days <= {MAX_ARCHIVE_RETENTION_DAYS}",
             name="ck_settings_archive_retention_days",
+        ),
+        CheckConstraint(
+            "latitude IS NULL OR (latitude >= -90 AND latitude <= 90)",
+            name="ck_settings_latitude",
+        ),
+        CheckConstraint(
+            "longitude IS NULL OR (longitude >= -180 AND longitude <= 180)",
+            name="ck_settings_longitude",
         ),
     )
 

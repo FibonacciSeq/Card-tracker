@@ -40,6 +40,56 @@ def test_shop_directory_lists_opted_in_shops(client, tenant, other_tenant):
     assert slugs == {tenant.slug, other_tenant.slug}
 
 
+def test_shop_directory_filters_and_sorts_by_distance(client, tenant, other_tenant, db):
+    tenant.settings.latitude = 44.8125
+    tenant.settings.longitude = 20.4612
+    other_tenant.settings.latitude = 45.2671
+    other_tenant.settings.longitude = 19.8335
+    db.commit()
+
+    nearby = client.get(
+        "/v1/shops",
+        params={"near_lat": 44.82, "near_lng": 20.46, "radius_km": 10},
+    )
+    assert nearby.status_code == 200
+    assert [shop["slug"] for shop in nearby.json()] == [tenant.slug]
+    assert nearby.json()[0]["distance_km"] < 2
+    assert nearby.json()[0]["latitude"] == 44.8125
+    assert nearby.json()[0]["longitude"] == 20.4612
+
+    wider = client.get(
+        "/v1/shops",
+        params={"near_lat": 44.82, "near_lng": 20.46, "radius_km": 100},
+    )
+    assert wider.status_code == 200
+    assert [shop["slug"] for shop in wider.json()] == [tenant.slug, other_tenant.slug]
+    assert wider.json()[0]["distance_km"] < wider.json()[1]["distance_km"]
+
+
+def test_shop_directory_skips_shops_without_coordinates(client, tenant, other_tenant, db):
+    other_tenant.settings.latitude = 45.2671
+    other_tenant.settings.longitude = 19.8335
+    db.commit()
+
+    response = client.get(
+        "/v1/shops",
+        params={"near_lat": 44.82, "near_lng": 20.46, "radius_km": 100},
+    )
+    assert response.status_code == 200
+    assert [shop["slug"] for shop in response.json()] == [other_tenant.slug]
+    assert response.json()[0]["distance_km"] > 0
+
+
+def test_shop_directory_requires_a_complete_location(client):
+    missing_pair = client.get("/v1/shops", params={"near_lat": 44.82})
+    assert missing_pair.status_code == 422
+    assert missing_pair.json()["detail"] == "near_lat and near_lng must be provided together."
+
+    missing_origin = client.get("/v1/shops", params={"radius_km": 10})
+    assert missing_origin.status_code == 422
+    assert missing_origin.json()["detail"] == "radius_km requires near_lat and near_lng."
+
+
 def test_stock_is_scoped_to_shop(client, tenant, other_tenant, stock, db):
     _make_other_stock(db, other_tenant)
 

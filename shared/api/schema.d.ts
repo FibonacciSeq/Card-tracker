@@ -2231,6 +2231,10 @@ export interface components {
             contact?: {
                 [key: string]: unknown;
             } | null;
+            /** Latitude */
+            latitude?: number | null;
+            /** Longitude */
+            longitude?: number | null;
             /** Hours */
             hours?: {
                 [key: string]: unknown;
@@ -2282,6 +2286,10 @@ export interface components {
             contact?: {
                 [key: string]: unknown;
             };
+            /** Latitude */
+            latitude?: number | null;
+            /** Longitude */
+            longitude?: number | null;
             /** Hours */
             hours?: {
                 [key: string]: unknown;
@@ -2306,6 +2314,8 @@ export interface components {
              * @default false
              */
             directory_opt_in: boolean;
+            /** Distance Km */
+            distance_km?: number | null;
         };
         /** SignupVerifyIn */
         SignupVerifyIn: {
@@ -2523,6 +2533,10 @@ export interface components {
             contact?: {
                 [key: string]: unknown;
             };
+            /** Latitude */
+            latitude?: number | null;
+            /** Longitude */
+            longitude?: number | null;
             /** Hours */
             hours?: {
                 [key: string]: unknown;
@@ -2547,6 +2561,8 @@ export interface components {
              * @default false
              */
             directory_opt_in: boolean;
+            /** Distance Km */
+            distance_km?: number | null;
             /**
              * Scryfall Pricing Enabled
              * @default false
@@ -2890,6 +2906,9 @@ export interface operations {
             query?: {
                 query?: string | null;
                 limit?: number;
+                near_lat?: number | null;
+                near_lng?: number | null;
+                radius_km?: number | null;
             };
             header?: never;
             path?: never;

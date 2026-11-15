@@ -1485,6 +1485,14 @@ def update_settings(
         db.add(settings_row)
 
     changes = payload.model_dump(exclude_unset=True)
+    if "latitude" in changes or "longitude" in changes:
+        latitude = changes.get("latitude", settings_row.latitude)
+        longitude = changes.get("longitude", settings_row.longitude)
+        if (latitude is None) != (longitude is None):
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                detail="Set both latitude and longitude, or clear both.",
+            )
     repriced_stock = None
     stock_without_scryfall_prices = None
     pricing_fields = {

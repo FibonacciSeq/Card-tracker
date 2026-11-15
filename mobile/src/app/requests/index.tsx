@@ -1,6 +1,5 @@
-import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useMyCardRequests } from "../../api/queries";
@@ -41,25 +40,16 @@ export default function RequestsScreen() {
           <Text style={styles.eyebrow}>SPECIAL ORDERS</Text>
           <Text style={styles.title}>Looking for something specific?</Text>
           <Text style={styles.subtitle}>
-            Ask a shop to source a card you cannot find. You will get a quote before anything is
-            reserved.
+            Open a shop and choose Request a special order to ask it to source a card you cannot
+            find. You will get a quote before anything is reserved.
           </Text>
-          <Pressable
-            accessibilityLabel="Request a card"
-            accessibilityRole="button"
-            onPress={() => router.push("/requests/new")}
-            style={({ pressed }) => [styles.newButton, pressed && styles.pressed]}
-          >
-            <Ionicons name="add-circle-outline" size={18} color={colors.primary} />
-            <Text style={styles.newLabel}>Request a card</Text>
-          </Pressable>
         </View>
 
         {allRequests.length === 0 ? (
           <EmptyState
             icon="sparkles-outline"
             title="No special orders yet"
-            body="Request a card by name, or open any card at a shop and choose “Need a different copy?”."
+            body="Open a shop and choose “Request a special order”, or open any card at a shop and choose “Need a different copy?”."
             actionLabel="Browse shops"
             onAction={() => router.replace("/")}
           />
@@ -90,19 +80,5 @@ const styles = StyleSheet.create({
   eyebrow: { color: colors.accent, fontSize: 10, fontWeight: "900", letterSpacing: 1.4 },
   title: { color: colors.ink, fontSize: type.title, fontWeight: "900", letterSpacing: -0.4 },
   subtitle: { color: colors.inkMuted, fontSize: type.small, lineHeight: 19 },
-  newButton: {
-    marginTop: spacing.sm,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: spacing.xs,
-    minHeight: 48,
-    borderRadius: radii.pill,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.line,
-  },
-  newLabel: { color: colors.primary, fontSize: type.body, fontWeight: "800" },
   list: { gap: spacing.md },
-  pressed: { opacity: 0.85 },
 });

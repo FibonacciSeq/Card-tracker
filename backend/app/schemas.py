@@ -63,11 +63,14 @@ class ShopOut(BaseModel):
     colors: dict = Field(default_factory=dict)
     hero: dict = Field(default_factory=dict)
     contact: dict = Field(default_factory=dict)
+    latitude: float | None = None
+    longitude: float | None = None
     hours: dict = Field(default_factory=dict)
     payment_instructions: str = ""
     hold_hours: int = DEFAULT_HOLD_HOURS
     allow_backorders: bool = False
     directory_opt_in: bool = False
+    distance_km: float | None = None
 
 
 class StaffShopOut(ShopOut):
@@ -652,6 +655,8 @@ class SettingsUpdateIn(BaseModel):
     colors: dict | None = None
     hero: dict | None = None
     contact: dict | None = None
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
     hours: dict | None = None
     payment_instructions: str | None = Field(default=None, max_length=4000)
     hold_hours: int | None = Field(default=None, ge=1, le=MAX_HOLD_HOURS)

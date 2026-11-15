@@ -3,10 +3,12 @@ import { Image } from "expo-image";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { Shop } from "../api/types";
+import { formatDistanceKm } from "../lib/geo";
 import { colors, radii, shadow, spacing, type } from "../theme";
 
 export function ShopCard({ shop, onPress }: { shop: Shop; onPress: () => void }) {
   const name = shop.brand_name || shop.name;
+  const distance = shop.distance_km == null ? "" : formatDistanceKm(shop.distance_km);
   return (
     <Pressable
       accessibilityHint="Opens this shop's storefront"
@@ -29,9 +31,13 @@ export function ShopCard({ shop, onPress }: { shop: Shop; onPress: () => void })
         <View style={styles.metaRow}>
           <Ionicons name="time-outline" size={13} color={colors.inkMuted} />
           <Text style={styles.meta}>{shop.hold_hours}h holds</Text>
-          <Ionicons name="location-outline" size={13} color={colors.inkMuted} />
+          <Ionicons
+            name={distance ? "navigate-outline" : "location-outline"}
+            size={13}
+            color={colors.inkMuted}
+          />
           <Text numberOfLines={1} style={styles.meta}>
-            {shop.timezone.replace(/_/g, " ")}
+            {distance ? `${distance} away` : shop.timezone.replace(/_/g, " ")}
           </Text>
         </View>
       </View>

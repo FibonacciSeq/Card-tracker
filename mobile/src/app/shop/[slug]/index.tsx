@@ -89,6 +89,33 @@ export default function ShopScreen() {
           ListHeaderComponent={
             <View>
               {shop ? <ShopHero shop={shop} /> : shopQuery.isLoading ? <LoadingState label="Opening shop…" /> : null}
+              {shop ? (
+                <View style={styles.specialOrderWrap}>
+                  <Pressable
+                    accessibilityHint="Opens the special-order request form for this shop"
+                    accessibilityLabel={`Request a special order from ${title}`}
+                    accessibilityRole="button"
+                    onPress={() =>
+                      router.push({
+                        pathname: "/requests/new",
+                        params: { shopSlug: slug, shopName: title },
+                      })
+                    }
+                    style={({ pressed }) => [styles.specialOrder, pressed && styles.pressed]}
+                  >
+                    <View style={styles.specialOrderIcon}>
+                      <Ionicons name="sparkles-outline" size={20} color={colors.accent} />
+                    </View>
+                    <View style={styles.specialOrderText}>
+                      <Text style={styles.specialOrderTitle}>Request a special order</Text>
+                      <Text style={styles.specialOrderBody}>
+                        Ask {title} to source a card that is not on the shelf.
+                      </Text>
+                    </View>
+                    <Ionicons name="chevron-forward" size={18} color={colors.inkMuted} />
+                  </Pressable>
+                </View>
+              ) : null}
               {shopQuery.isError ? (
                 <View style={styles.pad}>
                   <ErrorState
@@ -320,6 +347,27 @@ const styles = StyleSheet.create({
   },
   paymentText: { flex: 1, color: colors.primary, fontSize: type.small, lineHeight: 18 },
   pad: { paddingHorizontal: spacing.lg },
+  specialOrderWrap: { paddingHorizontal: spacing.lg, marginBottom: spacing.md },
+  specialOrder: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: colors.accentSoft,
+    borderRadius: radii.lg,
+    padding: spacing.lg,
+  },
+  specialOrderIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 13,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  specialOrderText: { flex: 1, gap: 2 },
+  specialOrderTitle: { color: colors.accent, fontSize: type.body, fontWeight: "900" },
+  specialOrderBody: { color: colors.ink, fontSize: type.small, lineHeight: 18 },
+  pressed: { opacity: 0.85 },
   controls: { paddingHorizontal: spacing.lg, gap: spacing.sm },
   resultRow: {
     flexDirection: "row",

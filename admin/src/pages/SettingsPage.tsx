@@ -24,6 +24,8 @@ type FormState = {
   contactEmail: string;
   contactPhone: string;
   contactAddress: string;
+  latitude: string;
+  longitude: string;
   scryfallPricingEnabled: boolean;
   scryfallMinimumPrice: string;
   scryfallMarkupPercent: string;
@@ -45,6 +47,8 @@ function toForm(shop: StaffShop): FormState {
     contactEmail: asText(contact.email),
     contactPhone: asText(contact.phone),
     contactAddress: asText(contact.address),
+    latitude: shop.latitude == null ? "" : String(shop.latitude),
+    longitude: shop.longitude == null ? "" : String(shop.longitude),
     scryfallPricingEnabled: shop.scryfall_pricing_enabled,
     scryfallMinimumPrice: (shop.scryfall_min_price_minor / 100).toFixed(2),
     scryfallMarkupPercent: String(shop.scryfall_markup_percent),
@@ -175,6 +179,8 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
   const refreshScryfall = useRefreshScryfallPrices();
   const [form, setForm] = useState<FormState>(() => toForm(shop));
   const [saved, setSaved] = useState(false);
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState<string | null>(null);
 
   const holdHours = Number(form.holdHours);
   const holdValid = Number.isInteger(holdHours) && holdHours >= 1 && holdHours <= 720;
@@ -184,6 +190,20 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
     Number.isInteger(retentionDays) &&
     retentionDays >= 0 &&
     retentionDays <= 3650;
+  const hasLatitude = form.latitude.trim() !== "";
+  const hasLongitude = form.longitude.trim() !== "";
+  const latitude = Number(form.latitude);
+  const longitude = Number(form.longitude);
+  const locationValid =
+    (!hasLatitude && !hasLongitude) ||
+    (hasLatitude &&
+      hasLongitude &&
+      Number.isFinite(latitude) &&
+      latitude >= -90 &&
+      latitude <= 90 &&
+      Number.isFinite(longitude) &&
+      longitude >= -180 &&
+      longitude <= 180);
   const minimumPriceMinor = parseMinorAmount(form.scryfallMinimumPrice);
   const markupPercent = Number(form.scryfallMarkupPercent);
   const roundingIncrement = Number(form.scryfallRoundingIncrement);
@@ -202,6 +222,29 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
     setForm((current) => ({ ...current, ...next }));
   }
 
+  function useCurrentLocation() {
+    if (!navigator.geolocation) {
+      setLocationError("This browser cannot read your location. Enter the coordinates manually.");
+      return;
+    }
+    setLocating(true);
+    setLocationError(null);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        patch({
+          latitude: position.coords.latitude.toFixed(6),
+          longitude: position.coords.longitude.toFixed(6),
+        });
+        setLocating(false);
+      },
+      () => {
+        setLocationError("We could not read your location. Enter the coordinates manually.");
+        setLocating(false);
+      },
+      { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 },
+    );
+  }
+
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const body: SettingsUpdate = {
@@ -214,6 +257,8 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
         phone: form.contactPhone.trim(),
         address: form.contactAddress.trim(),
       },
+      latitude: locationValid && hasLatitude ? latitude : null,
+      longitude: locationValid && hasLongitude ? longitude : null,
       hold_hours: holdHours,
       archive_retention_days: Number.isInteger(retentionDays) ? retentionDays : 0,
       payment_instructions: form.paymentInstructions,
@@ -443,6 +488,65 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
         </fieldset>
 
         <fieldset>
+          <legend>Shop location</legend>
+          <p className="hint">
+            Customers can filter the shop directory by distance. Set both coordinates so this shop
+            appears in nearby results. Leave both empty to keep it out of radius-filtered searches.
+          </p>
+          <div className="field-row">
+            <div className="field">
+              <label htmlFor="shop-latitude">Latitude</label>
+              <input
+                id="shop-latitude"
+                type="number"
+                min={-90}
+                max={90}
+                step="any"
+                inputMode="decimal"
+                value={form.latitude}
+                onChange={(event) => patch({ latitude: event.target.value })}
+                aria-invalid={!locationValid}
+                placeholder="44.8125"
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="shop-longitude">Longitude</label>
+              <input
+                id="shop-longitude"
+                type="number"
+                min={-180}
+                max={180}
+                step="any"
+                inputMode="decimal"
+                value={form.longitude}
+                onChange={(event) => patch({ longitude: event.target.value })}
+                aria-invalid={!locationValid}
+                placeholder="20.4612"
+              />
+            </div>
+          </div>
+          <div className="field">
+            <button
+              type="button"
+              className="btn btn--small"
+              onClick={useCurrentLocation}
+              disabled={locating || update.isPending}
+            >
+              {locating ? "Reading location…" : "Use my current location"}
+            </button>
+            {locationError ? (
+              <small className="hint" role="alert">
+                {locationError}
+              </small>
+            ) : null}
+            <small className="hint">
+              Tip: use the coordinates from the shop's Google Maps pin. Both fields are required
+              together.
+            </small>
+          </div>
+        </fieldset>
+
+        <fieldset>
           <legend>Contact</legend>
           <div className="field">
             <label htmlFor="contact-email">Email</label>
@@ -484,7 +588,9 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
           <button
             type="submit"
             className="btn btn--primary"
-            disabled={update.isPending || !holdValid || !retentionValid || !pricingValid}
+            disabled={
+              update.isPending || !holdValid || !retentionValid || !pricingValid || !locationValid
+            }
           >
             {update.isPending ? "Saving…" : "Save settings"}
           </button>

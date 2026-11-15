@@ -15,7 +15,10 @@ persisted in secure device storage, restored on cold launch, and combines
 
 ## What works
 
-- Shop directory with search and pull-to-refresh.
+- Shop directory with name search, an optional near-me radius filter, and
+  pull-to-refresh. Choosing a 5/10/25/50 km radius asks for foreground location
+  access, lists only shops with saved coordinates, sorts them by distance, and
+  shows the distance on each shop card.
 - Shop storefront with live stock, search, sort, availability filter, and
   cursor-based “load more” pagination.
 - Local cart persisted on the device, per shop.
@@ -28,8 +31,9 @@ persisted in secure device storage, restored on cold launch, and combines
 - Sold-out card detail shows a single-opt-in restock form. Alerts are listed on
   a dedicated screen, can be removed from the app, and are unsubscribed with a
   signed, stateless token.
-- Special-order request form with card details, quantity, optional target
-  price, and contact validation; local request list and detail screen.
+- Special-order request form launched from a shop storefront, with card details,
+  quantity, optional target price, and contact validation; local request list
+  and detail screen.
 - Special-order detail refreshes from the API with an account or guest token.
   Customers can accept or cancel a quote, and see when the shop converts it
   into a hold. A quote is shown as indicative: conversion reserves the card at
@@ -93,6 +97,11 @@ cd backend
 The local development database currently contains `bolt-shop` with three
 stock rows. It is git-ignored.
 
+To include the demo shop in the near-me filter, set its coordinates in the
+admin under **Settings → Shop location**. Both latitude and longitude are
+required; shops without both stay visible in the normal directory but are left
+out of radius-filtered results.
+
 For account sign-in, also run the notification worker (the OTP email is queued
 through the existing outbox). In development, enable the debug code so the app
 can display it without SMTP:
@@ -147,8 +156,9 @@ For production builds set `EXPO_PUBLIC_API_BASE_URL` to the public HTTPS API.
 1. Open a sold-out card at a shop and fill in **Notify me**. The app keeps the
    alert metadata locally and the signed manage token in SecureStore.
 2. Open **Restock alerts** from the home screen to review or remove an alert.
-3. On any card, choose **Need a different copy?** to open the special-order
-   form. The request is tracked locally with its guest token.
+3. Open a shop and choose **Request a special order**, or on any card choose
+   **Need a different copy?** to prefill that card. The request is sent directly
+   to the shop and tracked locally with its guest token.
 4. Open **Special orders** from the home screen to track status, accept a quote,
    or cancel the request. Accepting does not take payment; the quote is
    indicative and the shop converts the request into a normal hold at the card's

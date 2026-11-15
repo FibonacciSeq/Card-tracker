@@ -17,10 +17,18 @@ import {
   getStockItem,
 } from "./client";
 import { ACCOUNT_QUERY_ROOT } from "../lib/accountCache";
+import type { ShopNear } from "../lib/geo";
 import type { StockSort } from "./types";
 
 export const queryKeys = {
-  shops: (search: string) => ["shops", search] as const,
+  shops: (search: string, near?: ShopNear) =>
+    [
+      "shops",
+      search,
+      near?.latitude ?? null,
+      near?.longitude ?? null,
+      near?.radiusKm ?? null,
+    ] as const,
   shop: (slug: string) => ["shop", slug] as const,
   stock: (slug: string, search: string, sort: StockSort, availableOnly: boolean) =>
     ["stock", slug, search, sort, availableOnly] as const,
@@ -40,10 +48,10 @@ export const accountKeys = {
   pushTokens: [ACCOUNT_QUERY_ROOT, "push-tokens"] as const,
 };
 
-export function useShops(search: string) {
+export function useShops(search: string, near?: ShopNear) {
   return useQuery({
-    queryKey: queryKeys.shops(search),
-    queryFn: ({ signal }) => getShops(search, signal),
+    queryKey: queryKeys.shops(search, near),
+    queryFn: ({ signal }) => getShops(search, near, signal),
     staleTime: 30_000,
   });
 }

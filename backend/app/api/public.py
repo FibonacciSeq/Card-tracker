@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import html
 import json
+import math
 import uuid
 from datetime import datetime
 
@@ -43,12 +44,36 @@ def _decode_cursor(cursor: str) -> dict:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cursor") from exc
 
 
+def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance between two points, in kilometres."""
+    earth_radius_km = 6371.0088
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    delta_phi = math.radians(lat2 - lat1)
+    delta_lambda = math.radians(lon2 - lon1)
+    a = math.sin(delta_phi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2) ** 2
+    return 2 * earth_radius_km * math.asin(math.sqrt(min(1.0, max(0.0, a))))
+
+
 @router.get("/shops", response_model=list[schemas.ShopOut])
 def list_shops(
     query: str | None = Query(default=None, max_length=200),
     limit: int = Query(default=PUBLIC_PAGE_SIZE, ge=1, le=PUBLIC_MAX_PAGE_SIZE),
+    near_lat: float | None = Query(default=None, ge=-90, le=90),
+    near_lng: float | None = Query(default=None, ge=-180, le=180),
+    radius_km: float | None = Query(default=None, gt=0, le=500),
     db: Session = Depends(get_db),
 ):
+    if (near_lat is None) != (near_lng is None):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="near_lat and near_lng must be provided together.",
+        )
+    if radius_km is not None and near_lat is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="radius_km requires near_lat and near_lng.",
+        )
+
     stmt = (
         select(models.Tenant)
         .join(models.TenantSettings, models.TenantSettings.tenant_id == models.Tenant.id)
@@ -58,7 +83,6 @@ def list_shops(
             models.TenantSettings.directory_opt_in.is_(True),
         )
         .order_by(func.lower(models.Tenant.name))
-        .limit(limit)
     )
     if query:
         needle = f"%{query.lower()}%"
@@ -68,8 +92,28 @@ def list_shops(
                 func.lower(models.Tenant.slug).like(needle),
             )
         )
+    if near_lat is None or near_lng is None:
+        tenants = db.scalars(stmt.limit(limit)).all()
+        return [serializers.shop_out(tenant) for tenant in tenants]
+
     tenants = db.scalars(stmt).all()
-    return [serializers.shop_out(tenant) for tenant in tenants]
+    nearby: list[tuple[float, models.Tenant]] = []
+    for tenant in tenants:
+        shop_settings = tenant.settings
+        if shop_settings is None or shop_settings.latitude is None or shop_settings.longitude is None:
+            continue
+        distance = _distance_km(
+            near_lat,
+            near_lng,
+            shop_settings.latitude,
+            shop_settings.longitude,
+        )
+        if radius_km is not None and distance > radius_km:
+            continue
+        nearby.append((distance, tenant))
+
+    nearby.sort(key=lambda item: (item[0], item[1].name.lower(), item[1].slug))
+    return [serializers.shop_out(tenant, distance_km=round(distance, 1)) for distance, tenant in nearby[:limit]]
 
 
 @router.get("/shops/{slug}", response_model=schemas.ShopOut)

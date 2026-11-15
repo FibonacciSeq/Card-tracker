@@ -14,10 +14,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { createCardRequest } from "../../api/client";
-import { accountKeys, useShops } from "../../api/queries";
+import { accountKeys } from "../../api/queries";
 import type { CardRequestCreate, Condition, Finish } from "../../api/types";
+import { EmptyState } from "../../components/EmptyState";
 import { Field } from "../../components/Field";
-import { LoadingState } from "../../components/LoadingState";
 import { PrimaryButton } from "../../components/PrimaryButton";
 import { useAuth } from "../../state/auth";
 import { useSpecialOrders } from "../../state/specialOrders";
@@ -43,7 +43,6 @@ type Errors = {
   cardName?: string;
   quantity?: string;
   targetPrice?: string;
-  shop?: string;
 };
 
 export default function NewRequestScreen() {
@@ -62,10 +61,8 @@ export default function NewRequestScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { customer, token } = useAuth();
-  const shopsQuery = useShops("");
   const { hydrated, save } = useSpecialOrders();
 
-  const [shopSlug, setShopSlug] = useState(params.shopSlug ?? "");
   const [customerName, setCustomerName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
@@ -88,19 +85,13 @@ export default function NewRequestScreen() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const activeShopSlug = shopSlug || shopsQuery.data?.[0]?.slug || "";
-  const selectedShop = shopsQuery.data?.find((shop) => shop.slug === activeShopSlug);
-  const shopName =
-    selectedShop?.brand_name ||
-    selectedShop?.name ||
-    (params.shopSlug === activeShopSlug && params.shopName) ||
-    "the shop";
+  const activeShopSlug = params.shopSlug ?? "";
+  const shopName = params.shopName || "the shop";
 
   async function submit() {
     if (!hydrated) return;
     const contactEmail = token ? (customer?.email ?? "") : email.trim();
     const next: Errors = {};
-    if (!activeShopSlug) next.shop = "Choose a shop.";
     if (!customerName.trim()) next.customerName = "Enter your name.";
     if (!token && !EMAIL.test(contactEmail)) next.email = "Enter a valid email address.";
     if (!cardName.trim()) next.cardName = "Which card are you looking for?";
@@ -154,8 +145,18 @@ export default function NewRequestScreen() {
     }
   }
 
-  if (shopsQuery.isLoading && !params.shopSlug) {
-    return <LoadingState label="Finding shops…" />;
+  if (!activeShopSlug) {
+    return (
+      <View style={styles.screen}>
+        <EmptyState
+          icon="storefront-outline"
+          title="Choose a shop first"
+          body="Open a shop and choose Request a special order so the request goes directly to that shop."
+          actionLabel="Browse shops"
+          onAction={() => router.replace("/")}
+        />
+      </View>
+    );
   }
 
   return (
@@ -179,36 +180,23 @@ export default function NewRequestScreen() {
           <View style={styles.introText}>
             <Text style={styles.introTitle}>Request a special order</Text>
             <Text style={styles.introBody}>
-              The shop will reply with a quote if it can source the card. Nothing is reserved
-              until you accept.
+              Your request goes directly to {shopName}. It will reply with a quote if it can
+              source the card. Nothing is reserved until you accept.
             </Text>
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Which shop?</Text>
-          {shopsQuery.isError ? (
-            <Text style={styles.inlineError}>Could not load shops. Check your connection.</Text>
-          ) : null}
-          <View style={styles.shopChips}>
-            {shopsQuery.data?.map((shop) => {
-              const active = shop.slug === activeShopSlug;
-              return (
-                <Pressable
-                  key={shop.slug}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected: active }}
-                  onPress={() => setShopSlug(shop.slug)}
-                  style={[styles.chip, active && styles.chipActive]}
-                >
-                  <Text style={[styles.chipLabel, active && styles.chipLabelActive]}>
-                    {shop.brand_name || shop.name}
-                  </Text>
-                </Pressable>
-              );
-            })}
+          <Text style={styles.sectionTitle}>Shop</Text>
+          <View style={styles.selectedShop}>
+            <View style={styles.selectedShopIcon}>
+              <Ionicons name="storefront-outline" size={20} color={colors.primary} />
+            </View>
+            <View style={styles.selectedShopText}>
+              <Text style={styles.selectedShopName}>{shopName}</Text>
+              <Text style={styles.selectedShopSlug}>@{activeShopSlug}</Text>
+            </View>
           </View>
-          {errors.shop ? <Text style={styles.inlineError}>{errors.shop}</Text> : null}
         </View>
 
         <View style={styles.section}>
@@ -409,19 +397,27 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   sectionTitle: { color: colors.ink, fontSize: type.heading, fontWeight: "900" },
-  shopChips: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
-  chip: {
-    minHeight: 40,
-    justifyContent: "center",
-    borderRadius: radii.pill,
+  selectedShop: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: colors.background,
+    borderRadius: radii.md,
     borderWidth: 1,
     borderColor: colors.line,
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.md,
+    padding: spacing.md,
   },
-  chipActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  chipLabel: { color: colors.inkMuted, fontSize: type.small, fontWeight: "700" },
-  chipLabelActive: { color: colors.white },
+  selectedShopIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: colors.primarySoft,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  selectedShopText: { flex: 1, gap: 2 },
+  selectedShopName: { color: colors.ink, fontSize: type.body, fontWeight: "800" },
+  selectedShopSlug: { color: colors.primary, fontSize: type.small, fontWeight: "700" },
   row: { flexDirection: "row", gap: spacing.md },
   half: { flex: 1 },
   choiceWrap: { gap: 6 },
@@ -441,7 +437,6 @@ const styles = StyleSheet.create({
   choiceActive: { backgroundColor: colors.primarySoft, borderColor: colors.primary },
   choiceText: { color: colors.inkMuted, fontSize: type.small, fontWeight: "700" },
   choiceTextActive: { color: colors.primary },
-  inlineError: { color: colors.danger, fontSize: type.tiny },
   errorBox: {
     flexDirection: "row",
     alignItems: "flex-start",

@@ -9,9 +9,10 @@ desktop app is unchanged and still uses its own SQLite database.
 - Multi-tenant data model: tenants, settings, users, cards, stock,
   reservations, reservation lines, stock movements, notifications, idempotency,
   special-order requests, restock alerts.
-- Public storefront: shop directory, shop profile, stock search/filters/facets,
-  reservation create, reservation lookup, reservation cancel, restock-alert
-  subscribe/unsubscribe, special-order request create/track/accept/cancel.
+- Public storefront: shop directory with optional near-me radius filtering,
+  shop profile, stock search/filters/facets, reservation create, reservation
+  lookup, reservation cancel, restock-alert subscribe/unsubscribe,
+  special-order request create/track/accept/cancel.
 - Optional global customer accounts: email OTP sign-in, `/v1/me` reservations,
   special orders, restock alerts, a notification delivery log, and push-device
   diagnostics, plus automatic claiming of unowned guest rows that match the
@@ -373,7 +374,7 @@ remain readable until they expire.
 
 Public:
 
-- `GET /v1/shops`
+- `GET /v1/shops` (`near_lat`, `near_lng`, and `radius_km` filter by distance)
 - `GET /v1/shops/{slug}`
 - `GET /v1/shops/{slug}/stock`
 - `GET /v1/shops/{slug}/stock/{stock_id}`
