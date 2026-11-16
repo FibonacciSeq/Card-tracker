@@ -32,8 +32,8 @@ import type {
 
 export const queryKeys = {
   dashboard: ["dashboard"] as const,
-  stock: (query: string, onlyOnline: boolean, archived: boolean) =>
-    ["stock", query, onlyOnline, archived] as const,
+  stock: (query: string, onlyOnline: boolean, stale: boolean, archived: boolean) =>
+    ["stock", query, onlyOnline, stale, archived] as const,
   reservations: (status: string) => ["reservations", status] as const,
   reservation: (id: string) => ["reservation", id] as const,
   settings: ["settings"] as const,
@@ -52,14 +52,17 @@ export function useDashboard() {
   });
 }
 
-export function useStock(query: string, onlyOnline: boolean, archived = false) {
+export function useStock(query: string, onlyOnline: boolean, stale = false, archived = false) {
   return useQuery({
-    queryKey: queryKeys.stock(query, onlyOnline, archived),
+    queryKey: queryKeys.stock(query, onlyOnline, stale, archived),
     queryFn: ({ signal }) => {
       const params = new URLSearchParams({ limit: "200" });
       if (query.trim()) params.set("query", query.trim());
       if (archived) params.set("archived", "true");
-      else if (onlyOnline) params.set("only_online", "true");
+      else {
+        if (onlyOnline) params.set("only_online", "true");
+        if (stale) params.set("stale", "true");
+      }
       return request<StaffStockList>(`/v1/staff/stock?${params.toString()}`, { signal });
     },
   });
@@ -116,6 +119,19 @@ export function useUpdateStock() {
     mutationFn: ({ id, patch }: { id: string; patch: StockUpdate }) =>
       request<StaffStock>(`/v1/staff/stock/${id}`, { method: "PATCH", body: patch }),
     onSuccess: () => refreshStock(client),
+  });
+}
+
+export function useConfirmStock() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      request<StaffStock>(`/v1/staff/stock/${id}/confirm`, { method: "POST" }),
+    onSuccess: () => {
+      refreshStock(client);
+      client.invalidateQueries({ queryKey: queryKeys.dashboard });
+      client.invalidateQueries({ queryKey: ["audit"] });
+    },
   });
 }
 

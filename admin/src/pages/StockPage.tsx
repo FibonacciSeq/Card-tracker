@@ -1,8 +1,10 @@
 import { useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { ApiError, requestBlob } from "../api/client";
 import {
   useAdjustStock,
   useArchiveAllStock,
+  useConfirmStock,
   useDeleteAllArchivedStock,
   useDeleteArchivedStock,
   useImportStock,
@@ -20,6 +22,8 @@ export function StockPage() {
   const [search, setSearch] = useState("");
   const [onlyOnline, setOnlyOnline] = useState(false);
   const [archivedView, setArchivedView] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const staleOnly = !archivedView && (searchParams.get("stale") === "1" || searchParams.get("stale") === "true");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -29,11 +33,18 @@ export function StockPage() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState<string | null>(null);
   const query = useDebounced(search.trim());
-  const { data, isPending, error, refetch, isFetching } = useStock(query, onlyOnline, archivedView);
+  const { data, isPending, error, refetch, isFetching } = useStock(query, onlyOnline, staleOnly, archivedView);
   const archive = useArchiveAllStock();
   const deleteArchive = useDeleteAllArchivedStock();
 
   const items = data?.items ?? [];
+
+  function setStaleOnly(next: boolean) {
+    const params = new URLSearchParams(searchParams);
+    if (next) params.set("stale", "1");
+    else params.delete("stale");
+    setSearchParams(params, { replace: true });
+  }
 
   function showView(archived: boolean) {
     setArchivedView(archived);
@@ -43,6 +54,7 @@ export function StockPage() {
     setDeleteArchiveOpen(false);
     setArchiveNotice(null);
     setDeleteNotice(null);
+    if (archived && staleOnly) setStaleOnly(false);
   }
 
   async function downloadCsv() {
@@ -105,7 +117,9 @@ export function StockPage() {
           <p className="muted">
             {archivedView
               ? "Archived stock is hidden from the customer app. Restore a row, import a matching card, or delete it permanently."
-              : "Only online stock is visible to customers in the app."}
+              : staleOnly
+                ? "Online cards that have not been updated recently. Confirm each count is still accurate so customers can trust the shelf."
+                : "Only online stock is visible to customers in the app."}
           </p>
         </div>
         <button type="button" className="btn btn--ghost" onClick={() => void refetch()} disabled={isFetching}>
@@ -149,19 +163,30 @@ export function StockPage() {
           />
         </div>
         {!archivedView ? (
-          <label className="checkbox">
-            <input
-              type="checkbox"
-              checked={onlyOnline}
-              onChange={(event) => setOnlyOnline(event.target.checked)}
-            />
-            Online only
-          </label>
+          <>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={onlyOnline}
+                onChange={(event) => setOnlyOnline(event.target.checked)}
+              />
+              Online only
+            </label>
+            <label className="checkbox">
+              <input
+                type="checkbox"
+                checked={staleOnly}
+                onChange={(event) => setStaleOnly(event.target.checked)}
+                data-testid="stock-stale-only"
+              />
+              Stale only
+            </label>
+          </>
         ) : null}
         <span className="muted small" aria-live="polite">
           {isPending
             ? "Loading…"
-            : `${items.length} ${archivedView ? "archived " : ""}card${items.length === 1 ? "" : "s"}`}
+            : `${items.length} ${archivedView ? "archived " : staleOnly ? "stale " : ""}card${items.length === 1 ? "" : "s"}`}
         </span>
         <div className="toolbar__actions">
           <button type="button" className="btn btn--small" onClick={() => void downloadCsv()} disabled={exporting}>
@@ -345,6 +370,7 @@ export function StockPage() {
                 key={item.stock_id}
                 item={item}
                 expanded={expanded === item.stock_id}
+                staleView={staleOnly}
                 onToggle={() => setExpanded(expanded === item.stock_id ? null : item.stock_id)}
               />
             ))}
@@ -368,9 +394,20 @@ export function StockPage() {
   );
 }
 
-function StockRow({ item, expanded, onToggle }: { item: StaffStock; expanded: boolean; onToggle: () => void }) {
+function StockRow({
+  item,
+  expanded,
+  staleView,
+  onToggle,
+}: {
+  item: StaffStock;
+  expanded: boolean;
+  staleView: boolean;
+  onToggle: () => void;
+}) {
   const restore = useRestoreStock();
   const remove = useDeleteArchivedStock();
+  const confirm = useConfirmStock();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const archived = item.archived_at != null;
 
@@ -416,6 +453,11 @@ function StockRow({ item, expanded, onToggle }: { item: StaffStock; expanded: bo
               {remove.error ? (
                 <div className="tone--danger small" role="alert" data-testid="stock-delete-error">
                   {remove.error instanceof ApiError ? remove.error.message : String(remove.error)}
+                </div>
+              ) : null}
+              {confirm.error ? (
+                <div className="tone--danger small" role="alert" data-testid="stock-confirm-error">
+                  {confirm.error instanceof ApiError ? confirm.error.message : String(confirm.error)}
                 </div>
               ) : null}
             </div>
@@ -479,9 +521,22 @@ function StockRow({ item, expanded, onToggle }: { item: StaffStock; expanded: bo
               )}
             </div>
           ) : (
-            <button type="button" className="btn btn--small" onClick={onToggle} aria-expanded={expanded}>
-              {expanded ? "Close" : "Manage"}
-            </button>
+            <div className="inline-form">
+              {staleView ? (
+                <button
+                  type="button"
+                  className="btn btn--small btn--primary"
+                  onClick={() => confirm.mutate(item.stock_id)}
+                  disabled={confirm.isPending}
+                  data-testid="stock-confirm"
+                >
+                  {confirm.isPending ? "Confirming…" : "Confirm available"}
+                </button>
+              ) : null}
+              <button type="button" className="btn btn--small" onClick={onToggle} aria-expanded={expanded}>
+                {expanded ? "Close" : "Manage"}
+              </button>
+            </div>
           )}
         </td>
       </tr>
@@ -500,6 +555,7 @@ function StockEditor({ item, onClose }: { item: StaffStock; onClose: () => void 
   const update = useUpdateStock();
   const adjust = useAdjustStock();
   const sell = useSellStock();
+  const confirm = useConfirmStock();
 
   const [quantity, setQuantity] = useState(String(item.on_hand));
   const [price, setPrice] = useState((item.price.amount_minor / 100).toFixed(2));
@@ -508,8 +564,8 @@ function StockEditor({ item, onClose }: { item: StaffStock; onClose: () => void 
   const [saleQty, setSaleQty] = useState("1");
   const [notice, setNotice] = useState<string | null>(null);
 
-  const busy = update.isPending || adjust.isPending || sell.isPending;
-  const failure = update.error ?? adjust.error ?? sell.error;
+  const busy = update.isPending || adjust.isPending || sell.isPending || confirm.isPending;
+  const failure = update.error ?? adjust.error ?? sell.error ?? confirm.error;
 
   function errorText(cause: unknown): string {
     return cause instanceof ApiError ? cause.message : String(cause);
@@ -553,6 +609,23 @@ function StockEditor({ item, onClose }: { item: StaffStock; onClose: () => void 
             Cannot drop below the {item.reserved} reserved cop{item.reserved === 1 ? "y" : "ies"}. Use an adjustment
             for deliveries or shelf recounts so the ledger stays correct.
           </p>
+
+          <div className="inline-form">
+            <button
+              type="button"
+              className="btn btn--small btn--primary"
+              disabled={busy}
+              onClick={() =>
+                confirm.mutate(item.stock_id, {
+                  onSuccess: () => setNotice("Counts confirmed today — this row is no longer stale."),
+                })
+              }
+              data-testid="stock-confirm-editor"
+            >
+              {confirm.isPending ? "Confirming…" : "Confirm still available"}
+            </button>
+          </div>
+          <p className="hint">Marks the row as checked today without changing the quantity or ledger.</p>
 
           <div className="inline-form">
             <label htmlFor={`delta-${item.stock_id}`}>Adjust by</label>

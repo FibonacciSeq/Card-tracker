@@ -436,6 +436,7 @@ def _sold_in_window(db: Session, tenant_id: uuid.UUID) -> dict[uuid.UUID, int]:
 def list_stock(
     query: str | None = Query(default=None, max_length=200),
     only_online: bool = Query(default=False),
+    stale: bool = Query(default=False),
     archived: bool = Query(default=False),
     limit: int = Query(default=STAFF_STOCK_PAGE_SIZE, ge=1, le=STAFF_STOCK_MAX_PAGE_SIZE),
     user: models.User = Depends(get_current_staff),
@@ -471,8 +472,12 @@ def list_stock(
         stmt = stmt.where(models.Stock.archived_at.is_not(None))
     else:
         stmt = stmt.where(models.Stock.archived_at.is_(None))
-        if only_online:
+        if only_online or stale:
             stmt = stmt.where(models.Stock.is_online.is_(True))
+        if stale:
+            stmt = stmt.where(
+                models.Stock.updated_at < models.utcnow() - timedelta(days=settings.dashboard_stale_stock_days)
+            )
 
     sold = _sold_in_window(db, tenant_id)
     waiting_rows = db.execute(
@@ -1038,6 +1043,39 @@ def update_stock(
             summary=f"Changed stock for {stock.card.name}",
             data={**changes, "delta": delta},
         )
+    db.commit()
+    db.refresh(stock)
+    return serializers.staff_stock_out(stock)
+
+
+@router.post("/stock/{stock_id}/confirm", response_model=schemas.StaffStockOut)
+def confirm_stock(
+    stock_id: uuid.UUID,
+    user: models.User = Depends(get_current_staff),
+    db: Session = Depends(get_db),
+):
+    """Confirm the stored counts are still accurate without changing them.
+
+    Touching the row refreshes `updated_at`, so it stops appearing in the
+    dashboard's stale-stock count until it goes untouched for the configured
+    stale window.
+    """
+    stock = _get_stock(db, _staff_tenant(user), stock_id)
+    stock.updated_at = models.utcnow()
+    audit.record(
+        db,
+        tenant_id=_staff_tenant(user),
+        actor_id=user.id,
+        action="stock.confirm",
+        entity_type="stock",
+        entity_id=stock.id,
+        summary=f"Confirmed {stock.card.name} is still available",
+        data={
+            "on_hand": stock.quantity,
+            "reserved": stock.reserved,
+            "available": stock.available,
+        },
+    )
     db.commit()
     db.refresh(stock)
     return serializers.staff_stock_out(stock)

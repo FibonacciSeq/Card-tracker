@@ -1034,6 +1034,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/staff/stock/{stock_id}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm Stock
+         * @description Confirm the stored counts are still accurate without changing them.
+         *
+         *     Touching the row refreshes `updated_at`, so it stops appearing in the
+         *     dashboard's stale-stock count until it goes untouched for the configured
+         *     stale window.
+         */
+        post: operations["confirm_stock_v1_staff_stock__stock_id__confirm_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/staff/stock/{stock_id}/adjust": {
         parameters: {
             query?: never;
@@ -4722,6 +4746,7 @@ export interface operations {
             query?: {
                 query?: string | null;
                 only_online?: boolean;
+                stale?: boolean;
                 archived?: boolean;
                 limit?: number;
             };
@@ -5006,6 +5031,37 @@ export interface operations {
         };
     };
     restore_stock_v1_staff_stock__stock_id__restore_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                stock_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StaffStockOut"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    confirm_stock_v1_staff_stock__stock_id__confirm_post: {
         parameters: {
             query?: never;
             header?: never;

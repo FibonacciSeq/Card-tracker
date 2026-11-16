@@ -63,7 +63,7 @@ export function DashboardPage() {
               label="Stale stock"
               value={data.stale_stock}
               hint="Online cards not updated in 7 days"
-              to="/stock"
+              to="/stock?stale=1"
               tone={data.stale_stock > 0 ? "attention" : undefined}
             />
             <Stat
@@ -95,8 +95,11 @@ export function DashboardPage() {
             ) : null}
             {data.stale_stock > 0 ? (
               <p>
-                {data.stale_stock} online card{data.stale_stock === 1 ? " has" : "s have"} not been touched in a week.
-                Confirm the counts before the next customer trusts them.
+                <Link to="/stock?stale=1">
+                  {data.stale_stock} online card{data.stale_stock === 1 ? "" : "s"}
+                </Link>{" "}
+                {data.stale_stock === 1 ? "has" : "have"} not been touched in a week. Confirm the counts before the
+                next customer trusts them.
               </p>
             ) : null}
           </section>

@@ -17,7 +17,7 @@ desktop app is unchanged and still uses its own SQLite database.
   special orders, restock alerts, a notification delivery log, and push-device
   diagnostics, plus automatic claiming of unowned guest rows that match the
   verified email. Guest tokens and guest flows remain valid and unchanged.
-- Staff API: login, stock list/create/update/adjust/sell, archive-all,
+- Staff API: login, stock list/create/update/adjust/sell/confirm, archive-all,
   archived-stock restore, permanent archive deletion (single and whole
   archive), reservation queue, status transitions, completion with partial
   quantities, dashboard, settings, audit trail, staff management,
@@ -429,11 +429,13 @@ Staff:
 - `GET /v1/staff/me`
 - `GET /v1/staff/dashboard`
 - `GET /v1/staff/cards`
-- `GET|POST /v1/staff/stock`
+- `GET|POST /v1/staff/stock` (`?stale=true` lists active online rows that
+  have not been updated recently)
 - `POST /v1/staff/stock/archive`
 - `DELETE /v1/staff/stock/archive` (permanently delete eligible archived rows)
 - `DELETE /v1/staff/stock/{id}` (permanently delete one archived row)
 - `POST /v1/staff/stock/{id}/restore`
+- `POST /v1/staff/stock/{id}/confirm` (confirm counts are still accurate)
 - `GET /v1/staff/stock/export.csv` (`?archived=true` exports the archived view)
 - `PATCH /v1/staff/stock/{id}`
 - `POST /v1/staff/stock/{id}/adjust`

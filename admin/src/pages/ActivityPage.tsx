@@ -15,6 +15,7 @@ const ACTION_LABELS: Record<string, string> = {
   "stock.create": "Card added",
   "stock.update": "Stock changed",
   "stock.adjust": "Stock adjusted",
+  "stock.confirm": "Stock confirmed",
   "stock.sell": "Sold in store",
   "stock.import": "CSV import",
   "stock.archive_all": "Stock archived",
