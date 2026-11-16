@@ -57,20 +57,25 @@ export default function HomeScreen() {
     nearOrigin && radiusKm ? { ...nearOrigin, radiusKm } : undefined;
   const shops = useShops(debouncedSearch, near);
   const usingNearby = radiusKm !== null && nearOrigin !== null;
-  const emptyTitle = usingNearby
-    ? "No shops nearby"
-    : debouncedSearch
-      ? "No matching shops"
+  const searchResults = shops.data ?? [];
+  const inStockCount = searchResults.filter((shop) => (shop.product_available ?? 0) > 0).length;
+  const soldOutCount = searchResults.length - inStockCount;
+  const emptyTitle = debouncedSearch
+    ? usingNearby
+      ? "No nearby shop carries this card"
+      : "No shop carries this card"
+    : usingNearby
+      ? "No shops nearby"
       : "No shops yet";
-  const emptyBody = usingNearby
-    ? `No shops with a saved location are within ${radiusKm} km. Try a wider radius or clear the distance filter.`
-    : debouncedSearch
-      ? "Try a different shop name or clear the search."
+  const emptyBody = debouncedSearch
+    ? "Try another card name, set, or collector number. Sold-out shops stay in the results."
+    : usingNearby
+      ? `No shops with a saved location are within ${radiusKm} km. Try a wider radius or clear the distance filter.`
       : "Start the demo API and seed a shop, then pull to refresh.";
-  const emptyActionLabel = usingNearby
-    ? "Clear distance filter"
-    : debouncedSearch
-      ? "Clear search"
+  const emptyActionLabel = debouncedSearch
+    ? "Clear search"
+    : usingNearby
+      ? "Clear distance filter"
       : "Try again";
   const { customer, isAuthenticated, token } = useAuth();
   const { hydrated, reservations } = useReservations();
@@ -205,8 +210,11 @@ export default function HomeScreen() {
           <SearchField
             value={search}
             onChangeText={setSearch}
-            placeholder="Search shops by name"
+            placeholder="Search cards by name, set, or number"
           />
+          <Text style={styles.searchHint}>
+            Search by product to see which shops carry it. Sold-out shops are still listed.
+          </Text>
 
           <View style={styles.distanceFilter}>
             <View style={styles.distanceHeader}>
@@ -304,11 +312,22 @@ export default function HomeScreen() {
 
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
-              <Text style={styles.sectionTitle}>{t("shopsOnCardTracker")}</Text>
+              <Text style={styles.sectionTitle}>
+                {debouncedSearch ? "Shops with this card" : t("shopsOnCardTracker")}
+              </Text>
               {shops.isFetching ? (
                 <Text style={styles.sectionCount}>Updating…</Text>
               ) : null}
             </View>
+
+            {debouncedSearch && shops.isSuccess && searchResults.length > 0 ? (
+              <Text style={styles.resultSummary}>
+                {searchResults.length} shop{searchResults.length === 1 ? "" : "s"} carry this card
+                {" · "}
+                {inStockCount} in stock
+                {soldOutCount > 0 ? ` · ${soldOutCount} out of stock` : ""}
+              </Text>
+            ) : null}
 
             {shops.isLoading ? <LoadingState label="Finding shops…" /> : null}
 
@@ -328,19 +347,28 @@ export default function HomeScreen() {
                 body={emptyBody}
                 actionLabel={emptyActionLabel}
                 onAction={() => {
-                  if (usingNearby) void selectRadius(null);
-                  else if (debouncedSearch) setSearch("");
+                  if (debouncedSearch) setSearch("");
+                  else if (usingNearby) void selectRadius(null);
                   else void shops.refetch();
                 }}
               />
             ) : null}
 
             <View style={styles.shopList}>
-              {shops.data?.map((shop) => (
+              {searchResults.map((shop) => (
                 <ShopCard
                   key={shop.slug}
                   shop={shop}
-                  onPress={() => router.push(shopPath(shop.slug))}
+                  onPress={() =>
+                    router.push(
+                      debouncedSearch
+                        ? {
+                            pathname: "/shop/[slug]",
+                            params: { slug: shop.slug, q: debouncedSearch },
+                          }
+                        : shopPath(shop.slug),
+                    )
+                  }
                 />
               ))}
             </View>
@@ -610,6 +638,18 @@ const styles = StyleSheet.create({
     color: colors.inkMuted,
     fontSize: type.small,
     fontWeight: "700",
+  },
+  resultSummary: {
+    color: colors.inkMuted,
+    fontSize: type.small,
+    lineHeight: 18,
+    marginTop: -spacing.xs,
+  },
+  searchHint: {
+    color: colors.inkMuted,
+    fontSize: type.tiny,
+    lineHeight: 16,
+    marginTop: -spacing.sm,
   },
   shopList: { gap: spacing.md },
   holdList: { gap: spacing.sm },

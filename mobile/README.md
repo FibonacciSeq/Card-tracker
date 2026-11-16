@@ -15,10 +15,13 @@ persisted in secure device storage, restored on cold launch, and combines
 
 ## What works
 
-- Shop directory with name search, an optional near-me radius filter, and
-  pull-to-refresh. Choosing a 5/10/25/50 km radius asks for foreground location
-  access, lists only shops with saved coordinates, sorts them by distance, and
-  shows the distance on each shop card.
+- Shop directory with product search, an optional near-me radius filter, and
+  pull-to-refresh. Searching a card, set, or collector number lists every shop
+  carrying that product, including shops that are currently sold out; available
+  shops are listed first and each card shows an in-stock/out-of-stock badge
+  with the lowest available price. Choosing a 5/10/25/50 km radius asks for
+  foreground location access, lists only shops with saved coordinates, sorts
+  them by distance, and shows the distance on each shop card.
 - Shop storefront with live stock, search, sort, availability filter, and
   cursor-based “load more” pagination.
 - Local cart persisted on the device, per shop.

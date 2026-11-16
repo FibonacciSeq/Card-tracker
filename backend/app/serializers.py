@@ -36,6 +36,27 @@ def shop_out(tenant: models.Tenant, distance_km: float | None = None) -> schemas
     )
 
 
+def shop_search_out(
+    tenant: models.Tenant,
+    *,
+    distance_km: float | None = None,
+    product_variant_count: int = 0,
+    product_available: int = 0,
+    product_from_price_minor: int | None = None,
+) -> schemas.ShopSearchOut:
+    base = shop_out(tenant, distance_km=distance_km)
+    return schemas.ShopSearchOut(
+        **base.model_dump(),
+        product_variant_count=product_variant_count,
+        product_available=product_available,
+        product_from_price=(
+            schemas.Money(amount_minor=product_from_price_minor, currency=tenant.currency)
+            if product_from_price_minor is not None
+            else None
+        ),
+    )
+
+
 def staff_shop_out(
     tenant: models.Tenant,
     repriced_stock: int | None = None,

@@ -66,6 +66,117 @@ def test_shop_directory_filters_and_sorts_by_distance(client, tenant, other_tena
     assert wider.json()[0]["distance_km"] < wider.json()[1]["distance_km"]
 
 
+def test_shop_directory_searches_by_product_and_keeps_sold_out_shops(client, tenant, other_tenant, stock, db):
+    stock.reserved = 1
+    db.add(
+        models.Stock(
+            id=uuid.uuid4(),
+            tenant_id=other_tenant.id,
+            card_id=stock.card_id,
+            finish="foil",
+            condition="NM",
+            language="en",
+            quantity=0,
+            price_minor=450000,
+            currency="RSD",
+        )
+    )
+    db.commit()
+
+    response = client.get("/v1/shops", params={"product": "lightning"})
+    assert response.status_code == 200, response.text
+    shops = response.json()
+    assert [shop["slug"] for shop in shops] == [tenant.slug, other_tenant.slug]
+
+    in_stock, sold_out = shops
+    assert in_stock["product_variant_count"] == 1
+    assert in_stock["product_available"] == 2
+    assert in_stock["product_from_price"] == {"amount_minor": 125000, "currency": "RSD"}
+
+    assert sold_out["product_variant_count"] == 1
+    assert sold_out["product_available"] == 0
+    assert sold_out["product_from_price"] == {"amount_minor": 450000, "currency": "RSD"}
+
+
+def test_shop_directory_product_price_prefers_available_variant(client, tenant, stock, db):
+    db.add(
+        models.Stock(
+            id=uuid.uuid4(),
+            tenant_id=tenant.id,
+            card_id=stock.card_id,
+            finish="foil",
+            condition="NM",
+            language="en",
+            quantity=1,
+            reserved=1,
+            price_minor=50000,
+            currency="RSD",
+            is_online=True,
+        )
+    )
+    db.commit()
+
+    response = client.get("/v1/shops", params={"product": "lightning"})
+    assert response.status_code == 200, response.text
+    shop = response.json()[0]
+    assert shop["product_variant_count"] == 2
+    assert shop["product_available"] == 3
+    assert shop["product_from_price"] == {"amount_minor": 125000, "currency": "RSD"}
+
+
+def test_shop_directory_product_search_respects_distance_and_empty_results(client, tenant, other_tenant, db):
+    tenant.settings.latitude = 44.8125
+    tenant.settings.longitude = 20.4612
+    other_tenant.settings.latitude = 45.2671
+    other_tenant.settings.longitude = 19.8335
+    db.commit()
+
+    empty = client.get("/v1/shops", params={"product": "not-a-real-card"})
+    assert empty.status_code == 200
+    assert empty.json() == []
+
+    nearby = client.get(
+        "/v1/shops",
+        params={"product": "card", "near_lat": 44.82, "near_lng": 20.46, "radius_km": 100},
+    )
+    assert nearby.status_code == 200
+    assert nearby.json() == []
+
+    for shop in (tenant, other_tenant):
+        card = models.Card(
+            id=uuid.uuid4(),
+            provider_card_id=f"scryfall-product-{shop.slug}",
+            name="Product Search Card",
+            set_code="TST",
+            set_name="Test Set",
+            collector_number="1",
+            rarity="common",
+            type_line="Artifact",
+            colors=[],
+        )
+        db.add(card)
+        db.flush()
+        db.add(
+            models.Stock(
+                id=uuid.uuid4(),
+                tenant_id=shop.id,
+                card_id=card.id,
+                quantity=2 if shop.slug == tenant.slug else 0,
+                price_minor=1000,
+                currency="RSD",
+            )
+        )
+    db.commit()
+
+    nearby = client.get(
+        "/v1/shops",
+        params={"product": "product search", "near_lat": 44.82, "near_lng": 20.46, "radius_km": 100},
+    )
+    assert nearby.status_code == 200
+    assert [shop["slug"] for shop in nearby.json()] == [tenant.slug, other_tenant.slug]
+    assert [shop["product_available"] for shop in nearby.json()] == [2, 0]
+
+
 def test_shop_directory_skips_shops_without_coordinates(client, tenant, other_tenant, db):
     other_tenant.settings.latitude = 45.2671
     other_tenant.settings.longitude = 19.8335

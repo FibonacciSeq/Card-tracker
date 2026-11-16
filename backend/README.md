@@ -374,7 +374,9 @@ remain readable until they expire.
 
 Public:
 
-- `GET /v1/shops` (`near_lat`, `near_lng`, and `radius_km` filter by distance)
+- `GET /v1/shops` (`query` searches shop names; `product` searches card name,
+  set name, or collector number and returns every carrying shop, including
+  sold-out ones; `near_lat`, `near_lng`, and `radius_km` filter by distance)
 - `GET /v1/shops/{slug}`
 - `GET /v1/shops/{slug}/stock`
 - `GET /v1/shops/{slug}/stock/{stock_id}`

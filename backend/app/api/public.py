@@ -8,10 +8,11 @@ import json
 import math
 import uuid
 from datetime import datetime
+from typing import NamedTuple
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response, status
 from fastapi.responses import HTMLResponse
-from sqlalchemy import and_, func, or_, select, tuple_
+from sqlalchemy import and_, case, func, or_, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
@@ -54,9 +55,73 @@ def _distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * earth_radius_km * math.asin(math.sqrt(min(1.0, max(0.0, a))))
 
 
-@router.get("/shops", response_model=list[schemas.ShopOut])
+class _ProductStats(NamedTuple):
+    variant_count: int
+    available: int
+    from_price_minor: int
+
+
+def _product_stats(db: Session, product: str) -> dict[uuid.UUID, _ProductStats]:
+    """Availability per shop for cards matching a product search.
+
+    Sold-out variants stay in the result: the shop carries the product but has
+    nothing available right now.
+    """
+    needle = f"%{product.lower()}%"
+    available_quantity = models.Stock.quantity - models.Stock.reserved
+    rows = db.execute(
+        select(
+            models.Stock.tenant_id,
+            func.count(models.Stock.id),
+            func.sum(available_quantity),
+            func.min(case((available_quantity > 0, models.Stock.price_minor))),
+            func.min(models.Stock.price_minor),
+        )
+        .join(models.Card, models.Card.id == models.Stock.card_id)
+        .where(
+            models.Stock.archived_at.is_(None),
+            models.Stock.is_online.is_(True),
+            or_(
+                func.lower(models.Card.name).like(needle),
+                func.lower(models.Card.set_name).like(needle),
+                func.lower(models.Card.collector_number).like(needle),
+            ),
+        )
+        .group_by(models.Stock.tenant_id)
+    ).all()
+    return {
+        tenant_id: _ProductStats(
+            variant_count=int(variant_count),
+            available=max(0, int(available or 0)),
+            # Prefer the cheapest variant that can actually be bought; fall back
+            # to the last known price so sold-out shops still show a hint.
+            from_price_minor=int(available_price if available_price is not None else overall_price),
+        )
+        for tenant_id, variant_count, available, available_price, overall_price in rows
+    }
+
+
+def _shop_search_out(
+    tenant: models.Tenant,
+    stats: _ProductStats | None,
+    *,
+    distance_km: float | None = None,
+) -> schemas.ShopSearchOut:
+    if stats is None:
+        return serializers.shop_search_out(tenant, distance_km=distance_km)
+    return serializers.shop_search_out(
+        tenant,
+        distance_km=distance_km,
+        product_variant_count=stats.variant_count,
+        product_available=stats.available,
+        product_from_price_minor=stats.from_price_minor,
+    )
+
+
+@router.get("/shops", response_model=list[schemas.ShopSearchOut])
 def list_shops(
     query: str | None = Query(default=None, max_length=200),
+    product: str | None = Query(default=None, max_length=200),
     limit: int = Query(default=PUBLIC_PAGE_SIZE, ge=1, le=PUBLIC_MAX_PAGE_SIZE),
     near_lat: float | None = Query(default=None, ge=-90, le=90),
     near_lng: float | None = Query(default=None, ge=-180, le=180),
@@ -92,9 +157,23 @@ def list_shops(
                 func.lower(models.Tenant.slug).like(needle),
             )
         )
+    product_stats = _product_stats(db, product) if product is not None else {}
+    if product is not None:
+        stmt = stmt.where(models.Tenant.id.in_(product_stats.keys()))
+
     if near_lat is None or near_lng is None:
-        tenants = db.scalars(stmt.limit(limit)).all()
-        return [serializers.shop_out(tenant) for tenant in tenants]
+        if product is None:
+            tenants = db.scalars(stmt.limit(limit)).all()
+            return [_shop_search_out(tenant, None) for tenant in tenants]
+        tenants = list(db.scalars(stmt).all())
+        tenants.sort(
+            key=lambda tenant: (
+                product_stats[tenant.id].available <= 0,
+                tenant.name.lower(),
+                tenant.slug,
+            )
+        )
+        return [_shop_search_out(tenant, product_stats[tenant.id]) for tenant in tenants[:limit]]
 
     tenants = db.scalars(stmt).all()
     nearby: list[tuple[float, models.Tenant]] = []
@@ -112,8 +191,25 @@ def list_shops(
             continue
         nearby.append((distance, tenant))
 
-    nearby.sort(key=lambda item: (item[0], item[1].name.lower(), item[1].slug))
-    return [serializers.shop_out(tenant, distance_km=round(distance, 1)) for distance, tenant in nearby[:limit]]
+    if product is None:
+        nearby.sort(key=lambda item: (item[0], item[1].name.lower(), item[1].slug))
+    else:
+        nearby.sort(
+            key=lambda item: (
+                product_stats[item[1].id].available <= 0,
+                item[0],
+                item[1].name.lower(),
+                item[1].slug,
+            )
+        )
+    return [
+        _shop_search_out(
+            tenant,
+            product_stats.get(tenant.id) if product is not None else None,
+            distance_km=round(distance, 1),
+        )
+        for distance, tenant in nearby[:limit]
+    ]
 
 
 @router.get("/shops/{slug}", response_model=schemas.ShopOut)

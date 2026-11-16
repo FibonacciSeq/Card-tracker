@@ -25,10 +25,10 @@ import { useCart } from "../../../state/cart";
 import { colors, radii, spacing, type } from "../../../theme";
 
 export default function ShopScreen() {
-  const { slug } = useLocalSearchParams<{ slug: string }>();
+  const { slug, q } = useLocalSearchParams<{ slug: string; q?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [search, setSearch] = useState("");
+  const [search, setSearch] = useState(typeof q === "string" ? q : "");
   const [sort, setSort] = useState<StockSort>("relevance");
   const [availableOnly, setAvailableOnly] = useState(false);
   const debouncedSearch = useDebouncedValue(search);

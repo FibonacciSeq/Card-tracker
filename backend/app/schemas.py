@@ -73,6 +73,19 @@ class ShopOut(BaseModel):
     distance_km: float | None = None
 
 
+class ShopSearchOut(ShopOut):
+    """Directory row enriched with availability for a product search.
+
+    ``product_variant_count`` is zero when the caller did not search by
+    product. A positive count with ``product_available`` of zero means the
+    product is listed by the shop but is currently sold out.
+    """
+
+    product_variant_count: int = 0
+    product_available: int = 0
+    product_from_price: Money | None = None
+
+
 class StaffShopOut(ShopOut):
     """Staff view: adds settings that must not appear on the public profile."""
 

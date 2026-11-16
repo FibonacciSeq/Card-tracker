@@ -20,6 +20,7 @@ import type {
   RestockAlert,
   RestockAlertCreate,
   Shop,
+  ShopSearch,
   StockItem,
   StockList,
   StockQuery,
@@ -127,13 +128,13 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 }
 
 export function getShops(
-  query = "",
+  product = "",
   near?: ShopNear,
   signal?: AbortSignal,
-): Promise<Shop[]> {
-  return request<Shop[]>(
+): Promise<ShopSearch[]> {
+  return request<ShopSearch[]>(
     `/v1/shops${queryString({
-      query,
+      product,
       limit: 100,
       near_lat: near?.latitude,
       near_lng: near?.longitude,

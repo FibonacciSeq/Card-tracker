@@ -3,6 +3,7 @@ import type { components } from "../../../shared/api/schema";
 type Schemas = components["schemas"];
 
 export type Shop = Schemas["ShopOut"];
+export type ShopSearch = Schemas["ShopSearchOut"];
 export type Money = Schemas["Money"];
 export type Card = Schemas["CardOut"];
 export type StockItem = Schemas["StockItemOut"];

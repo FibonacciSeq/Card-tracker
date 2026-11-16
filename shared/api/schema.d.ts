@@ -2317,6 +2317,83 @@ export interface components {
             /** Distance Km */
             distance_km?: number | null;
         };
+        /**
+         * ShopSearchOut
+         * @description Directory row enriched with availability for a product search.
+         *
+         *     ``product_variant_count`` is zero when the caller did not search by
+         *     product. A positive count with ``product_available`` of zero means the
+         *     product is listed by the shop but is currently sold out.
+         */
+        ShopSearchOut: {
+            /** Slug */
+            slug: string;
+            /** Name */
+            name: string;
+            /** Locale */
+            locale: string;
+            /** Currency */
+            currency: string;
+            /** Timezone */
+            timezone: string;
+            /** Brand Name */
+            brand_name?: string | null;
+            /** Logo Url */
+            logo_url?: string | null;
+            /** Colors */
+            colors?: {
+                [key: string]: unknown;
+            };
+            /** Hero */
+            hero?: {
+                [key: string]: unknown;
+            };
+            /** Contact */
+            contact?: {
+                [key: string]: unknown;
+            };
+            /** Latitude */
+            latitude?: number | null;
+            /** Longitude */
+            longitude?: number | null;
+            /** Hours */
+            hours?: {
+                [key: string]: unknown;
+            };
+            /**
+             * Payment Instructions
+             * @default
+             */
+            payment_instructions: string;
+            /**
+             * Hold Hours
+             * @default 24
+             */
+            hold_hours: number;
+            /**
+             * Allow Backorders
+             * @default false
+             */
+            allow_backorders: boolean;
+            /**
+             * Directory Opt In
+             * @default false
+             */
+            directory_opt_in: boolean;
+            /** Distance Km */
+            distance_km?: number | null;
+            /**
+             * Product Variant Count
+             * @default 0
+             */
+            product_variant_count: number;
+            /**
+             * Product Available
+             * @default 0
+             */
+            product_available: number;
+            product_from_price?: components["schemas"]["Money"] | null;
+        };
         /** SignupVerifyIn */
         SignupVerifyIn: {
             /**
@@ -2905,6 +2982,7 @@ export interface operations {
         parameters: {
             query?: {
                 query?: string | null;
+                product?: string | null;
                 limit?: number;
                 near_lat?: number | null;
                 near_lng?: number | null;
@@ -2922,7 +3000,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ShopOut"][];
+                    "application/json": components["schemas"]["ShopSearchOut"][];
                 };
             };
             /** @description Validation Error */
