@@ -234,6 +234,12 @@ export default function AccountScreen() {
           <Text style={styles.heroBody}>{t("signedInBody")}</Text>
         </View>
 
+        <PrimaryButton
+          label="Browse shops"
+          onPress={() => router.replace("/")}
+          variant="secondary"
+        />
+
         {notice ? <Notice text={notice} /> : null}
         {error ? <ErrorBox text={error} /> : null}
 
