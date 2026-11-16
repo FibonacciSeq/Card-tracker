@@ -20,6 +20,7 @@ type FormState = {
   holdHours: string;
   archiveRetentionDays: string;
   paymentInstructions: string;
+  allowBackorders: boolean;
   directoryOptIn: boolean;
   contactEmail: string;
   contactPhone: string;
@@ -43,6 +44,7 @@ function toForm(shop: StaffShop): FormState {
     holdHours: String(shop.hold_hours),
     archiveRetentionDays: String(shop.archive_retention_days),
     paymentInstructions: shop.payment_instructions,
+    allowBackorders: shop.allow_backorders,
     directoryOptIn: shop.directory_opt_in,
     contactEmail: asText(contact.email),
     contactPhone: asText(contact.phone),
@@ -262,6 +264,7 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
       hold_hours: holdHours,
       archive_retention_days: Number.isInteger(retentionDays) ? retentionDays : 0,
       payment_instructions: form.paymentInstructions,
+      allow_backorders: form.allowBackorders,
       directory_opt_in: form.directoryOptIn,
       scryfall_pricing_enabled: form.scryfallPricingEnabled,
       scryfall_min_price_minor: minimumPriceMinor ?? 0,
@@ -477,6 +480,20 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
               placeholder="Pay in store by card or cash when you collect."
             />
           </div>
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              checked={form.allowBackorders}
+              onChange={(event) => patch({ allowBackorders: event.target.checked })}
+            />
+            Accept special orders for cards that are out of stock
+          </label>
+          <p className="hint">
+            When enabled, customers can ask this shop to source a card it does not have on the
+            shelf. The shop replies with a quote and converts accepted requests into a hold once
+            the card arrives. When disabled, the request form is hidden and the API rejects new
+            special orders.
+          </p>
           <label className="checkbox">
             <input
               type="checkbox"

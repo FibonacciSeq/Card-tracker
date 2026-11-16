@@ -20,7 +20,7 @@ staff-only.
 | `/requests` | Special orders: quote, decline, and convert an accepted request into a reservation |
 | `/team` | Owner-only: add staff, change roles, deactivate accounts |
 | `/activity` | Owner-only: audit trail with action filters |
-| `/settings` | Branding, hold duration, payment instructions, contact, shop coordinates, directory opt-in, printable shop QR code |
+| `/settings` | Branding, hold duration, payment instructions, contact, shop coordinates, directory opt-in, out-of-stock special orders, printable shop QR code |
 
 Stock numbers always pair colour with a text label (available / reserved / out)
 so they remain readable without colour vision. A "N waiting" badge on a stock

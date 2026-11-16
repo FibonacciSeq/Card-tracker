@@ -14,8 +14,11 @@ export function ShopCard({ shop, onPress }: { shop: ShopSearch; onPress: () => v
   const available = shop.product_available ?? 0;
   const hasProduct = matchingVariants > 0;
   const soldOut = available <= 0;
+  const canOrderSoldOut = soldOut && shop.allow_backorders;
   const statusText = soldOut
-    ? "Out of stock"
+    ? canOrderSoldOut
+      ? "Out of stock · order available"
+      : "Out of stock"
     : `${available} in stock${matchingVariants > 1 ? ` · ${matchingVariants} variants` : ""}`;
   const priceText = shop.product_from_price ? formatMoney(shop.product_from_price) : null;
   return (
@@ -23,7 +26,13 @@ export function ShopCard({ shop, onPress }: { shop: ShopSearch; onPress: () => v
       accessibilityHint="Opens this shop's storefront"
       accessibilityLabel={
         hasProduct
-          ? `${name}, ${soldOut ? "out of stock" : `${available} in stock`}`
+          ? `${name}, ${
+              soldOut
+                ? canOrderSoldOut
+                  ? "out of stock, order available"
+                  : "out of stock"
+                : `${available} in stock`
+            }`
           : name
       }
       accessibilityRole="button"

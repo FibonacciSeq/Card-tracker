@@ -62,6 +62,13 @@ def create(
     payload: schemas.CardRequestCreateIn,
     customer: models.User | None = None,
 ) -> tuple[models.CardRequest, str]:
+    if tenant.settings is None or not tenant.settings.allow_backorders:
+        raise CardRequestError(
+            "backorders_disabled",
+            "This shop is not accepting orders for out-of-stock cards right now.",
+            status_code=403,
+        )
+
     card = None
     if payload.card_id is not None:
         card = db.get(models.Card, payload.card_id)

@@ -36,7 +36,10 @@ persisted in secure device storage, restored on cold launch, and combines
   signed, stateless token.
 - Special-order request form launched from a shop storefront, with card details,
   quantity, optional target price, and contact validation; local request list
-  and detail screen.
+  and detail screen. Shops opt in to out-of-stock orders in their admin
+  settings; when disabled, the storefront and card-detail entry points are
+  hidden and the API rejects new requests. Sold-out product results advertise
+  “order available” for shops that accept special orders.
 - Special-order detail refreshes from the API with an account or guest token.
   Customers can accept or cancel a quote, and see when the shop converts it
   into a hold. A quote is shown as indicative: conversion reserves the card at

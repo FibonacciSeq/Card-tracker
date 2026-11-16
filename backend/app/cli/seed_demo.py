@@ -49,6 +49,7 @@ def main() -> None:
             brand_name=args.name,
             hold_hours=24,
             directory_opt_in=True,
+            allow_backorders=True,
             payment_instructions="Pay in store when collecting.",
             contact={"email": args.email},
         )

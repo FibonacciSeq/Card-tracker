@@ -89,7 +89,7 @@ export default function ShopScreen() {
           ListHeaderComponent={
             <View>
               {shop ? <ShopHero shop={shop} /> : shopQuery.isLoading ? <LoadingState label="Opening shop…" /> : null}
-              {shop ? (
+              {shop?.allow_backorders ? (
                 <View style={styles.specialOrderWrap}>
                   <Pressable
                     accessibilityHint="Opens the special-order request form for this shop"
@@ -98,7 +98,11 @@ export default function ShopScreen() {
                     onPress={() =>
                       router.push({
                         pathname: "/requests/new",
-                        params: { shopSlug: slug, shopName: title },
+                        params: {
+                          shopSlug: slug,
+                          shopName: title,
+                          ...(search.trim() ? { name: search.trim() } : {}),
+                        },
                       })
                     }
                     style={({ pressed }) => [styles.specialOrder, pressed && styles.pressed]}

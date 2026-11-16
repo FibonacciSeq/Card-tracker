@@ -139,6 +139,9 @@ test("saves shop settings", async ({ page }) => {
   await name.fill("Bolt Shop Deluxe");
   await page.getByLabel("Hold duration (hours)").fill("48");
   await page.getByLabel("Delete archived cards after (days)").fill("0");
+  const specialOrders = page.getByLabel("Accept special orders for cards that are out of stock");
+  await expect(specialOrders).toBeChecked();
+  await specialOrders.uncheck();
   await page.getByRole("button", { name: "Save settings" }).click();
 
   await expect(page.getByText("Settings saved.")).toBeVisible();
@@ -147,6 +150,7 @@ test("saves shop settings", async ({ page }) => {
   await expect(page.getByLabel("Display name")).toHaveValue("Bolt Shop Deluxe");
   await expect(page.getByLabel("Hold duration (hours)")).toHaveValue("48");
   await expect(page.getByLabel("Delete archived cards after (days)")).toHaveValue("0");
+  await expect(page.getByLabel("Accept special orders for cards that are out of stock")).not.toBeChecked();
 });
 
 test("exports the stock template and imports a checked change", async ({ page }) => {

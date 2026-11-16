@@ -94,6 +94,7 @@ def tenant(db):
     row.settings = models.TenantSettings(
         hold_hours=24,
         directory_opt_in=True,
+        allow_backorders=True,
         brand_name="Bolt Shop",
         payment_instructions="Pay in store.",
     )
@@ -113,7 +114,7 @@ def other_tenant(db):
         locale="en",
         status="active",
     )
-    row.settings = models.TenantSettings(hold_hours=24, directory_opt_in=True)
+    row.settings = models.TenantSettings(hold_hours=24, directory_opt_in=True, allow_backorders=True)
     db.add(row)
     db.commit()
     db.refresh(row)

@@ -362,6 +362,33 @@ def test_customer_can_cancel_a_request(client, tenant, card):
     assert again.status_code == 409
 
 
+def test_owner_can_disable_and_enable_out_of_stock_orders(client, auth, tenant, card):
+    disabled = client.patch("/v1/staff/settings", headers=auth, json={"allow_backorders": False})
+    assert disabled.status_code == 200
+    assert disabled.json()["allow_backorders"] is False
+
+    rejected = client.post(f"/v1/shops/{tenant.slug}/card-requests", json=_payload(card))
+    assert rejected.status_code == 403
+    assert rejected.json()["code"] == "backorders_disabled"
+    assert "not accepting orders" in rejected.json()["detail"]
+
+    enabled = client.patch("/v1/staff/settings", headers=auth, json={"allow_backorders": True})
+    assert enabled.status_code == 200
+    assert enabled.json()["allow_backorders"] is True
+
+    accepted = client.post(f"/v1/shops/{tenant.slug}/card-requests", json=_payload(card))
+    assert accepted.status_code == 201, accepted.text
+
+
+def test_requests_are_rejected_when_the_shop_has_no_settings(client, tenant, card, db):
+    tenant.settings = None
+    db.commit()
+
+    rejected = client.post(f"/v1/shops/{tenant.slug}/card-requests", json=_payload(card))
+    assert rejected.status_code == 403
+    assert rejected.json()["code"] == "backorders_disabled"
+
+
 def test_free_text_requests_do_not_need_a_catalog_card(client, tenant):
     response = client.post(
         f"/v1/shops/{tenant.slug}/card-requests",

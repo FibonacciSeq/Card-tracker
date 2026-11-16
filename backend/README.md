@@ -389,7 +389,8 @@ Public:
 - `POST /v1/shops/{slug}/restock-alerts/{id}/unsubscribe?token=...` (or JSON `{"email": "..."}`)
 - `GET /v1/shops/{slug}/restock-alerts/{id}/unsubscribe?token=...` (HTML confirmation)
 - `POST /v1/shops/{slug}/restock-alerts/{id}/unsubscribe/one-click?token=...` (RFC 8058)
-- `POST /v1/shops/{slug}/card-requests`
+- `POST /v1/shops/{slug}/card-requests` (only while the shop's
+  `allow_backorders` setting is on; otherwise 403 `backorders_disabled`)
 - `GET /v1/card-requests/{id}` with `X-Shop-Slug` and `X-Card-Request-Token`
 - `POST /v1/card-requests/{id}/accept` with the same headers
 - `POST /v1/card-requests/{id}/cancel` with the same headers
