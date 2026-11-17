@@ -15,15 +15,14 @@ persisted in secure device storage, restored on cold launch, and combines
 
 ## What works
 
-- Shop directory with product search, an optional near-me radius filter, and
-  pull-to-refresh. Searching a card, set, or collector number lists every shop
-  carrying that product, including shops that are currently sold out; available
-  shops are listed first and each card shows an in-stock/out-of-stock badge
-  with the lowest available price. Choosing a 5/10/25/50 km radius asks for
-  foreground location access, lists only shops with saved coordinates, sorts
-  them by distance, and shows the distance on each shop card.
+- Shop directory with product search and pull-to-refresh. Searching a card,
+  set, or collector number lists every shop carrying that product, including
+  shops that are currently sold out; available shops are listed first and each
+  card shows an in-stock/out-of-stock badge with the lowest available price.
+  Cards show the shop's contact address when the owner has chosen to share it.
 - Shop storefront with live stock, search, sort, availability filter, and
-  cursor-based “load more” pagination.
+  cursor-based “load more” pagination. The shop header shows the contact address
+  when the owner has made it public.
 - Local cart persisted on the device, per shop.
 - Guest reservation form with name/email/phone/note validation.
 - Reservation confirmation with reference, countdown, line items, total, and
@@ -102,11 +101,6 @@ cd backend
 
 The local development database currently contains `bolt-shop` with three
 stock rows. It is git-ignored.
-
-To include the demo shop in the near-me filter, set its coordinates in the
-admin under **Settings → Shop location**. Both latitude and longitude are
-required; shops without both stay visible in the normal directory but are left
-out of radius-filtered results.
 
 For account sign-in, also run the notification worker (the OTP email is queued
 through the existing outbox). In development, enable the debug code so the app

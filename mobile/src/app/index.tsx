@@ -1,10 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useQueryClient } from "@tanstack/react-query";
-import * as Location from "expo-location";
 import { useRouter } from "expo-router";
-import { useRef, useState } from "react";
+import { useState } from "react";
 import {
-  ActivityIndicator,
   RefreshControl,
   Pressable,
   ScrollView,
@@ -30,7 +28,6 @@ import { SearchField } from "../components/SearchField";
 import { ShopCard } from "../components/ShopCard";
 import { mergeCardRequests, mergeReservations, mergeRestockAlerts } from "../lib/accountMerge";
 import { API_BASE_URL, shopPath } from "../lib/config";
-import { SHOP_RADIUS_OPTIONS, type ShopNear, type ShopRadiusKm } from "../lib/geo";
 import { useLocale } from "../state/locale";
 import { useAuth } from "../state/auth";
 import { useReservations } from "../state/reservations";
@@ -44,39 +41,16 @@ export default function HomeScreen() {
   const queryClient = useQueryClient();
   const { t } = useLocale();
   const [search, setSearch] = useState("");
-  const [radiusKm, setRadiusKm] = useState<ShopRadiusKm | null>(null);
-  const [nearOrigin, setNearOrigin] = useState<{
-    latitude: number;
-    longitude: number;
-  } | null>(null);
-  const [locationBusy, setLocationBusy] = useState(false);
-  const [locationError, setLocationError] = useState<string | null>(null);
-  const locationRequest = useRef(0);
   const debouncedSearch = useDebouncedValue(search);
-  const near: ShopNear | undefined =
-    nearOrigin && radiusKm ? { ...nearOrigin, radiusKm } : undefined;
-  const shops = useShops(debouncedSearch, near);
-  const usingNearby = radiusKm !== null && nearOrigin !== null;
+  const shops = useShops(debouncedSearch);
   const searchResults = shops.data ?? [];
   const inStockCount = searchResults.filter((shop) => (shop.product_available ?? 0) > 0).length;
   const soldOutCount = searchResults.length - inStockCount;
-  const emptyTitle = debouncedSearch
-    ? usingNearby
-      ? "No nearby shop carries this card"
-      : "No shop carries this card"
-    : usingNearby
-      ? "No shops nearby"
-      : "No shops yet";
+  const emptyTitle = debouncedSearch ? "No shop carries this card" : "No shops yet";
   const emptyBody = debouncedSearch
     ? "Try another card name, set, or collector number. Sold-out shops stay in the results."
-    : usingNearby
-      ? `No shops with a saved location are within ${radiusKm} km. Try a wider radius or clear the distance filter.`
-      : "Start the demo API and seed a shop, then pull to refresh.";
-  const emptyActionLabel = debouncedSearch
-    ? "Clear search"
-    : usingNearby
-      ? "Clear distance filter"
-      : "Try again";
+    : "Start the demo API and seed a shop, then pull to refresh.";
+  const emptyActionLabel = debouncedSearch ? "Clear search" : "Try again";
   const { customer, isAuthenticated, token } = useAuth();
   const { hydrated, reservations } = useReservations();
   const { hydrated: alertsHydrated, alerts } = useRestockAlerts();
@@ -109,49 +83,6 @@ export default function HomeScreen() {
       shops.refetch(),
       queryClient.invalidateQueries({ queryKey: accountKeys.all }),
     ]);
-  }
-
-  async function selectRadius(next: ShopRadiusKm | null) {
-    const requestId = locationRequest.current + 1;
-    locationRequest.current = requestId;
-
-    if (next === null) {
-      setRadiusKm(null);
-      setNearOrigin(null);
-      setLocationError(null);
-      setLocationBusy(false);
-      return;
-    }
-    if (nearOrigin) {
-      setRadiusKm(next);
-      return;
-    }
-
-    setLocationBusy(true);
-    setLocationError(null);
-    try {
-      const permission = await Location.requestForegroundPermissionsAsync();
-      if (requestId !== locationRequest.current) return;
-      if (!permission.granted) {
-        setLocationError("Location access is needed to filter shops by distance.");
-        return;
-      }
-      const current = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
-      if (requestId !== locationRequest.current) return;
-      setNearOrigin({
-        latitude: current.coords.latitude,
-        longitude: current.coords.longitude,
-      });
-      setRadiusKm(next);
-    } catch {
-      if (requestId === locationRequest.current) {
-        setLocationError("We could not read your location. Try again, or search by shop name.");
-      }
-    } finally {
-      if (requestId === locationRequest.current) setLocationBusy(false);
-    }
   }
 
   return (
@@ -215,39 +146,6 @@ export default function HomeScreen() {
           <Text style={styles.searchHint}>
             Search by product to see which shops carry it. Sold-out shops are still listed.
           </Text>
-
-          <View style={styles.distanceFilter}>
-            <View style={styles.distanceHeader}>
-              <View style={styles.distanceTitleRow}>
-                <Ionicons name="navigate-outline" size={15} color={colors.primary} />
-                <Text style={styles.distanceLabel}>Distance from you</Text>
-              </View>
-              {locationBusy ? (
-                <ActivityIndicator size="small" color={colors.primary} />
-              ) : null}
-            </View>
-            <View style={styles.radiusRow}>
-              <RadiusChip
-                label="Any"
-                selected={radiusKm === null}
-                onPress={() => void selectRadius(null)}
-              />
-              {SHOP_RADIUS_OPTIONS.map((km) => (
-                <RadiusChip
-                  key={km}
-                  label={`${km} km`}
-                  selected={radiusKm === km}
-                  onPress={() => void selectRadius(km)}
-                />
-              ))}
-            </View>
-            {locationError ? <Text style={styles.locationError}>{locationError}</Text> : null}
-            <Text style={styles.distanceHint}>
-              {usingNearby
-                ? `Showing shops within ${radiusKm} km. Only shops with a saved location appear.`
-                : "Choose a radius to see shops near you."}
-            </Text>
-          </View>
 
           <View style={styles.quickRow}>
             <QuickAction
@@ -348,7 +246,6 @@ export default function HomeScreen() {
                 actionLabel={emptyActionLabel}
                 onAction={() => {
                   if (debouncedSearch) setSearch("");
-                  else if (usingNearby) void selectRadius(null);
                   else void shops.refetch();
                 }}
               />
@@ -387,34 +284,6 @@ export default function HomeScreen() {
         </View>
       </ScrollView>
     </View>
-  );
-}
-
-function RadiusChip({
-  label,
-  selected,
-  onPress,
-}: {
-  label: string;
-  selected: boolean;
-  onPress: () => void;
-}) {
-  return (
-    <Pressable
-      accessibilityLabel={label === "Any" ? "Any distance" : `Within ${label}`}
-      accessibilityRole="button"
-      accessibilityState={{ selected }}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.radiusChip,
-        selected && styles.radiusChipSelected,
-        pressed && styles.scanPressed,
-      ]}
-    >
-      <Text style={[styles.radiusChipLabel, selected && styles.radiusChipLabelSelected]}>
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -543,54 +412,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.lg,
     marginTop: spacing.lg,
     gap: spacing.xl,
-  },
-  distanceFilter: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.line,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  distanceHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
-  distanceTitleRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  distanceLabel: { color: colors.ink, fontSize: type.small, fontWeight: "800" },
-  radiusRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    gap: spacing.xs,
-  },
-  radiusChip: {
-    borderRadius: radii.pill,
-    borderWidth: 1,
-    borderColor: colors.line,
-    backgroundColor: colors.background,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 7,
-  },
-  radiusChipSelected: {
-    backgroundColor: colors.primary,
-    borderColor: colors.primary,
-  },
-  radiusChipLabel: {
-    color: colors.inkMuted,
-    fontSize: type.tiny,
-    fontWeight: "800",
-  },
-  radiusChipLabelSelected: { color: colors.white },
-  distanceHint: {
-    color: colors.inkMuted,
-    fontSize: type.tiny,
-    lineHeight: 16,
-  },
-  locationError: {
-    color: colors.danger,
-    fontSize: type.tiny,
-    lineHeight: 16,
   },
   quickRow: { flexDirection: "row", gap: spacing.sm },
   quickCard: {

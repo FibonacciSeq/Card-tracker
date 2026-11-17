@@ -9,14 +9,21 @@ import {
   type ReactNode,
 } from "react";
 
-import { DEFAULT_LOCALE, getText, normalizeLocale, type AppLocale, type TranslationKey } from "../lib/locale";
+import {
+  DEFAULT_LOCALE,
+  getText,
+  normalizeLocale,
+  type AppLocale,
+  type TranslationKey,
+  type TranslationParams,
+} from "../lib/locale";
 
 const STORAGE_KEY = "cardtracker.locale.v1";
 
 type LocaleContextValue = {
   locale: AppLocale;
   setLocale: (next: AppLocale) => void;
-  t: (key: TranslationKey) => string;
+  t: (key: TranslationKey, params?: TranslationParams) => string;
 };
 
 const LocaleContext = createContext<LocaleContextValue | null>(null);
@@ -51,7 +58,7 @@ export function LocaleProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo(
-    () => ({ locale, setLocale, t: (key: TranslationKey) => getText(locale, key) }),
+    () => ({ locale, setLocale, t: (key: TranslationKey, params?: TranslationParams) => getText(locale, key, params) }),
     [locale, setLocale],
   );
 

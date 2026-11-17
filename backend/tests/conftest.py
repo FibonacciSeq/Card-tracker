@@ -96,6 +96,7 @@ def tenant(db):
         directory_opt_in=True,
         allow_backorders=True,
         brand_name="Bolt Shop",
+        contact={"email": "owner@example.com", "address": "Knez Mihailova 10, Belgrade"},
         payment_instructions="Pay in store.",
     )
     db.add(row)
@@ -114,7 +115,12 @@ def other_tenant(db):
         locale="en",
         status="active",
     )
-    row.settings = models.TenantSettings(hold_hours=24, directory_opt_in=True, allow_backorders=True)
+    row.settings = models.TenantSettings(
+        hold_hours=24,
+        directory_opt_in=True,
+        allow_backorders=True,
+        contact={"address": "Bulevar kralja Aleksandra 1, Belgrade"},
+    )
     db.add(row)
     db.commit()
     db.refresh(row)

@@ -2,59 +2,7 @@ export const DEFAULT_LOCALE = "en" as const;
 export const SUPPORTED_LOCALES = ["en", "sr"] as const;
 export type AppLocale = (typeof SUPPORTED_LOCALES)[number];
 
-export type TranslationKey =
-  | "homeTitle"
-  | "homeSubtitle"
-  | "scanShopCode"
-  | "specialOrders"
-  | "restockAlerts"
-  | "yourHolds"
-  | "shopsOnCardTracker"
-  | "loginTitle"
-  | "loginSubtitle"
-  | "signInTab"
-  | "createAccountTab"
-  | "resetPasswordTitle"
-  | "resetPasswordBody"
-  | "emailLabel"
-  | "passwordLabel"
-  | "currentPasswordLabel"
-  | "newPasswordLabel"
-  | "confirmPasswordLabel"
-  | "verificationCodeLabel"
-  | "signInAction"
-  | "sendVerificationCode"
-  | "sendResetCode"
-  | "verifyAndCreate"
-  | "saveNewPassword"
-  | "forgotPassword"
-  | "backToSignIn"
-  | "sendNewCode"
-  | "sendNewCodeIn"
-  | "verificationSent"
-  | "resetSent"
-  | "passwordHint"
-  | "passwordsDoNotMatch"
-  | "loginPrivacy"
-  | "language"
-  | "english"
-  | "serbian"
-  | "signedIn"
-  | "signedInBody"
-  | "holds"
-  | "requests"
-  | "alerts"
-  | "turnOnPush"
-  | "pushInfo"
-  | "deviceNeedsNativePush"
-  | "languageHint"
-  | "accountPasswordTitle"
-  | "accountPasswordBody"
-  | "setPassword"
-  | "changePassword"
-  | "savePassword"
-  | "passwordUpdated"
-  | "passwordSet";
+export type TranslationKey = string;
 
 export const translationMap: Record<AppLocale, Record<TranslationKey, string>> = {
   en: {
@@ -185,6 +133,10 @@ export function normalizeLocale(value: string | null | undefined): AppLocale {
     : DEFAULT_LOCALE;
 }
 
-export function getText(locale: AppLocale, key: TranslationKey): string {
-  return translationMap[locale][key] ?? translationMap[DEFAULT_LOCALE][key] ?? key;
+export type TranslationParams = Record<string, string | number>;
+
+export function getText(locale: AppLocale, key: TranslationKey, params?: TranslationParams): string {
+  const template = translationMap[locale][key] ?? translationMap[DEFAULT_LOCALE][key] ?? key;
+  if (!params) return template;
+  return template.replace(/\{(\w+)\}/g, (_, name: string) => String(params[name] ?? `{${name}}`));
 }

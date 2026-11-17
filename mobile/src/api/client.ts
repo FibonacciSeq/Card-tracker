@@ -1,5 +1,4 @@
 import { API_BASE_URL } from "../lib/config";
-import type { ShopNear } from "../lib/geo";
 import type {
   AccountCardRequest,
   AccountNotificationList,
@@ -127,18 +126,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return payload as T;
 }
 
-export function getShops(
-  product = "",
-  near?: ShopNear,
-  signal?: AbortSignal,
-): Promise<ShopSearch[]> {
+export function getShops(product = "", signal?: AbortSignal): Promise<ShopSearch[]> {
   return request<ShopSearch[]>(
     `/v1/shops${queryString({
       product,
       limit: 100,
-      near_lat: near?.latitude,
-      near_lng: near?.longitude,
-      radius_km: near?.radiusKm,
     })}`,
     { signal },
   );

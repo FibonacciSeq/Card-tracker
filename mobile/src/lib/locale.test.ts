@@ -34,4 +34,13 @@ describe("locale", () => {
     }
     expect(getText("sr", "not-a-real-key" as TranslationKey)).toBe("not-a-real-key");
   });
+
+  it("interpolates translation parameters", () => {
+    translationMap.en.greeting = "Hello {name}, you have {count} cards.";
+    try {
+      expect(getText("en", "greeting", { name: "Ana", count: 2 })).toBe("Hello Ana, you have 2 cards.");
+    } finally {
+      delete translationMap.en.greeting;
+    }
+  });
 });

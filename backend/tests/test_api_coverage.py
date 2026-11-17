@@ -611,7 +611,11 @@ def test_staff_card_request_missing_and_settings(client, db, auth, tenant):
     db.expire_all()
     tenant.settings = None
     db.commit()
-    created = client.patch("/v1/staff/settings", headers=auth, json={"brand_name": "Fresh"})
+    created = client.patch(
+        "/v1/staff/settings",
+        headers=auth,
+        json={"brand_name": "Fresh"},
+    )
     assert created.status_code == 200
     assert created.json()["brand_name"] == "Fresh"
 

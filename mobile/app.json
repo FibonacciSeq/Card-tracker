@@ -40,12 +40,6 @@
           "barcodeScannerEnabled": true
         }
       ],
-      [
-        "expo-location",
-        {
-          "locationWhenInUsePermission": "Allow Card Tracker to use your location to find nearby shops."
-        }
-      ],
       "expo-status-bar"
     ],
     "extra": {

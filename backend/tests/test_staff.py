@@ -267,33 +267,42 @@ def test_settings_do_not_leak_staff_only_fields_to_the_public_profile(client, te
     assert "notification_email" not in public.json()
 
 
-def test_shop_location_is_saved_and_exposed_publicly(client, tenant, auth):
-    saved = client.patch(
+def test_contact_address_is_hidden_from_customers_until_enabled(client, tenant, auth):
+    hidden = client.patch(
         "/v1/staff/settings",
         headers=auth,
-        json={"latitude": 44.8125, "longitude": 20.4612},
+        json={
+            "contact": {"email": "owner@example.com", "address": "Knez Mihailova 10, Belgrade"},
+            "show_address": False,
+        },
     )
-    assert saved.status_code == 200, saved.text
-    assert saved.json()["latitude"] == 44.8125
-    assert saved.json()["longitude"] == 20.4612
+    assert hidden.status_code == 200, hidden.text
+    assert hidden.json()["contact"]["address"] == "Knez Mihailova 10, Belgrade"
+    assert hidden.json()["show_address"] is False
+
+    public = client.get(f"/v1/shops/{tenant.slug}")
+    assert public.json()["contact"] == {"email": "owner@example.com"}
+    directory = client.get("/v1/shops")
+    assert "address" not in directory.json()[0]["contact"]
+
+    shown = client.patch("/v1/staff/settings", headers=auth, json={"show_address": True})
+    assert shown.status_code == 200
+    assert shown.json()["contact"]["address"] == "Knez Mihailova 10, Belgrade"
+    assert shown.json()["show_address"] is True
+
+    public = client.get(f"/v1/shops/{tenant.slug}")
+    assert public.json()["contact"]["address"] == "Knez Mihailova 10, Belgrade"
+    directory = client.get("/v1/shops")
+    assert directory.json()[0]["contact"]["address"] == "Knez Mihailova 10, Belgrade"
+
+
+def test_public_shop_without_settings_has_no_contact_address(client, tenant, db):
+    tenant.settings = None
+    db.commit()
 
     public = client.get(f"/v1/shops/{tenant.slug}")
     assert public.status_code == 200
-    assert public.json()["latitude"] == 44.8125
-    assert public.json()["longitude"] == 20.4612
-
-    partial = client.patch("/v1/staff/settings", headers=auth, json={"latitude": None})
-    assert partial.status_code == 422
-    assert partial.json()["detail"] == "Set both latitude and longitude, or clear both."
-
-    cleared = client.patch(
-        "/v1/staff/settings",
-        headers=auth,
-        json={"latitude": None, "longitude": None},
-    )
-    assert cleared.status_code == 200
-    assert cleared.json()["latitude"] is None
-    assert cleared.json()["longitude"] is None
+    assert public.json()["contact"] == {}
 
 
 def test_staff_get_an_in_app_alert_when_a_reservation_is_created(client, tenant, stock, reservation_payload, db, owner):

@@ -9,9 +9,9 @@ desktop app is unchanged and still uses its own SQLite database.
 - Multi-tenant data model: tenants, settings, users, cards, stock,
   reservations, reservation lines, stock movements, notifications, idempotency,
   special-order requests, restock alerts.
-- Public storefront: shop directory with optional near-me radius filtering,
-  shop profile, stock search/filters/facets, reservation create, reservation
-  lookup, reservation cancel, restock-alert subscribe/unsubscribe,
+- Public storefront: shop directory, shop profile, stock search/filters/facets,
+  reservation create, reservation lookup, reservation cancel,
+  restock-alert subscribe/unsubscribe,
   special-order request create/track/accept/cancel.
 - Optional global customer accounts: email OTP sign-in, `/v1/me` reservations,
   special orders, restock alerts, a notification delivery log, and push-device
@@ -268,7 +268,9 @@ allowed by a separate permissive policy. Claiming iterates shops and sets the
 tenant context for each update.
 
 `tenant_settings` is intentionally not RLS-protected because the public shop
-directory reads branding across tenants. It contains no customer data.
+directory reads branding across tenants. It contains no customer data. The
+address inside `contact` appears in public shop responses only when
+`show_address` is enabled; staff responses always include it.
 `customer_otp_challenges` is global like `cards` and contains no plaintext OTP.
 
 ## Verify against PostgreSQL
@@ -376,7 +378,7 @@ Public:
 
 - `GET /v1/shops` (`query` searches shop names; `product` searches card name,
   set name, or collector number and returns every carrying shop, including
-  sold-out ones; `near_lat`, `near_lng`, and `radius_km` filter by distance)
+  sold-out ones)
 - `GET /v1/shops/{slug}`
 - `GET /v1/shops/{slug}/stock`
 - `GET /v1/shops/{slug}/stock/{stock_id}`

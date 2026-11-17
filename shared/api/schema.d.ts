@@ -2255,10 +2255,8 @@ export interface components {
             contact?: {
                 [key: string]: unknown;
             } | null;
-            /** Latitude */
-            latitude?: number | null;
-            /** Longitude */
-            longitude?: number | null;
+            /** Show Address */
+            show_address?: boolean | null;
             /** Hours */
             hours?: {
                 [key: string]: unknown;
@@ -2310,10 +2308,6 @@ export interface components {
             contact?: {
                 [key: string]: unknown;
             };
-            /** Latitude */
-            latitude?: number | null;
-            /** Longitude */
-            longitude?: number | null;
             /** Hours */
             hours?: {
                 [key: string]: unknown;
@@ -2338,8 +2332,6 @@ export interface components {
              * @default false
              */
             directory_opt_in: boolean;
-            /** Distance Km */
-            distance_km?: number | null;
         };
         /**
          * ShopSearchOut
@@ -2376,10 +2368,6 @@ export interface components {
             contact?: {
                 [key: string]: unknown;
             };
-            /** Latitude */
-            latitude?: number | null;
-            /** Longitude */
-            longitude?: number | null;
             /** Hours */
             hours?: {
                 [key: string]: unknown;
@@ -2404,8 +2392,6 @@ export interface components {
              * @default false
              */
             directory_opt_in: boolean;
-            /** Distance Km */
-            distance_km?: number | null;
             /**
              * Product Variant Count
              * @default 0
@@ -2634,10 +2620,6 @@ export interface components {
             contact?: {
                 [key: string]: unknown;
             };
-            /** Latitude */
-            latitude?: number | null;
-            /** Longitude */
-            longitude?: number | null;
             /** Hours */
             hours?: {
                 [key: string]: unknown;
@@ -2662,8 +2644,11 @@ export interface components {
              * @default false
              */
             directory_opt_in: boolean;
-            /** Distance Km */
-            distance_km?: number | null;
+            /**
+             * Show Address
+             * @default false
+             */
+            show_address: boolean;
             /**
              * Scryfall Pricing Enabled
              * @default false
@@ -3008,9 +2993,6 @@ export interface operations {
                 query?: string | null;
                 product?: string | null;
                 limit?: number;
-                near_lat?: number | null;
-                near_lng?: number | null;
-                radius_km?: number | null;
             };
             header?: never;
             path?: never;

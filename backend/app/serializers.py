@@ -12,7 +12,14 @@ from app.constants import (
 )
 
 
-def shop_out(tenant: models.Tenant, distance_km: float | None = None) -> schemas.ShopOut:
+def _public_contact(settings: models.TenantSettings | None) -> dict:
+    contact = settings.contact if settings else {}
+    if settings is None or not settings.show_address:
+        return {key: value for key, value in contact.items() if key != "address"}
+    return contact
+
+
+def shop_out(tenant: models.Tenant) -> schemas.ShopOut:
     settings = tenant.settings
     return schemas.ShopOut(
         slug=tenant.slug,
@@ -24,27 +31,23 @@ def shop_out(tenant: models.Tenant, distance_km: float | None = None) -> schemas
         logo_url=settings.logo_url if settings else None,
         colors=settings.colors if settings else {},
         hero=settings.hero if settings else {},
-        contact=settings.contact if settings else {},
-        latitude=settings.latitude if settings else None,
-        longitude=settings.longitude if settings else None,
+        contact=_public_contact(settings),
         hours=settings.hours if settings else {},
         payment_instructions=settings.payment_instructions if settings else "",
         hold_hours=settings.hold_hours if settings else DEFAULT_HOLD_HOURS,
         allow_backorders=settings.allow_backorders if settings else False,
         directory_opt_in=settings.directory_opt_in if settings else False,
-        distance_km=distance_km,
     )
 
 
 def shop_search_out(
     tenant: models.Tenant,
     *,
-    distance_km: float | None = None,
     product_variant_count: int = 0,
     product_available: int = 0,
     product_from_price_minor: int | None = None,
 ) -> schemas.ShopSearchOut:
-    base = shop_out(tenant, distance_km=distance_km)
+    base = shop_out(tenant)
     return schemas.ShopSearchOut(
         **base.model_dump(),
         product_variant_count=product_variant_count,
@@ -63,7 +66,7 @@ def staff_shop_out(
     stock_without_scryfall_prices: int | None = None,
 ) -> schemas.StaffShopOut:
     """Public shop profile plus settings only staff may see."""
-    base = shop_out(tenant)
+    base = shop_out(tenant).model_dump(exclude={"contact"})
     pricing = tenant.settings.scryfall_pricing if tenant.settings else {}
     if not isinstance(pricing, dict):
         pricing = {}
@@ -71,7 +74,9 @@ def staff_shop_out(
     markup_percent = pricing.get("markup_percent", 0)
     rounding_increment_minor = pricing.get("rounding_increment_minor", DEFAULT_ROUNDING_INCREMENT_MINOR)
     return schemas.StaffShopOut(
-        **base.model_dump(),
+        **base,
+        contact=tenant.settings.contact if tenant.settings else {},
+        show_address=tenant.settings.show_address if tenant.settings else False,
         scryfall_pricing_enabled=pricing.get("enabled") is True,
         scryfall_min_price_minor=minimum_price if type(minimum_price) is int else 0,
         scryfall_markup_percent=markup_percent if type(markup_percent) is int else 0,

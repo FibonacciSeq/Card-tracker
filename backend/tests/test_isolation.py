@@ -40,32 +40,6 @@ def test_shop_directory_lists_opted_in_shops(client, tenant, other_tenant):
     assert slugs == {tenant.slug, other_tenant.slug}
 
 
-def test_shop_directory_filters_and_sorts_by_distance(client, tenant, other_tenant, db):
-    tenant.settings.latitude = 44.8125
-    tenant.settings.longitude = 20.4612
-    other_tenant.settings.latitude = 45.2671
-    other_tenant.settings.longitude = 19.8335
-    db.commit()
-
-    nearby = client.get(
-        "/v1/shops",
-        params={"near_lat": 44.82, "near_lng": 20.46, "radius_km": 10},
-    )
-    assert nearby.status_code == 200
-    assert [shop["slug"] for shop in nearby.json()] == [tenant.slug]
-    assert nearby.json()[0]["distance_km"] < 2
-    assert nearby.json()[0]["latitude"] == 44.8125
-    assert nearby.json()[0]["longitude"] == 20.4612
-
-    wider = client.get(
-        "/v1/shops",
-        params={"near_lat": 44.82, "near_lng": 20.46, "radius_km": 100},
-    )
-    assert wider.status_code == 200
-    assert [shop["slug"] for shop in wider.json()] == [tenant.slug, other_tenant.slug]
-    assert wider.json()[0]["distance_km"] < wider.json()[1]["distance_km"]
-
-
 def test_shop_directory_searches_by_product_and_keeps_sold_out_shops(client, tenant, other_tenant, stock, db):
     stock.reserved = 1
     db.add(
@@ -124,23 +98,14 @@ def test_shop_directory_product_price_prefers_available_variant(client, tenant, 
     assert shop["product_from_price"] == {"amount_minor": 125000, "currency": "RSD"}
 
 
-def test_shop_directory_product_search_respects_distance_and_empty_results(client, tenant, other_tenant, db):
-    tenant.settings.latitude = 44.8125
-    tenant.settings.longitude = 20.4612
-    other_tenant.settings.latitude = 45.2671
-    other_tenant.settings.longitude = 19.8335
-    db.commit()
-
+def test_shop_directory_product_search_and_empty_results(client, tenant, other_tenant, db):
     empty = client.get("/v1/shops", params={"product": "not-a-real-card"})
     assert empty.status_code == 200
     assert empty.json() == []
 
-    nearby = client.get(
-        "/v1/shops",
-        params={"product": "card", "near_lat": 44.82, "near_lng": 20.46, "radius_km": 100},
-    )
-    assert nearby.status_code == 200
-    assert nearby.json() == []
+    no_cards = client.get("/v1/shops", params={"product": "card"})
+    assert no_cards.status_code == 200
+    assert no_cards.json() == []
 
     for shop in (tenant, other_tenant):
         card = models.Card(
@@ -168,37 +133,10 @@ def test_shop_directory_product_search_respects_distance_and_empty_results(clien
         )
     db.commit()
 
-    nearby = client.get(
-        "/v1/shops",
-        params={"product": "product search", "near_lat": 44.82, "near_lng": 20.46, "radius_km": 100},
-    )
-    assert nearby.status_code == 200
-    assert [shop["slug"] for shop in nearby.json()] == [tenant.slug, other_tenant.slug]
-    assert [shop["product_available"] for shop in nearby.json()] == [2, 0]
-
-
-def test_shop_directory_skips_shops_without_coordinates(client, tenant, other_tenant, db):
-    other_tenant.settings.latitude = 45.2671
-    other_tenant.settings.longitude = 19.8335
-    db.commit()
-
-    response = client.get(
-        "/v1/shops",
-        params={"near_lat": 44.82, "near_lng": 20.46, "radius_km": 100},
-    )
-    assert response.status_code == 200
-    assert [shop["slug"] for shop in response.json()] == [other_tenant.slug]
-    assert response.json()[0]["distance_km"] > 0
-
-
-def test_shop_directory_requires_a_complete_location(client):
-    missing_pair = client.get("/v1/shops", params={"near_lat": 44.82})
-    assert missing_pair.status_code == 422
-    assert missing_pair.json()["detail"] == "near_lat and near_lng must be provided together."
-
-    missing_origin = client.get("/v1/shops", params={"radius_km": 10})
-    assert missing_origin.status_code == 422
-    assert missing_origin.json()["detail"] == "radius_km requires near_lat and near_lng."
+    matching = client.get("/v1/shops", params={"product": "product search"})
+    assert matching.status_code == 200
+    assert [shop["slug"] for shop in matching.json()] == [tenant.slug, other_tenant.slug]
+    assert [shop["product_available"] for shop in matching.json()] == [2, 0]
 
 
 def test_stock_is_scoped_to_shop(client, tenant, other_tenant, stock, db):

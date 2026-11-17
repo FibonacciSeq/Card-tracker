@@ -4,12 +4,12 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { ShopSearch } from "../api/types";
 import { formatMoney } from "../lib/format";
-import { formatDistanceKm } from "../lib/geo";
 import { colors, radii, shadow, spacing, type } from "../theme";
 
 export function ShopCard({ shop, onPress }: { shop: ShopSearch; onPress: () => void }) {
   const name = shop.brand_name || shop.name;
-  const distance = shop.distance_km == null ? "" : formatDistanceKm(shop.distance_km);
+  const contact = shop.contact as { address?: unknown } | undefined;
+  const address = typeof contact?.address === "string" ? contact.address : "";
   const matchingVariants = shop.product_variant_count ?? 0;
   const available = shop.product_available ?? 0;
   const hasProduct = matchingVariants > 0;
@@ -54,13 +54,9 @@ export function ShopCard({ shop, onPress }: { shop: ShopSearch; onPress: () => v
         <View style={styles.metaRow}>
           <Ionicons name="time-outline" size={13} color={colors.inkMuted} />
           <Text style={styles.meta}>{shop.hold_hours}h holds</Text>
-          <Ionicons
-            name={distance ? "navigate-outline" : "location-outline"}
-            size={13}
-            color={colors.inkMuted}
-          />
+          <Ionicons name="location-outline" size={13} color={colors.inkMuted} />
           <Text numberOfLines={1} style={styles.meta}>
-            {distance ? `${distance} away` : shop.timezone.replace(/_/g, " ")}
+            {address || shop.timezone.replace(/_/g, " ")}
           </Text>
         </View>
         {hasProduct ? (

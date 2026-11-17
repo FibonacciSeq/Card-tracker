@@ -226,7 +226,7 @@ export default function ShopScreen() {
 }
 
 function ShopHero({ shop }: { shop: NonNullable<ReturnType<typeof useShop>["data"]> }) {
-  const contact = shop.contact as { email?: string; phone?: string };
+  const contact = (shop.contact ?? {}) as { email?: string; phone?: string; address?: string };
   const name = shop.brand_name || shop.name;
   return (
     <View style={styles.hero}>
@@ -247,6 +247,7 @@ function ShopHero({ shop }: { shop: NonNullable<ReturnType<typeof useShop>["data
       <View style={styles.heroMeta}>
         <Meta icon="time-outline" text={`${shop.hold_hours}h holds`} />
         <Meta icon="pricetag-outline" text={shop.currency} />
+        {contact.address ? <Meta icon="location-outline" text={contact.address} /> : null}
         {contact.email ? <Meta icon="mail-outline" text={contact.email} /> : null}
       </View>
       {shop.payment_instructions ? (
