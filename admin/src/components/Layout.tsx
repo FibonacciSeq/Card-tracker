@@ -1,7 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useStaffUnreadCount } from "../api/queries";
 import { useAuth } from "../auth/context";
-import { LanguagePicker } from "./LanguagePicker";
 import { useLocale } from "../state/locale";
 
 const NAV = [
@@ -67,7 +66,6 @@ export function Layout() {
           <p className="sidebar__user" title={session?.me.email}>
             {shopName}
           </p>
-          <LanguagePicker />
           <button type="button" className="btn btn--ghost btn--small" onClick={signOut}>
             {t("Sign out")}
           </button>

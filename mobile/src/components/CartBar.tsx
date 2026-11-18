@@ -17,7 +17,7 @@ export function CartBar({
   bottomInset: number;
   onPress: () => void;
 }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   return (
     <View style={[styles.wrap, { paddingBottom: bottomInset + spacing.sm }]}>
       <Pressable
@@ -32,7 +32,7 @@ export function CartBar({
           </View>
           <View>
             <Text style={styles.label}>{t("Review your hold")}</Text>
-            <Text style={styles.total}>{formatMoney(total)}</Text>
+            <Text style={styles.total}>{formatMoney(total, locale)}</Text>
           </View>
         </View>
         <Ionicons name="arrow-forward" size={20} color={colors.white} />

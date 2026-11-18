@@ -13,7 +13,6 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Field } from "../components/Field";
-import { LanguagePicker } from "../components/LanguagePicker";
 import { LoadingState } from "../components/LoadingState";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { useAuth } from "../state/auth";
@@ -204,8 +203,6 @@ export default function LoginScreen() {
           <Text style={styles.title}>{t("loginTitle")}</Text>
           <Text style={styles.subtitle}>{t("loginSubtitle")}</Text>
         </View>
-
-        <LanguagePicker />
 
         {mode === "reset" ? (
           <Pressable

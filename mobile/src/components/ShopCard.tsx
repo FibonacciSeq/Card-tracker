@@ -8,7 +8,7 @@ import { useLocale } from "../state/locale";
 import { colors, radii, shadow, spacing, type } from "../theme";
 
 export function ShopCard({ shop, onPress }: { shop: ShopSearch; onPress: () => void }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const name = shop.brand_name || shop.name;
   const contact = shop.contact as { address?: unknown } | undefined;
   const address = typeof contact?.address === "string" ? contact.address : "";
@@ -24,7 +24,7 @@ export function ShopCard({ shop, onPress }: { shop: ShopSearch; onPress: () => v
     : matchingVariants > 1
       ? t("{count} in stock · {variants} variants", { count: available, variants: matchingVariants })
       : t("{count} in stock", { count: available });
-  const priceText = shop.product_from_price ? formatMoney(shop.product_from_price) : null;
+  const priceText = shop.product_from_price ? formatMoney(shop.product_from_price, locale) : null;
   return (
     <Pressable
       accessibilityHint={t("Opens this shop's storefront")}

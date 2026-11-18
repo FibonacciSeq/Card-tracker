@@ -1,14 +1,31 @@
-export function formatMoney(amountMinor: number, currency: string): string {
-  return new Intl.NumberFormat(undefined, {
+type TimeFormatPreference = "auto" | "12h" | "24h";
+
+type DateTimeFormatOptions = {
+  locale?: string;
+  timeFormat?: TimeFormatPreference;
+};
+
+function hourCycleFor(timeFormat: TimeFormatPreference | undefined): "h12" | "h23" | undefined {
+  if (timeFormat === "12h") return "h12";
+  if (timeFormat === "24h") return "h23";
+  return undefined;
+}
+
+export function formatMoney(amountMinor: number, currency: string, locale?: string): string {
+  return new Intl.NumberFormat(locale, {
     style: "currency",
     currency,
     minimumFractionDigits: 2,
   }).format(amountMinor / 100);
 }
 
-export function formatDateTime(value: string | Date): string {
+export function formatDateTime(value: string | Date, options: DateTimeFormatOptions = {}): string {
   const date = typeof value === "string" ? new Date(value) : value;
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(date);
+  return new Intl.DateTimeFormat(options.locale, {
+    dateStyle: "medium",
+    timeStyle: "short",
+    hourCycle: hourCycleFor(options.timeFormat),
+  }).format(date);
 }
 
 type Translator = (key: string, params?: Record<string, string | number>) => string;

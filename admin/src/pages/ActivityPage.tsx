@@ -3,6 +3,7 @@ import { ApiError } from "../api/client";
 import { useAudit } from "../api/queries";
 import { formatDateTime } from "../lib/format";
 import { useLocale } from "../state/locale";
+import { usePreferences } from "../state/preferences";
 
 const FILTERS = [
   { value: "", label: "All activity" },
@@ -39,8 +40,9 @@ const ACTION_TONES: Record<string, string> = {
 };
 
 export function ActivityPage() {
-  const [filter, setFilter] = useState("");
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const { preferences } = usePreferences();
+  const [filter, setFilter] = useState(preferences.activityDefaultFilter);
   const { data, isPending, error } = useAudit(filter);
 
   return (
@@ -93,7 +95,7 @@ export function ActivityPage() {
                 const group = event.action.split(".")[0] ?? "";
                 return (
                   <tr key={event.id}>
-                    <td className="nowrap">{formatDateTime(event.created_at)}</td>
+                    <td className="nowrap">{formatDateTime(event.created_at, { locale, timeFormat: preferences.timeFormat })}</td>
                     <td>{event.actor_email ?? t("Customer")}</td>
                     <td>
                       <span className={`badge ${ACTION_TONES[group] ?? ""}`}>

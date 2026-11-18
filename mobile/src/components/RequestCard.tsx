@@ -14,7 +14,7 @@ export function RequestCard({
   request: SavedCardRequest;
   onPress: () => void;
 }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const price = request.quote_price ?? request.target_price;
   const quoteActive = request.status === "QUOTED" && request.quote_expires_at;
 
@@ -51,7 +51,7 @@ export function RequestCard({
               : t("Qty {count}", { count: request.quantity })}
           </Text>
         </View>
-        {price ? <Text style={styles.price}>{formatMoney(price)}</Text> : null}
+        {price ? <Text style={styles.price}>{formatMoney(price, locale)}</Text> : null}
       </View>
     </Pressable>
   );

@@ -14,7 +14,7 @@ export function HoldCard({
   reservation: ReservationListItem;
   onPress: () => void;
 }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const shop = reservation.shop as { name?: string; slug?: string };
   return (
     <Pressable
@@ -35,7 +35,7 @@ export function HoldCard({
           <Ionicons name="time-outline" size={14} color={colors.inkMuted} />
           <Text style={styles.metaText}>{formatRemaining(reservation.expires_at, undefined, t)}</Text>
         </View>
-        <Text style={styles.total}>{formatMoney(reservation.total)}</Text>
+        <Text style={styles.total}>{formatMoney(reservation.total, locale)}</Text>
       </View>
     </Pressable>
   );

@@ -23,6 +23,7 @@ import { SortBar } from "../../../components/SortBar";
 import { StockCard } from "../../../components/StockCard";
 import { useCart } from "../../../state/cart";
 import { useLocale } from "../../../state/locale";
+import { usePreferences } from "../../../state/preferences";
 import { colors, radii, spacing, type } from "../../../theme";
 
 export default function ShopScreen() {
@@ -30,9 +31,12 @@ export default function ShopScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { t } = useLocale();
+  const { preferences } = usePreferences();
   const [search, setSearch] = useState(typeof q === "string" ? q : "");
-  const [sort, setSort] = useState<StockSort>("relevance");
-  const [availableOnly, setAvailableOnly] = useState(false);
+  const [sortOverride, setSortOverride] = useState<StockSort | null>(null);
+  const [availableOnlyOverride, setAvailableOnlyOverride] = useState<boolean | null>(null);
+  const sort = sortOverride ?? preferences.shopSortDefault;
+  const availableOnly = availableOnlyOverride ?? preferences.shopAvailableOnlyDefault;
   const debouncedSearch = useDebouncedValue(search);
 
   const shopQuery = useShop(slug);
@@ -139,9 +143,9 @@ export default function ShopScreen() {
                 />
                 <SortBar
                   value={sort}
-                  onChange={setSort}
+                  onChange={setSortOverride}
                   availableOnly={availableOnly}
-                  onToggleAvailable={() => setAvailableOnly((value) => !value)}
+                  onToggleAvailable={() => setAvailableOnlyOverride(!availableOnly)}
                 />
                 <View style={styles.resultRow}>
                   <Text style={styles.resultLabel}>
@@ -203,7 +207,7 @@ export default function ShopScreen() {
                 actionLabel={search || availableOnly ? t("Clear filters") : undefined}
                 onAction={() => {
                   setSearch("");
-                  setAvailableOnly(false);
+                  setAvailableOnlyOverride(false);
                 }}
               />
             )

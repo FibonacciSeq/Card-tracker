@@ -1,22 +1,12 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 
 import {
+  DEFAULT_LOCALE,
   getText,
-  normalizeLocale,
   type AppLocale,
   type TranslationKey,
   type TranslationParams,
 } from "../lib/locale";
-
-const STORAGE_KEY = "cardtracker.admin.locale.v1";
 
 type LocaleContextValue = {
   locale: AppLocale;
@@ -27,25 +17,13 @@ type LocaleContextValue = {
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<AppLocale>(() =>
-    normalizeLocale(window.localStorage.getItem(STORAGE_KEY)),
-  );
-
-  useEffect(() => {
-    window.localStorage.setItem(STORAGE_KEY, locale);
-  }, [locale]);
-
-  const setLocale = useCallback((next: AppLocale) => {
-    setLocaleState(next);
-  }, []);
-
-  const value = useMemo(
+  const value = useMemo<LocaleContextValue>(
     () => ({
-      locale,
-      setLocale,
-      t: (key: TranslationKey, params?: TranslationParams) => getText(locale, key, params),
+      locale: DEFAULT_LOCALE,
+      setLocale: () => {},
+      t: (key: TranslationKey, params?: TranslationParams) => getText(DEFAULT_LOCALE, key, params),
     }),
-    [locale, setLocale],
+    [],
   );
 
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;

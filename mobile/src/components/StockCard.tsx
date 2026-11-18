@@ -24,7 +24,7 @@ export function StockCard({
   onDecrease,
   onPress,
 }: StockCardProps) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const soldOut = item.available <= 0;
   const image = (
     <View style={styles.imageWrap}>
@@ -48,7 +48,7 @@ export function StockCard({
         <Text numberOfLines={2} style={styles.name}>
           {item.card.name}
         </Text>
-        <Text style={styles.price}>{formatMoney(item.price)}</Text>
+        <Text style={styles.price}>{formatMoney(item.price, locale)}</Text>
       </View>
       <Text style={styles.setLine}>
         {item.card.set_code.toUpperCase()} · #{item.card.collector_number} · {item.card.rarity}

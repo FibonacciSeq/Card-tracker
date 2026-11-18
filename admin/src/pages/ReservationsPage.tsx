@@ -11,13 +11,15 @@ import { NEXT_STATUS, type CompleteLine, type StaffReservation } from "../api/ty
 import { StatusBadge } from "../components/StatusBadge";
 import { describeRemaining, formatDateTime, formatMoney } from "../lib/format";
 import { useLocale } from "../state/locale";
+import { usePreferences } from "../state/preferences";
 
 const FILTERS = ["ALL", "REQUESTED", "CONFIRMED", "READY", "COMPLETED", "CANCELLED", "EXPIRED"] as const;
 
 export function ReservationsPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const { preferences } = usePreferences();
   const [params, setParams] = useSearchParams();
-  const status = params.get("status") ?? "ALL";
+  const status = params.get("status") ?? preferences.reservationsDefaultStatus;
   const [selected, setSelected] = useState<string | null>(null);
   const { data, isPending, error, refetch, isFetching } = useReservations(status);
 
@@ -94,14 +96,14 @@ export function ReservationsPage() {
                   <tr key={item.id} className={selected === item.id ? "row--selected" : undefined}>
                     <td>
                       <span className="mono">{item.public_ref}</span>
-                      <div className="muted small">{formatDateTime(item.created_at)}</div>
+                      <div className="muted small">{formatDateTime(item.created_at, { locale, timeFormat: preferences.timeFormat })}</div>
                     </td>
                     <td>{item.customer_name}</td>
                     <td>
                       <StatusBadge status={item.status} />
                     </td>
                     <td className="num">{item.line_count}</td>
-                    <td className="num">{formatMoney(item.total.amount_minor, item.total.currency)}</td>
+                    <td className="num">{formatMoney(item.total.amount_minor, item.total.currency, locale)}</td>
                     <td className={active && remaining.overdue ? "tone--danger small" : "small muted"}>
                       {active ? remaining.label : "—"}
                     </td>
@@ -166,7 +168,8 @@ function ReservationDetail({ id, onClose }: { id: string; onClose: () => void })
 }
 
 function ReservationBody({ reservation }: { reservation: StaffReservation }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const { preferences } = usePreferences();
   const updateStatus = useUpdateReservationStatus();
   const complete = useCompleteReservation();
   const [reason, setReason] = useState("");
@@ -222,13 +225,13 @@ function ReservationBody({ reservation }: { reservation: StaffReservation }) {
         <div>
           <span className="muted small">{t("Total")}</span>
           <div>
-            {formatMoney(reservation.total.amount_minor, reservation.total.currency)}
+            {formatMoney(reservation.total.amount_minor, reservation.total.currency, locale)}
           </div>
         </div>
         <div>
           <span className="muted small">{active ? t("Hold") : t("Expiry")}</span>
           <div className={active && remaining.overdue ? "tone--danger" : undefined}>
-            {active ? remaining.label : formatDateTime(reservation.expires_at)}
+            {active ? remaining.label : formatDateTime(reservation.expires_at, { locale, timeFormat: preferences.timeFormat })}
           </div>
         </div>
       </div>
@@ -293,7 +296,7 @@ function ReservationBody({ reservation }: { reservation: StaffReservation }) {
                   </div>
                 </td>
                 <td className="num">{line.quantity}</td>
-                <td className="num">{formatMoney(line.unit_price.amount_minor, line.unit_price.currency)}</td>
+                <td className="num">{formatMoney(line.unit_price.amount_minor, line.unit_price.currency, locale)}</td>
                 <td className="num">{line.completed_quantity}</td>
               </tr>
             ))}

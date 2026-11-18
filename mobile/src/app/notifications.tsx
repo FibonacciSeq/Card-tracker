@@ -11,6 +11,7 @@ import { PrimaryButton } from "../components/PrimaryButton";
 import { formatDateTime } from "../lib/format";
 import { useAuth } from "../state/auth";
 import { useLocale } from "../state/locale";
+import { usePreferences } from "../state/preferences";
 import { colors, radii, spacing, type } from "../theme";
 
 type Translate = ReturnType<typeof useLocale>["t"];
@@ -55,7 +56,8 @@ function deviceLabel(token: PushToken, t: Translate): string {
 export default function NotificationsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const { preferences } = usePreferences();
   const statusLabels = getStatusLabels(t);
   const { token } = useAuth();
   const notifications = useMyNotifications(token);
@@ -156,7 +158,7 @@ export default function NotificationsScreen() {
                       <Text style={styles.deviceName}>{deviceLabel(device, t)}</Text>
                       <Text style={styles.deviceMeta}>
                         {revoked ? t("Token revoked") : t("Active")}{" · "}
-                        {t("registered {date}", { date: formatDateTime(device.created_at) })}
+                        {t("registered {date}", { date: formatDateTime(device.created_at, { locale, timeFormat: preferences.timeFormat }) })}
                       </Text>
                       {device.failure_count > 0 ? (
                         <Text style={styles.deviceError}>
@@ -164,7 +166,7 @@ export default function NotificationsScreen() {
                             ? t("{count} failed attempt", { count: device.failure_count })
                             : t("{count} failed attempts", { count: device.failure_count })}
                           {device.last_failure_at
-                            ? ` · ${t("last {date}", { date: formatDateTime(device.last_failure_at) })}`
+                            ? ` · ${t("last {date}", { date: formatDateTime(device.last_failure_at, { locale, timeFormat: preferences.timeFormat }) })}`
                             : ""}
                         </Text>
                       ) : null}
@@ -231,7 +233,7 @@ export default function NotificationsScreen() {
                 </Text>
                 <Text style={styles.itemShop}>{shopName(item, t)}</Text>
                 <Text style={styles.itemMeta}>
-                  {formatDateTime(item.created_at)}
+                  {formatDateTime(item.created_at, { locale, timeFormat: preferences.timeFormat })}
                   {item.attempts > 0
                     ? ` · ${item.attempts === 1 ? t("{count} attempt", { count: item.attempts }) : t("{count} attempts", { count: item.attempts })}`
                     : ""}

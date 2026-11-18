@@ -28,6 +28,7 @@ import { StatusPill } from "../../components/StatusPill";
 import { formatDateTime, formatMoney, formatRemaining, titleCase } from "../../lib/format";
 import { useNow } from "../../lib/useNow";
 import { useLocale } from "../../state/locale";
+import { usePreferences } from "../../state/preferences";
 import { useAuth } from "../../state/auth";
 import { useReservations } from "../../state/reservations";
 import { colors, radii, spacing, type } from "../../theme";
@@ -57,7 +58,8 @@ export default function ReservationScreen() {
   const queryClient = useQueryClient();
   const { get, getToken, hydrated, update } = useReservations();
   const { isAuthenticated, token: accountToken } = useAuth();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const { preferences } = usePreferences();
   const saved = get(id);
   const [token, setToken] = useState<string | null>(null);
   const [tokenLoaded, setTokenLoaded] = useState(false);
@@ -255,7 +257,7 @@ export default function ReservationScreen() {
           </View>
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>{t("Total")}</Text>
-            <Text style={styles.total}>{formatMoney(reservation.total)}</Text>
+            <Text style={styles.total}>{formatMoney(reservation.total, locale)}</Text>
           </View>
         </View>
 
@@ -270,8 +272,8 @@ export default function ReservationScreen() {
         ) : null}
 
         <View style={styles.infoGrid}>
-          <Info label={t("Placed")} value={formatDateTime(reservation.created_at)} />
-          <Info label={t("Expires")} value={formatDateTime(reservation.expires_at)} />
+          <Info label={t("Placed")} value={formatDateTime(reservation.created_at, { locale, timeFormat: preferences.timeFormat })} />
+          <Info label={t("Expires")} value={formatDateTime(reservation.expires_at, { locale, timeFormat: preferences.timeFormat })} />
         </View>
 
         {reservation.status === "READY" ? (

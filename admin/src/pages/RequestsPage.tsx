@@ -11,6 +11,7 @@ import type { StaffCardRequest } from "../api/types";
 import { StatusBadge } from "../components/StatusBadge";
 import { formatDateTime, formatMoney } from "../lib/format";
 import { useLocale } from "../state/locale";
+import { usePreferences } from "../state/preferences";
 
 const FILTERS = [
   "ALL",
@@ -26,9 +27,10 @@ const FILTERS = [
 type Panel = { id: string; mode: "quote" | "decline" | "convert" } | null;
 
 export function RequestsPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const { preferences } = usePreferences();
   const [params, setParams] = useSearchParams();
-  const status = params.get("status") ?? "ALL";
+  const status = params.get("status") ?? preferences.requestsDefaultStatus;
   const [panel, setPanel] = useState<Panel>(null);
   const { data, isPending, error, refetch, isFetching } = useCardRequests(status);
 
@@ -110,7 +112,7 @@ export function RequestsPage() {
                   <tr className={expanded ? "row--open" : undefined} data-testid={`request-row-${item.public_ref}`}>
                     <td>
                       <span className="mono">{item.public_ref}</span>
-                      <div className="muted small">{formatDateTime(item.created_at)}</div>
+                      <div className="muted small">{formatDateTime(item.created_at, { locale, timeFormat: preferences.timeFormat })}</div>
                     </td>
                     <td>
                       <div>{item.customer_name}</div>
@@ -149,12 +151,12 @@ export function RequestsPage() {
                     <td className="num">{item.quantity}</td>
                     <td className="num">
                       {item.target_price
-                        ? formatMoney(item.target_price.amount_minor, item.target_price.currency)
+                        ? formatMoney(item.target_price.amount_minor, item.target_price.currency, locale)
                         : "—"}
                     </td>
                     <td className="num">
                       {item.quote_price
-                        ? formatMoney(item.quote_price.amount_minor, item.quote_price.currency)
+                        ? formatMoney(item.quote_price.amount_minor, item.quote_price.currency, locale)
                         : "—"}
                     </td>
                     <td>

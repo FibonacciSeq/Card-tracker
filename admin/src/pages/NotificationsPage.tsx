@@ -7,9 +7,11 @@ import {
 } from "../api/queries";
 import { formatDateTime } from "../lib/format";
 import { useLocale } from "../state/locale";
+import { usePreferences } from "../state/preferences";
 
 export function NotificationsPage() {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const { preferences } = usePreferences();
   const notifications = useStaffNotifications();
   const markRead = useMarkNotificationRead();
   const markAll = useMarkAllNotificationsRead();
@@ -85,7 +87,7 @@ export function NotificationsPage() {
               </div>
               <p className="notification__body">{item.body}</p>
               <p className="notification__meta muted">
-                {item.read_at ? t("Read") : t("Unread")} · {formatDateTime(item.created_at)}
+                {item.read_at ? t("Read") : t("Unread")} · {formatDateTime(item.created_at, { locale, timeFormat: preferences.timeFormat })}
               </p>
             </li>
           ))}

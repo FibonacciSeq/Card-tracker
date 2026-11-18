@@ -26,6 +26,7 @@ import { readShop } from "../../lib/accountMerge";
 import { formatDateTime, formatMoney, formatRemaining, titleCase } from "../../lib/format";
 import { useNow } from "../../lib/useNow";
 import { useLocale } from "../../state/locale";
+import { usePreferences } from "../../state/preferences";
 import { useAuth } from "../../state/auth";
 import { useSpecialOrders } from "../../state/specialOrders";
 import { colors, radii, spacing, type } from "../../theme";
@@ -41,7 +42,8 @@ export default function RequestScreen() {
   const queryClient = useQueryClient();
   const { get, getToken, hydrated, update } = useSpecialOrders();
   const { isAuthenticated, token: accountToken } = useAuth();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const { preferences } = usePreferences();
   const saved = get(id);
   const [token, setToken] = useState<string | null>(null);
   const [tokenLoaded, setTokenLoaded] = useState(false);
@@ -217,7 +219,7 @@ export default function RequestScreen() {
             <View style={styles.quoteTop}>
               <View style={styles.quoteHeading}>
                 <Text style={styles.quoteEyebrow}>{t("QUOTE FROM THE SHOP")}</Text>
-                <Text style={styles.quotePrice}>{formatMoney(request.quote_price)}</Text>
+                <Text style={styles.quotePrice}>{formatMoney(request.quote_price, locale)}</Text>
               </View>
               <Ionicons name="pricetag-outline" size={24} color={colors.accent} />
             </View>
@@ -285,7 +287,7 @@ export default function RequestScreen() {
             {request.target_price ? (
               <View style={styles.target}>
                 <Text style={styles.targetLabel}>{t("TARGET")}</Text>
-                <Text style={styles.targetValue}>{formatMoney(request.target_price)}</Text>
+                <Text style={styles.targetValue}>{formatMoney(request.target_price, locale)}</Text>
               </View>
             ) : null}
           </View>
@@ -298,8 +300,8 @@ export default function RequestScreen() {
         </View>
 
         <View style={styles.infoGrid}>
-          <Info label={t("Requested")} value={formatDateTime(request.created_at)} />
-          <Info label={t("Updated")} value={formatDateTime(request.updated_at)} />
+          <Info label={t("Requested")} value={formatDateTime(request.created_at, { locale, timeFormat: preferences.timeFormat })} />
+          <Info label={t("Updated")} value={formatDateTime(request.updated_at, { locale, timeFormat: preferences.timeFormat })} />
         </View>
 
         {actionError ? (

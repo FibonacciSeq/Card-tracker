@@ -5,6 +5,7 @@ import type { StaffUser, StaffUserUpdate } from "../api/types";
 import { useAuth } from "../auth/context";
 import { formatDateTime } from "../lib/format";
 import { useLocale } from "../state/locale";
+import { usePreferences } from "../state/preferences";
 
 type Role = "staff" | "owner";
 
@@ -145,7 +146,8 @@ function AddMember() {
 }
 
 function TeamTable({ people, currentUserId }: { people: StaffUser[]; currentUserId: string }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const { preferences } = usePreferences();
   const [resetting, setResetting] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -212,7 +214,7 @@ function TeamTable({ people, currentUserId }: { people: StaffUser[]; currentUser
                       {person.is_active ? t("Active") : t("Deactivated")}
                     </span>
                   </td>
-                  <td className="nowrap">{formatDateTime(person.created_at)}</td>
+                  <td className="nowrap">{formatDateTime(person.created_at, { locale, timeFormat: preferences.timeFormat })}</td>
                   <td>
                     <div className="row-actions">
                       <button

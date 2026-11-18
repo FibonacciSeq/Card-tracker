@@ -18,14 +18,19 @@ import { StockLevels } from "../components/StockLevels";
 import { formatDateTime, formatMoney } from "../lib/format";
 import { useDebounced } from "../lib/useDebounced";
 import { useLocale } from "../state/locale";
+import { usePreferences } from "../state/preferences";
 
 export function StockPage() {
   const { t } = useLocale();
+  const { preferences } = usePreferences();
   const [search, setSearch] = useState("");
-  const [onlyOnline, setOnlyOnline] = useState(false);
-  const [archivedView, setArchivedView] = useState(false);
   const [searchParams, setSearchParams] = useSearchParams();
-  const staleOnly = !archivedView && (searchParams.get("stale") === "1" || searchParams.get("stale") === "true");
+  const staleFromUrl = searchParams.get("stale") === "1" || searchParams.get("stale") === "true";
+  const [onlyOnline, setOnlyOnline] = useState(preferences.stockOnlyOnline);
+  const [archivedView, setArchivedView] = useState(
+    () => preferences.stockDefaultView === "archived" && !staleFromUrl,
+  );
+  const staleOnly = !archivedView && staleFromUrl;
   const [expanded, setExpanded] = useState<string | null>(null);
   const [importOpen, setImportOpen] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
@@ -421,7 +426,8 @@ function StockRow({
   staleView: boolean;
   onToggle: () => void;
 }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const { preferences } = usePreferences();
   const restore = useRestoreStock();
   const remove = useDeleteArchivedStock();
   const confirm = useConfirmStock();
@@ -485,8 +491,8 @@ function StockRow({
         <td>
           <StockLevels onHand={item.on_hand} reserved={item.reserved} available={item.available} />
         </td>
-        <td className="num">{formatMoney(item.price.amount_minor, item.price.currency)}</td>
-        <td className="muted small">{formatDateTime(item.archived_at ?? item.updated_at)}</td>
+        <td className="num">{formatMoney(item.price.amount_minor, item.price.currency, locale)}</td>
+        <td className="muted small">{formatDateTime(item.archived_at ?? item.updated_at, { locale, timeFormat: preferences.timeFormat })}</td>
         <td>
           {archived ? (
             <div className="inline-form">

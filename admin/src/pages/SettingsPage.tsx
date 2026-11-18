@@ -4,6 +4,14 @@ import { ApiError } from "../api/client";
 import { useRefreshScryfallPrices, useSettings, useUpdateSettings } from "../api/queries";
 import type { SettingsUpdate, StaffShop } from "../api/types";
 import { useLocale } from "../state/locale";
+import { usePreferences } from "../state/preferences";
+import {
+  THEME_OPTIONS,
+  TIME_FORMAT_OPTIONS,
+  type StockViewPreference,
+  type ThemePreference,
+  type TimeFormatPreference,
+} from "../lib/preferences";
 
 function asText(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
@@ -31,7 +39,7 @@ type FormState = {
   scryfallMinimumPrice: string;
   scryfallMarkupPercent: string;
   scryfallRoundingIncrement: string;
-}
+};
 
 function toForm(shop: StaffShop): FormState {
   const colors = asRecord(shop.colors);
@@ -61,33 +69,176 @@ export function SettingsPage() {
   const { t } = useLocale();
   const { data: shop, isPending, error } = useSettings();
 
-  if (error) {
-    return (
-      <div className="page">
-        <h1>{t("Settings")}</h1>
-        <p className="alert alert--error" role="alert">
-          {t(error.message)}
-        </p>
-      </div>
-    );
-  }
+  return (
+    <div className="page">
+      <header className="page__header">
+        <div>
+          <h1>{t("Settings")}</h1>
+          <p className="muted">{t("Choose how the admin works for you, and manage shop settings.")}</p>
+        </div>
+      </header>
 
-  if (isPending || !shop) {
-    return (
-      <div className="page">
-        <h1>{t("Settings")}</h1>
-        <p className="muted">{t("Loading shop settings…")}</p>
-      </div>
-    );
-  }
+      <PersonalPreferencesSection />
 
-  // Keyed by slug so a refetch does not overwrite edits in progress.
-  return <SettingsForm key={shop.slug} shop={shop} />;
+      <section aria-labelledby="shop-settings-title">
+        <h2 id="shop-settings-title">{t("Shop settings")}</h2>
+        {error ? (
+          <p className="alert alert--error" role="alert">
+            {t(error.message)}
+          </p>
+        ) : isPending || !shop ? (
+          <p className="muted">{t("Loading shop settings…")}</p>
+        ) : (
+          <SettingsForm key={shop.slug} shop={shop} />
+        )}
+      </section>
+    </div>
+  );
+}
+
+function PersonalPreferencesSection() {
+  const { t } = useLocale();
+  const { preferences, updatePreferences } = usePreferences();
+
+  return (
+    <section className="card" aria-labelledby="personal-preferences-title">
+      <h2 id="personal-preferences-title">{t("My preferences")}</h2>
+      <p className="muted">
+        {t("These options are saved on this device and only affect how the admin looks and behaves for you.")}
+      </p>
+      <div className="form form--wide">
+        <div className="field-row">
+          <div className="field">
+            <label htmlFor="pref-theme">{t("Appearance")}</label>
+            <select
+              id="pref-theme"
+              value={preferences.theme}
+              onChange={(event) => updatePreferences({ theme: event.target.value as ThemePreference })}
+            >
+              {THEME_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {t(option.labelKey)}
+                </option>
+              ))}
+            </select>
+            <small className="hint">{t("Choose light, dark, or follow your system setting.")}</small>
+          </div>
+          <div className="field">
+            <label htmlFor="pref-time-format">{t("Time format")}</label>
+            <select
+              id="pref-time-format"
+              value={preferences.timeFormat}
+              onChange={(event) =>
+                updatePreferences({ timeFormat: event.target.value as TimeFormatPreference })
+              }
+            >
+              {TIME_FORMAT_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {t(option.labelKey)}
+                </option>
+              ))}
+            </select>
+            <small className="hint">{t("Used for times shown in lists and details.")}</small>
+          </div>
+        </div>
+
+        <fieldset>
+          <legend>{t("Default views")}</legend>
+          <p className="hint">{t("Choose which filters and tabs open by default when you visit a page.")}</p>
+          <div className="field-row">
+            <div className="field">
+              <label htmlFor="pref-stock-view">{t("Stock tab")}</label>
+              <select
+                id="pref-stock-view"
+                value={preferences.stockDefaultView}
+                onChange={(event) =>
+                  updatePreferences({ stockDefaultView: event.target.value as StockViewPreference })
+                }
+              >
+                <option value="active">{t("Active stock")}</option>
+                <option value="archived">{t("Archived")}</option>
+              </select>
+            </div>
+            <div className="field">
+              <label className="checkbox" htmlFor="pref-stock-online">
+                <input
+                  id="pref-stock-online"
+                  type="checkbox"
+                  checked={preferences.stockOnlyOnline}
+                  onChange={(event) => updatePreferences({ stockOnlyOnline: event.target.checked })}
+                />
+                {t("Show only online stock by default")}
+              </label>
+            </div>
+          </div>
+          <div className="field-row">
+            <div className="field">
+              <label htmlFor="pref-res-status">{t("Reservations filter")}</label>
+              <select
+                id="pref-res-status"
+                value={preferences.reservationsDefaultStatus}
+                onChange={(event) =>
+                  updatePreferences({ reservationsDefaultStatus: event.target.value })
+                }
+              >
+                <option value="ALL">{t("All statuses")}</option>
+                <option value="REQUESTED">{t("Requested")}</option>
+                <option value="CONFIRMED">{t("Confirmed")}</option>
+                <option value="READY">{t("Ready")}</option>
+                <option value="COMPLETED">{t("Collected")}</option>
+                <option value="CANCELLED">{t("Cancelled")}</option>
+                <option value="EXPIRED">{t("Expired")}</option>
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="pref-req-status">{t("Special orders filter")}</label>
+              <select
+                id="pref-req-status"
+                value={preferences.requestsDefaultStatus}
+                onChange={(event) => updatePreferences({ requestsDefaultStatus: event.target.value })}
+              >
+                <option value="ALL">{t("All statuses")}</option>
+                <option value="SUBMITTED">{t("New")}</option>
+                <option value="NEEDS_INFO">{t("Needs info")}</option>
+                <option value="QUOTED">{t("Quoted")}</option>
+                <option value="ACCEPTED">{t("Accepted")}</option>
+                <option value="ORDERED">{t("Ordered")}</option>
+                <option value="ARRIVED">{t("Arrived")}</option>
+                <option value="CONVERTED">{t("Converted")}</option>
+                <option value="DECLINED">{t("Declined")}</option>
+                <option value="CANCELLED">{t("Cancelled")}</option>
+                <option value="EXPIRED">{t("Expired")}</option>
+              </select>
+            </div>
+          </div>
+          <div className="field-row">
+            <div className="field">
+              <label htmlFor="pref-activity">{t("Activity filter")}</label>
+              <select
+                id="pref-activity"
+                value={preferences.activityDefaultFilter}
+                onChange={(event) => updatePreferences({ activityDefaultFilter: event.target.value })}
+              >
+                <option value="">{t("All activity")}</option>
+                <option value="catalog">{t("Stock & settings")}</option>
+                <option value="reservations">{t("Reservations")}</option>
+                <option value="requests">{t("Special orders")}</option>
+              </select>
+            </div>
+          </div>
+        </fieldset>
+      </div>
+    </section>
+  );
 }
 
 function ShopQrPanel({ slug }: { slug: string }) {
   const { t } = useLocale();
-  const publicBase = (import.meta.env.VITE_PUBLIC_APP_BASE_URL ?? import.meta.env.VITE_APP_BASE_URL ?? "https://app.cardtracker.local").replace(/\/+$/, "");
+  const publicBase = (
+    import.meta.env.VITE_PUBLIC_APP_BASE_URL ??
+    import.meta.env.VITE_APP_BASE_URL ??
+    "https://app.cardtracker.local"
+  ).replace(/\/+$/, "");
   const publicLink = `${publicBase}/shop/${encodeURIComponent(slug)}`;
   const fallbackLink = `cardtracker://shop/${encodeURIComponent(slug)}`;
   const appStoreUrl = import.meta.env.VITE_APP_STORE_URL || "";
@@ -141,7 +292,9 @@ function ShopQrPanel({ slug }: { slug: string }) {
       <div className="qr-panel__body">
         <h2 id="shop-qr-title">{t("Shop QR code")}</h2>
         <p className="muted">
-          {t("Print this and put it on the counter. Customers scan it in the Card Tracker app to open your storefront and see live stock. The QR points at the public HTTPS app link, while the fallback custom-scheme URL remains available for direct app installs.")}
+          {t(
+            "Print this and put it on the counter. Customers scan it in the Card Tracker app to open your storefront and see live stock. The QR points at the public HTTPS app link, while the fallback custom-scheme URL remains available for direct app installs.",
+          )}
         </p>
         <div className="mono small">{publicLink}</div>
         <div className="mono small muted">{t("App fallback: {link}", { link: fallbackLink })}</div>
@@ -238,12 +391,7 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
 
   return (
     <div className="page">
-      <header className="page__header">
-        <div>
-          <h1>{t("Settings")}</h1>
-          <p className="muted">{t("Branding and policies customers see in the app.")}</p>
-        </div>
-      </header>
+      <p className="muted">{t("Branding and policies customers see in the app.")}</p>
 
       <div className="facts">
         <div>
@@ -340,7 +488,9 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
               aria-invalid={!retentionValid}
             />
             <small className="hint">
-              {t("Archived cards older than this are permanently deleted automatically. Use 0 to keep archived stock forever. Rows with active customer holds are kept until those reservations close.")}
+              {t(
+                "Archived cards older than this are permanently deleted automatically. Use 0 to keep archived stock forever. Rows with active customer holds are kept until those reservations close.",
+              )}
             </small>
           </div>
         </fieldset>
@@ -357,7 +507,9 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
           </label>
           <div className="field-row">
             <div className="field">
-              <label htmlFor="scryfall-minimum-price">{t("Minimum price ({currency})", { currency: shop.currency })}</label>
+              <label htmlFor="scryfall-minimum-price">
+                {t("Minimum price ({currency})", { currency: shop.currency })}
+              </label>
               <input
                 id="scryfall-minimum-price"
                 type="number"
@@ -382,7 +534,9 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
               />
             </div>
             <div className="field">
-              <label htmlFor="scryfall-rounding-increment">{t("Round up to next multiple of ({currency})", { currency: shop.currency })}</label>
+              <label htmlFor="scryfall-rounding-increment">
+                {t("Round up to next multiple of ({currency})", { currency: shop.currency })}
+              </label>
               <input
                 id="scryfall-rounding-increment"
                 type="number"
@@ -396,7 +550,9 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
             </div>
           </div>
           <p className="hint">
-            {t("Below the minimum, the sale price is set to the minimum. At or above it, the configured percentage is added, then the result rounds strictly up to the next multiple of the configured whole-currency increment. For example, an increment of 5 rounds 121 up to 125 and 125 up to 130. Scryfall prices refresh nightly at 02:00 UTC and use the finish-specific market price. Cards without a reported market price are skipped during imports; existing stock keeps its last price.")}
+            {t(
+              "Below the minimum, the sale price is set to the minimum. At or above it, the configured percentage is added, then the result rounds strictly up to the next multiple of the configured whole-currency increment. For example, an increment of 5 rounds 121 up to 125 and 125 up to 130. Scryfall prices refresh nightly at 02:00 UTC and use the finish-specific market price. Cards without a reported market price are skipped during imports; existing stock keeps its last price.",
+            )}
           </p>
           <div className="field">
             <button
@@ -411,16 +567,21 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
               {refreshScryfall.isPending ? t("Fetching prices…") : t("Update prices from Scryfall now")}
             </button>
             <small className="hint">
-              {t("Fetches the current Scryfall market prices for the cards in stock and reprices them immediately, using the saved rules above. The nightly refresh at 02:00 UTC keeps running either way.")}
+              {t(
+                "Fetches the current Scryfall market prices for the cards in stock and reprices them immediately, using the saved rules above. The nightly refresh at 02:00 UTC keeps running either way.",
+              )}
             </small>
             <span aria-live="polite" className="small tone--available" data-testid="scryfall-refresh-result">
               {refreshScryfall.data
-                ? t("Fetched current Scryfall prices for {count} cards ({unavailable} unavailable). Updated {repriced} stock prices; {withoutPrice} rows had no market price and were left unchanged.", {
-                    count: refreshScryfall.data.cards_refreshed,
-                    unavailable: refreshScryfall.data.cards_unavailable,
-                    repriced: refreshScryfall.data.repriced_stock,
-                    withoutPrice: refreshScryfall.data.stock_without_scryfall_prices,
-                  })
+                ? t(
+                    "Fetched current Scryfall prices for {count} cards ({unavailable} unavailable). Updated {repriced} stock prices; {withoutPrice} rows had no market price and were left unchanged.",
+                    {
+                      count: refreshScryfall.data.cards_refreshed,
+                      unavailable: refreshScryfall.data.cards_unavailable,
+                      repriced: refreshScryfall.data.repriced_stock,
+                      withoutPrice: refreshScryfall.data.stock_without_scryfall_prices,
+                    },
+                  )
                 : null}
             </span>
           </div>
@@ -448,7 +609,9 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
             {t("Accept special orders for cards that are out of stock")}
           </label>
           <p className="hint">
-            {t("When enabled, customers can ask this shop to source a card it does not have on the shelf. The shop replies with a quote and converts accepted requests into a hold once the card arrives. When disabled, the request form is hidden and the API rejects new special orders.")}
+            {t(
+              "When enabled, customers can ask this shop to source a card it does not have on the shelf. The shop replies with a quote and converts accepted requests into a hold once the card arrives. When disabled, the request form is hidden and the API rejects new special orders.",
+            )}
           </p>
           <label className="checkbox">
             <input
@@ -517,10 +680,13 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
           <span aria-live="polite" className="small tone--available">
             {saved
               ? update.data?.repriced_stock !== null && update.data?.repriced_stock !== undefined
-                ? t("Settings saved. Updated {repriced} stock prices; {withoutPrice} rows had no Scryfall price and were left unchanged.", {
-                    repriced: update.data.repriced_stock,
-                    withoutPrice: update.data.stock_without_scryfall_prices ?? 0,
-                  })
+                ? t(
+                    "Settings saved. Updated {repriced} stock prices; {withoutPrice} rows had no Scryfall price and were left unchanged.",
+                    {
+                      repriced: update.data.repriced_stock,
+                      withoutPrice: update.data.stock_without_scryfall_prices ?? 0,
+                    },
+                  )
                 : t("Settings saved.")
               : null}
           </span>

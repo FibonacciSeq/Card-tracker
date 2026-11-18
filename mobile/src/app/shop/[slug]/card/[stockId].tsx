@@ -21,6 +21,7 @@ import { formatDateTime, formatMoney, titleCase } from "../../../../lib/format";
 import { shopPath } from "../../../../lib/config";
 import { useCart } from "../../../../state/cart";
 import { useLocale } from "../../../../state/locale";
+import { usePreferences } from "../../../../state/preferences";
 import { colors, radii, shadow, spacing, type } from "../../../../theme";
 
 export default function CardDetailScreen() {
@@ -28,7 +29,7 @@ export default function CardDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const cart = useCart();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
 
   const shopQuery = useShop(slug);
   const itemQuery = useStockItem(slug, stockId);
@@ -106,7 +107,7 @@ export default function CardDetailScreen() {
           <View style={styles.priceRow}>
             <View>
               <Text style={styles.kicker}>{t("PRICE")}</Text>
-              <Text style={styles.price}>{formatMoney(item.price)}</Text>
+              <Text style={styles.price}>{formatMoney(item.price, locale)}</Text>
             </View>
             <View style={[styles.stockPill, soldOut && styles.stockPillOff]}>
               <Ionicons
@@ -291,7 +292,8 @@ function CardHero({ item, shopName }: { item: StockItem; shopName: string }) {
 }
 
 function Details({ item }: { item: StockItem }) {
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const { preferences } = usePreferences();
   return (
     <View style={styles.details}>
       <DetailRow label={t("Set")} value={`${item.card.set_name} (${item.card.set_code.toUpperCase()})`} />
@@ -300,7 +302,11 @@ function Details({ item }: { item: StockItem }) {
       <DetailRow label={t("Finish")} value={t(titleCase(item.finish))} />
       <DetailRow label={t("Condition")} value={t(item.condition)} />
       <DetailRow label={t("Language")} value={item.language.toUpperCase()} />
-      <DetailRow label={t("Last updated")} value={formatDateTime(item.updated_at)} last />
+      <DetailRow
+        label={t("Last updated")}
+        value={formatDateTime(item.updated_at, { locale, timeFormat: preferences.timeFormat })}
+        last
+      />
     </View>
   );
 }

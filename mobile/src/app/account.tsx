@@ -15,11 +15,18 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { accountKeys, useMyCardRequests, useMyReservations, useMyRestockAlerts } from "../api/queries";
 import type { ClaimedCounts, CustomerAccount, CustomerProfileUpdate } from "../api/types";
 import { Field } from "../components/Field";
-import { LanguagePicker } from "../components/LanguagePicker";
 import { LoadingState } from "../components/LoadingState";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { formatDateTime } from "../lib/format";
+import {
+  APPEARANCE_OPTIONS,
+  SORT_OPTIONS,
+  TIME_FORMAT_OPTIONS,
+  type AppearancePreference,
+  type TimeFormatPreference,
+} from "../lib/preferences";
 import { useLocale } from "../state/locale";
+import { usePreferences } from "../state/preferences";
 import { useAuth } from "../state/auth";
 import { usePush, type PushStatus } from "../state/push";
 import { colors, radii, spacing, type } from "../theme";
@@ -30,7 +37,8 @@ type AccountAction = "delete" | "sign-out" | "sign-out-all" | null;
 export default function AccountScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const { preferences } = usePreferences();
   const {
     changePassword,
     customer,
@@ -248,7 +256,7 @@ export default function AccountScreen() {
           <Text style={styles.heroBody}>{t("signedInBody")}</Text>
         </View>
 
-        <LanguagePicker />
+        <AppPreferencesCard />
 
         <PrimaryButton
           label={t("Browse shops")}
@@ -280,7 +288,7 @@ export default function AccountScreen() {
           <Row label={t("Verified")} value={t("Yes")} />
           <Row
             label={t("Account created")}
-            value={customer.created_at ? formatDateTime(customer.created_at) : t("—")}
+            value={customer.created_at ? formatDateTime(customer.created_at, { locale, timeFormat: preferences.timeFormat }) : t("—")}
           />
           <Row label={t("Session")} value={t("Secure storage with refresh")} />
         </View>
@@ -761,6 +769,107 @@ function SettingToggle({
   );
 }
 
+function OptionChip({
+  label,
+  selected,
+  onPress,
+}: {
+  label: string;
+  selected: boolean;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityState={{ selected }}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.optionChip,
+        selected && styles.optionChipActive,
+        pressed && styles.pressed,
+      ]}
+    >
+      <Text style={[styles.optionChipText, selected && styles.optionChipTextActive]}>{label}</Text>
+    </Pressable>
+  );
+}
+
+function AppPreferencesCard() {
+  const { t } = useLocale();
+  const { preferences, updatePreferences } = usePreferences();
+
+  return (
+    <View style={styles.profileCard}>
+      <View style={styles.pushHeader}>
+        <Ionicons name="options-outline" size={18} color={colors.primary} />
+        <Text style={styles.pushTitle}>{t("appPreferences")}</Text>
+      </View>
+      <Text style={styles.pushBody}>{t("appPreferencesHint")}</Text>
+
+      <View style={styles.prefBlock}>
+        <Text style={styles.prefLabel}>{t("appearance")}</Text>
+        <Text style={styles.cardHint}>{t("appearanceHint")}</Text>
+        <View style={styles.optionRow}>
+          {APPEARANCE_OPTIONS.map((option) => (
+            <OptionChip
+              key={option.value}
+              label={t(option.value === "system" ? "system" : option.value === "light" ? "light" : "dark")}
+              selected={preferences.appearance === option.value}
+              onPress={() => updatePreferences({ appearance: option.value as AppearancePreference })}
+            />
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.prefBlock}>
+        <Text style={styles.prefLabel}>{t("timeFormat")}</Text>
+        <Text style={styles.cardHint}>{t("timeFormatHint")}</Text>
+        <View style={styles.optionRow}>
+          {TIME_FORMAT_OPTIONS.map((option) => (
+            <OptionChip
+              key={option.value}
+              label={t(option.value === "auto" ? "automatic" : option.value === "12h" ? "hour12" : "hour24")}
+              selected={preferences.timeFormat === option.value}
+              onPress={() => updatePreferences({ timeFormat: option.value as TimeFormatPreference })}
+            />
+          ))}
+        </View>
+      </View>
+
+      <View style={styles.prefBlock}>
+        <Text style={styles.prefLabel}>{t("catalogDefaults")}</Text>
+        <Text style={styles.cardHint}>{t("catalogDefaultsHint")}</Text>
+        <Text style={styles.prefSubLabel}>{t("defaultSort")}</Text>
+        <View style={styles.optionRow}>
+          {SORT_OPTIONS.map((option) => (
+            <OptionChip
+              key={option.value}
+              label={t(
+                option.value === "relevance"
+                  ? "sortRelevance"
+                  : option.value === "name"
+                    ? "sortName"
+                    : option.value === "price_asc"
+                      ? "sortPriceAsc"
+                      : option.value === "price_desc"
+                        ? "sortPriceDesc"
+                        : "sortNewest",
+              )}
+              selected={preferences.shopSortDefault === option.value}
+              onPress={() => updatePreferences({ shopSortDefault: option.value })}
+            />
+          ))}
+        </View>
+        <SettingToggle
+          label={t("defaultAvailableOnly")}
+          value={preferences.shopAvailableOnlyDefault}
+          onValueChange={(next) => updatePreferences({ shopAvailableOnlyDefault: next })}
+        />
+      </View>
+    </View>
+  );
+}
+
 function Notice({ text }: { text: string }) {
   return (
     <View style={styles.notice}>
@@ -948,4 +1057,24 @@ const styles = StyleSheet.create({
   modalTitle: { color: colors.ink, fontSize: type.heading, fontWeight: "900" },
   modalBody: { color: colors.inkMuted, fontSize: type.small, lineHeight: 20 },
   modalError: { color: colors.danger, fontSize: type.small, lineHeight: 19 },
+  prefBlock: { gap: spacing.sm },
+  prefLabel: { color: colors.ink, fontSize: type.small, fontWeight: "800" },
+  prefSubLabel: { color: colors.inkMuted, fontSize: type.small, fontWeight: "700", marginTop: spacing.xs },
+  optionRow: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm },
+  optionChip: {
+    minHeight: 36,
+    borderRadius: radii.pill,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.background,
+    paddingHorizontal: spacing.md,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  optionChipActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.primarySoft,
+  },
+  optionChipText: { color: colors.ink, fontSize: type.small, fontWeight: "700" },
+  optionChipTextActive: { color: colors.primary },
 });

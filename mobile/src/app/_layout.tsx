@@ -1,6 +1,7 @@
 import { Stack, usePathname, type Href } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { useColorScheme } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { hydrateQueryClient, persistQueryCache } from "../lib/queryCache";
@@ -8,6 +9,7 @@ import { colors, type } from "../theme";
 import { AuthProvider, useAuth } from "../state/auth";
 import { CartProvider } from "../state/cart";
 import { LocaleProvider, useLocale } from "../state/locale";
+import { PreferencesProvider, usePreferences } from "../state/preferences";
 import { PushProvider } from "../state/push";
 import { ReservationsProvider } from "../state/reservations";
 import { RestockAlertsProvider } from "../state/restockAlerts";
@@ -33,32 +35,49 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
-        <LocaleProvider>
-          <AuthProvider>
-            <PushProvider>
-              <CartProvider>
-                <ReservationsProvider>
-                  <RestockAlertsProvider>
-                    <SpecialOrdersProvider>
-                      <StatusBar style="dark" />
-                      <RootNavigator />
-                    </SpecialOrdersProvider>
-                  </RestockAlertsProvider>
-                </ReservationsProvider>
-              </CartProvider>
-            </PushProvider>
-          </AuthProvider>
-        </LocaleProvider>
+        <PreferencesProvider>
+          <LocaleProvider>
+            <AuthProvider>
+              <PushProvider>
+                <CartProvider>
+                  <ReservationsProvider>
+                    <RestockAlertsProvider>
+                      <SpecialOrdersProvider>
+                        <ThemedStatusBar />
+                        <RootNavigator />
+                      </SpecialOrdersProvider>
+                    </RestockAlertsProvider>
+                  </ReservationsProvider>
+                </CartProvider>
+              </PushProvider>
+            </AuthProvider>
+          </LocaleProvider>
+        </PreferencesProvider>
       </QueryClientProvider>
     </SafeAreaProvider>
   );
 }
 
+function ThemedStatusBar() {
+  const systemScheme = useColorScheme();
+  const { preferences } = usePreferences();
+  const effective = preferences.appearance === "system" ? systemScheme ?? "light" : preferences.appearance;
+  return <StatusBar style={effective === "dark" ? "light" : "dark"} />;
+}
+
 function RootNavigator() {
   const { t } = useLocale();
   const { hydrated, isAuthenticated } = useAuth();
+  const systemScheme = useColorScheme();
+  const { preferences } = usePreferences();
   const pathname = usePathname();
   const canEnter = hydrated && isAuthenticated;
+  const effectiveScheme =
+    preferences.appearance === "system" ? systemScheme ?? "light" : preferences.appearance;
+  const navColors =
+    effectiveScheme === "dark"
+      ? { background: "#121614", ink: "#F5F0E6" }
+      : { background: colors.background, ink: colors.ink };
   const loginRedirect: Href =
     pathname && pathname !== "/login"
       ? { pathname: "/login", params: { next: pathname } }
@@ -67,11 +86,11 @@ function RootNavigator() {
   return (
     <Stack
       screenOptions={{
-        headerStyle: { backgroundColor: colors.background },
-        headerTintColor: colors.ink,
+        headerStyle: { backgroundColor: navColors.background },
+        headerTintColor: navColors.ink,
         headerTitleStyle: { fontWeight: "800", fontSize: type.heading },
         headerShadowVisible: false,
-        contentStyle: { backgroundColor: colors.background },
+        contentStyle: { backgroundColor: navColors.background },
       }}
     >
       <Stack.Protected guard={canEnter} redirectTo={loginRedirect}>

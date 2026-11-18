@@ -40,7 +40,7 @@ export default function CartScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { customer, token } = useAuth();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
   const shopQuery = useShop(slug);
   const cart = useCart();
   const { save } = useReservations();
@@ -158,7 +158,7 @@ export default function CartScreen() {
                     {t(titleCase(line.item.finish))} · {t(line.item.condition)}
                   </Text>
                   <Text style={styles.linePrice}>
-                    {t("{price} each", { price: formatMoney(line.item.price) })}
+                    {t("{price} each", { price: formatMoney(line.item.price, locale) })}
                   </Text>
                 </View>
                 <View style={styles.quantity}>
@@ -188,7 +188,7 @@ export default function CartScreen() {
           </View>
           <View style={styles.totalRow}>
             <Text style={styles.totalLabel}>{t("Total")}</Text>
-            <Text style={styles.totalValue}>{formatMoney(total)}</Text>
+            <Text style={styles.totalValue}>{formatMoney(total, locale)}</Text>
           </View>
         </View>
 

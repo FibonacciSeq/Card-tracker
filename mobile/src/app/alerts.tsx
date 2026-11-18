@@ -14,6 +14,7 @@ import { mergeRestockAlerts, type AlertListItem } from "../lib/accountMerge";
 import { formatDateTime, titleCase } from "../lib/format";
 import { useAuth } from "../state/auth";
 import { useLocale } from "../state/locale";
+import { usePreferences } from "../state/preferences";
 import { useRestockAlerts } from "../state/restockAlerts";
 import { colors, radii, spacing, type } from "../theme";
 
@@ -21,7 +22,8 @@ export default function AlertsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
-  const { t } = useLocale();
+  const { t, locale } = useLocale();
+  const { preferences } = usePreferences();
   const { isAuthenticated, token } = useAuth();
   const { alerts, getToken, hydrated, remove } = useRestockAlerts();
   const accountAlerts = useMyRestockAlerts(token);
@@ -124,7 +126,7 @@ export default function AlertsScreen() {
                     {alert.language.toUpperCase()}
                   </Text>
                   <Text style={styles.email}>{alert.email}</Text>
-                  <Text style={styles.created}>{t("Added {date}", { date: formatDateTime(alert.createdAt) })}</Text>
+                  <Text style={styles.created}>{t("Added {date}", { date: formatDateTime(alert.createdAt, { locale, timeFormat: preferences.timeFormat }) })}</Text>
                 </Pressable>
 
                 <Pressable

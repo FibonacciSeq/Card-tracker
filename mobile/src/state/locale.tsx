@@ -1,24 +1,12 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 
 import {
   DEFAULT_LOCALE,
   getText,
-  normalizeLocale,
   type AppLocale,
   type TranslationKey,
   type TranslationParams,
 } from "../lib/locale";
-
-const STORAGE_KEY = "cardtracker.locale.v1";
 
 type LocaleContextValue = {
   locale: AppLocale;
@@ -29,37 +17,13 @@ type LocaleContextValue = {
 const LocaleContext = createContext<LocaleContextValue | null>(null);
 
 export function LocaleProvider({ children }: { children: ReactNode }) {
-  const [locale, setLocaleState] = useState<AppLocale>(DEFAULT_LOCALE);
-  const [hydrated, setHydrated] = useState(false);
-
-  useEffect(() => {
-    let active = true;
-    AsyncStorage.getItem(STORAGE_KEY)
-      .then((value) => {
-        if (!active) return;
-        setLocaleState(normalizeLocale(value));
-      })
-      .catch(() => undefined)
-      .finally(() => {
-        if (active) setHydrated(true);
-      });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!hydrated) return;
-    AsyncStorage.setItem(STORAGE_KEY, locale).catch(() => undefined);
-  }, [hydrated, locale]);
-
-  const setLocale = useCallback((next: AppLocale) => {
-    setLocaleState(next);
-  }, []);
-
-  const value = useMemo(
-    () => ({ locale, setLocale, t: (key: TranslationKey, params?: TranslationParams) => getText(locale, key, params) }),
-    [locale, setLocale],
+  const value = useMemo<LocaleContextValue>(
+    () => ({
+      locale: DEFAULT_LOCALE,
+      setLocale: () => {},
+      t: (key: TranslationKey, params?: TranslationParams) => getText(DEFAULT_LOCALE, key, params),
+    }),
+    [],
   );
 
   return <LocaleContext.Provider value={value}>{children}</LocaleContext.Provider>;

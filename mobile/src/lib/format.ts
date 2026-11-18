@@ -1,11 +1,24 @@
 import type { Money } from "../api/types";
 import { DEFAULT_LOCALE, getText } from "./locale";
 
-export function formatMoney(money: Money | null | undefined): string {
+type TimeFormatPreference = "auto" | "12h" | "24h";
+
+type DateTimeFormatOptions = {
+  locale?: string;
+  timeFormat?: TimeFormatPreference;
+};
+
+function hourCycleFor(timeFormat: TimeFormatPreference | undefined): "h12" | "h23" | undefined {
+  if (timeFormat === "12h") return "h12";
+  if (timeFormat === "24h") return "h23";
+  return undefined;
+}
+
+export function formatMoney(money: Money | null | undefined, locale?: string): string {
   if (!money) return "—";
   const amount = money.amount_minor / 100;
   try {
-    return new Intl.NumberFormat(undefined, {
+    return new Intl.NumberFormat(locale, {
       style: "currency",
       currency: money.currency,
     }).format(amount);
@@ -14,12 +27,13 @@ export function formatMoney(money: Money | null | undefined): string {
   }
 }
 
-export function formatDateTime(value: string): string {
+export function formatDateTime(value: string, options: DateTimeFormatOptions = {}): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat(undefined, {
+  return new Intl.DateTimeFormat(options.locale, {
     dateStyle: "medium",
     timeStyle: "short",
+    hourCycle: hourCycleFor(options.timeFormat),
   }).format(date);
 }
 
