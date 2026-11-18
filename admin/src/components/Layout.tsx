@@ -1,6 +1,8 @@
 import { NavLink, Outlet } from "react-router-dom";
 import { useStaffUnreadCount } from "../api/queries";
 import { useAuth } from "../auth/context";
+import { LanguagePicker } from "./LanguagePicker";
+import { useLocale } from "../state/locale";
 
 const NAV = [
   { to: "/", label: "Dashboard", end: true },
@@ -15,6 +17,7 @@ const NAV = [
 
 export function Layout() {
   const { session, signOut } = useAuth();
+  const { t } = useLocale();
   const { data: unreadCount = 0 } = useStaffUnreadCount();
   const shopName = session?.me.display_name ?? session?.me.email ?? "";
   const isOwner = session?.me.role === "owner";
@@ -23,7 +26,7 @@ export function Layout() {
   return (
     <div className="shell">
       <a className="skip-link" href="#main">
-        Skip to content
+        {t("Skip to content")}
       </a>
       <aside className="sidebar">
         <div className="brand">
@@ -32,20 +35,24 @@ export function Layout() {
           </span>
           <span className="brand__text">
             <strong>Card Tracker</strong>
-            <small>Shop admin</small>
+            <small>{t("Shop admin")}</small>
           </span>
         </div>
 
-        <nav aria-label="Main">
+        <nav aria-label={t("Main")}>
           <ul className="nav">
             {navItems.map((item) => (
               <li key={item.to}>
                 <NavLink to={item.to} end={item.end} className="nav__link">
-                  <span>{item.label}</span>
+                  <span>{t(item.label)}</span>
                   {item.to === "/notifications" && unreadCount > 0 ? (
                     <span
                       className="nav__badge"
-                      aria-label={`${unreadCount} unread notification${unreadCount === 1 ? "" : "s"}`}
+                      aria-label={
+                        unreadCount === 1
+                          ? t("One unread notification")
+                          : t("{count} unread notifications", { count: unreadCount })
+                      }
                     >
                       {unreadCount > 99 ? "99+" : unreadCount}
                     </span>
@@ -60,8 +67,9 @@ export function Layout() {
           <p className="sidebar__user" title={session?.me.email}>
             {shopName}
           </p>
+          <LanguagePicker />
           <button type="button" className="btn btn--ghost btn--small" onClick={signOut}>
-            Sign out
+            {t("Sign out")}
           </button>
         </div>
       </aside>

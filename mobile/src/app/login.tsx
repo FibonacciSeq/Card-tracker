@@ -13,6 +13,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { Field } from "../components/Field";
+import { LanguagePicker } from "../components/LanguagePicker";
 import { LoadingState } from "../components/LoadingState";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { useAuth } from "../state/auth";
@@ -24,7 +25,7 @@ type Mode = "signin" | "signup" | "reset";
 export default function LoginScreen() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { locale, setLocale, t } = useLocale();
+  const { t } = useLocale();
   const {
     hydrated,
     isAuthenticated,
@@ -204,50 +205,7 @@ export default function LoginScreen() {
           <Text style={styles.subtitle}>{t("loginSubtitle")}</Text>
         </View>
 
-        <View style={styles.localeCard}>
-          <View style={styles.localeHeader}>
-            <Ionicons name="language-outline" size={18} color={colors.primary} />
-            <Text style={styles.localeLabel}>{t("language")}</Text>
-          </View>
-          <View style={styles.localeRow}>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setLocale("en")}
-              style={({ pressed }) => [
-                styles.localeButton,
-                locale === "en" && styles.localeButtonActive,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.localeButtonText,
-                  locale === "en" && styles.localeButtonTextActive,
-                ]}
-              >
-                {t("english")}
-              </Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              onPress={() => setLocale("sr")}
-              style={({ pressed }) => [
-                styles.localeButton,
-                locale === "sr" && styles.localeButtonActive,
-                pressed && styles.pressed,
-              ]}
-            >
-              <Text
-                style={[
-                  styles.localeButtonText,
-                  locale === "sr" && styles.localeButtonTextActive,
-                ]}
-              >
-                {t("serbian")}
-              </Text>
-            </Pressable>
-          </View>
-        </View>
+        <LanguagePicker />
 
         {mode === "reset" ? (
           <Pressable
@@ -606,33 +564,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.8,
   },
   subtitle: { color: colors.inkMuted, fontSize: type.body, lineHeight: 22 },
-  localeCard: {
-    backgroundColor: colors.surface,
-    borderRadius: radii.md,
-    borderWidth: 1,
-    borderColor: colors.line,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  localeHeader: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
-  localeLabel: { color: colors.ink, fontSize: type.small, fontWeight: "800" },
-  localeRow: { flexDirection: "row", gap: spacing.sm },
-  localeButton: {
-    flex: 1,
-    minHeight: 40,
-    borderRadius: radii.sm,
-    borderWidth: 1,
-    borderColor: colors.line,
-    alignItems: "center",
-    justifyContent: "center",
-    backgroundColor: colors.background,
-  },
-  localeButtonActive: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primarySoft,
-  },
-  localeButtonText: { color: colors.ink, fontSize: type.small, fontWeight: "700" },
-  localeButtonTextActive: { color: colors.primary },
   segment: {
     flexDirection: "row",
     backgroundColor: colors.surfaceMuted,

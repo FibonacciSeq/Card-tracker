@@ -6,6 +6,7 @@ import { App } from "./App";
 import { AuthProvider } from "./auth/AuthProvider";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { installGlobalErrorHandlers } from "./lib/logger";
+import { LocaleProvider } from "./state/locale";
 import "./styles.css";
 
 const queryClient = new QueryClient({
@@ -33,7 +34,9 @@ createRoot(root).render(
       <QueryClientProvider client={queryClient}>
         <BrowserRouter>
           <AuthProvider>
-            <App />
+            <LocaleProvider>
+              <App />
+            </LocaleProvider>
           </AuthProvider>
         </BrowserRouter>
       </QueryClientProvider>

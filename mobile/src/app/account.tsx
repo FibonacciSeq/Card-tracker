@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { accountKeys, useMyCardRequests, useMyReservations, useMyRestockAlerts } from "../api/queries";
 import type { ClaimedCounts, CustomerAccount, CustomerProfileUpdate } from "../api/types";
 import { Field } from "../components/Field";
+import { LanguagePicker } from "../components/LanguagePicker";
 import { LoadingState } from "../components/LoadingState";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { formatDateTime } from "../lib/format";
@@ -233,6 +234,8 @@ export default function AccountScreen() {
           <Text style={styles.heroEmail}>{customer.email}</Text>
           <Text style={styles.heroBody}>{t("signedInBody")}</Text>
         </View>
+
+        <LanguagePicker />
 
         <PrimaryButton
           label="Browse shops"

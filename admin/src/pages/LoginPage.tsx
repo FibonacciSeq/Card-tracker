@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth/context";
+import { LanguagePicker } from "../components/LanguagePicker";
 
 const LAST_SLUG_KEY = "cardtracker.admin.last-slug";
 
@@ -52,6 +53,8 @@ export function LoginPage() {
         <p className="muted">
           Manage live stock, reservations, and shop settings. Customers reserve through the mobile app.
         </p>
+
+        <LanguagePicker />
 
         <form className="form" onSubmit={handleSubmit} noValidate>
           <div className="field">
