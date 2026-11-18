@@ -1,20 +1,21 @@
 import type { ReservationStatus } from "../api/types";
-
-const LABELS: Record<string, string> = {
-  REQUESTED: "Requested",
-  QUOTED: "Quoted",
-  ACCEPTED: "Accepted",
-  DECLINED: "Declined",
-  CONVERTED: "Converted",
-  CONFIRMED: "Confirmed",
-  READY: "Ready",
-  COMPLETED: "Completed",
-  CANCELLED: "Cancelled",
-  EXPIRED: "Expired",
-};
+import { useLocale } from "../state/locale";
 
 /** Colour is never the only signal: every badge also prints its label. */
 export function StatusBadge({ status }: { status: ReservationStatus | string }) {
+  const { t } = useLocale();
+  const LABELS: Record<string, string> = {
+    REQUESTED: t("Requested"),
+    QUOTED: t("Quoted"),
+    ACCEPTED: t("Accepted"),
+    DECLINED: t("Declined"),
+    CONVERTED: t("Converted"),
+    CONFIRMED: t("Confirmed"),
+    READY: t("Ready"),
+    COMPLETED: t("Completed"),
+    CANCELLED: t("Cancelled"),
+    EXPIRED: t("Expired"),
+  };
   const tone = status.toLowerCase();
   return (
     <span className={`badge badge--${tone}`}>

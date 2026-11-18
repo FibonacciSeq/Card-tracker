@@ -4,9 +4,11 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { ShopSearch } from "../api/types";
 import { formatMoney } from "../lib/format";
+import { useLocale } from "../state/locale";
 import { colors, radii, shadow, spacing, type } from "../theme";
 
 export function ShopCard({ shop, onPress }: { shop: ShopSearch; onPress: () => void }) {
+  const { t } = useLocale();
   const name = shop.brand_name || shop.name;
   const contact = shop.contact as { address?: unknown } | undefined;
   const address = typeof contact?.address === "string" ? contact.address : "";
@@ -17,22 +19,22 @@ export function ShopCard({ shop, onPress }: { shop: ShopSearch; onPress: () => v
   const canOrderSoldOut = soldOut && shop.allow_backorders;
   const statusText = soldOut
     ? canOrderSoldOut
-      ? "Out of stock · order available"
-      : "Out of stock"
-    : `${available} in stock${matchingVariants > 1 ? ` · ${matchingVariants} variants` : ""}`;
+      ? t("Out of stock · order available")
+      : t("Out of stock")
+    : matchingVariants > 1
+      ? t("{count} in stock · {variants} variants", { count: available, variants: matchingVariants })
+      : t("{count} in stock", { count: available });
   const priceText = shop.product_from_price ? formatMoney(shop.product_from_price) : null;
   return (
     <Pressable
-      accessibilityHint="Opens this shop's storefront"
+      accessibilityHint={t("Opens this shop's storefront")}
       accessibilityLabel={
         hasProduct
-          ? `${name}, ${
-              soldOut
-                ? canOrderSoldOut
-                  ? "out of stock, order available"
-                  : "out of stock"
-                : `${available} in stock`
-            }`
+          ? soldOut
+            ? canOrderSoldOut
+              ? t("{name}, out of stock, order available", { name })
+              : t("{name}, out of stock", { name })
+            : t("{name}, {count} in stock", { name, count: available })
           : name
       }
       accessibilityRole="button"
@@ -53,7 +55,7 @@ export function ShopCard({ shop, onPress }: { shop: ShopSearch; onPress: () => v
         <Text style={styles.slug}>@{shop.slug}</Text>
         <View style={styles.metaRow}>
           <Ionicons name="time-outline" size={13} color={colors.inkMuted} />
-          <Text style={styles.meta}>{shop.hold_hours}h holds</Text>
+          <Text style={styles.meta}>{t("{count}h holds", { count: shop.hold_hours })}</Text>
           <Ionicons name="location-outline" size={13} color={colors.inkMuted} />
           <Text numberOfLines={1} style={styles.meta}>
             {address || shop.timezone.replace(/_/g, " ")}
@@ -72,7 +74,9 @@ export function ShopCard({ shop, onPress }: { shop: ShopSearch; onPress: () => v
               </Text>
             </View>
             {priceText ? (
-              <Text style={styles.priceLabel}>{soldOut ? priceText : `from ${priceText}`}</Text>
+              <Text style={styles.priceLabel}>
+                {soldOut ? priceText : t("from {price}", { price: priceText })}
+              </Text>
             ) : null}
           </View>
         ) : null}

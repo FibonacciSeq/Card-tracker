@@ -6,8 +6,10 @@ import {
   useStaffNotifications,
 } from "../api/queries";
 import { formatDateTime } from "../lib/format";
+import { useLocale } from "../state/locale";
 
 export function NotificationsPage() {
+  const { t } = useLocale();
   const notifications = useStaffNotifications();
   const markRead = useMarkNotificationRead();
   const markAll = useMarkAllNotificationsRead();
@@ -20,8 +22,8 @@ export function NotificationsPage() {
     <div className="page">
       <header className="page__header">
         <div>
-          <h1>Notifications</h1>
-          <p className="muted">Changes that need your attention.</p>
+          <h1>{t("Notifications")}</h1>
+          <p className="muted">{t("Changes that need your attention.")}</p>
         </div>
         <div className="page__actions">
           <button
@@ -30,7 +32,7 @@ export function NotificationsPage() {
             onClick={() => void notifications.refetch()}
             disabled={notifications.isFetching}
           >
-            {notifications.isFetching ? "Refreshing…" : "Refresh"}
+            {notifications.isFetching ? t("Refreshing…") : t("Refresh")}
           </button>
           <button
             type="button"
@@ -38,24 +40,23 @@ export function NotificationsPage() {
             onClick={() => markAll.mutate()}
             disabled={unreadCount === 0 || markAll.isPending}
           >
-            {markAll.isPending ? "Marking…" : "Mark all read"}
+            {markAll.isPending ? t("Marking…") : t("Mark all read")}
           </button>
         </div>
       </header>
 
       {error ? (
         <p className="alert alert--error" role="alert">
-          {error instanceof ApiError ? error.message : "Could not load notifications."}
+          {error instanceof ApiError ? t(error.message) : t("Could not load notifications.")}
         </p>
       ) : null}
 
-      {notifications.isPending ? <p className="muted">Loading…</p> : null}
+      {notifications.isPending ? <p className="muted">{t("Loading…")}</p> : null}
 
       {notifications.data && items.length === 0 ? (
         <div className="card">
           <p className="muted">
-            You&apos;re all caught up. New reservations, cancellations, and special orders will show
-            up here.
+            {t("You're all caught up. New reservations, cancellations, and special orders will show up here.")}
           </p>
         </div>
       ) : null}
@@ -78,13 +79,13 @@ export function NotificationsPage() {
                     onClick={() => markRead.mutate(item.id)}
                     disabled={markRead.isPending}
                   >
-                    Mark read
+                    {t("Mark read")}
                   </button>
                 )}
               </div>
               <p className="notification__body">{item.body}</p>
               <p className="notification__meta muted">
-                {item.read_at ? "Read" : "Unread"} · {formatDateTime(item.created_at)}
+                {item.read_at ? t("Read") : t("Unread")} · {formatDateTime(item.created_at)}
               </p>
             </li>
           ))}
@@ -98,7 +99,7 @@ export function NotificationsPage() {
           onClick={() => void notifications.fetchNextPage()}
           disabled={notifications.isFetchingNextPage}
         >
-          {notifications.isFetchingNextPage ? "Loading…" : "Load older notifications"}
+          {notifications.isFetchingNextPage ? t("Loading…") : t("Load older notifications")}
         </button>
       ) : null}
     </div>

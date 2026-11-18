@@ -20,22 +20,11 @@ import { EmptyState } from "../../components/EmptyState";
 import { Field } from "../../components/Field";
 import { PrimaryButton } from "../../components/PrimaryButton";
 import { useAuth } from "../../state/auth";
+import { useLocale } from "../../state/locale";
 import { useSpecialOrders } from "../../state/specialOrders";
 import { colors, radii, spacing, type } from "../../theme";
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const FINISHES: { value: Finish; label: string }[] = [
-  { value: "nonfoil", label: "Nonfoil" },
-  { value: "foil", label: "Foil" },
-  { value: "etched", label: "Etched" },
-];
-const CONDITIONS: { value: Condition; label: string }[] = [
-  { value: "NM", label: "NM" },
-  { value: "LP", label: "LP" },
-  { value: "MP", label: "MP" },
-  { value: "HP", label: "HP" },
-  { value: "DMG", label: "DMG" },
-];
 
 type Errors = {
   customerName?: string;
@@ -61,7 +50,21 @@ export default function NewRequestScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { customer, token } = useAuth();
+  const { t } = useLocale();
   const { hydrated, save } = useSpecialOrders();
+
+  const finishes: { value: Finish; label: string }[] = [
+    { value: "nonfoil", label: t("Nonfoil") },
+    { value: "foil", label: t("Foil") },
+    { value: "etched", label: t("Etched") },
+  ];
+  const conditions: { value: Condition; label: string }[] = [
+    { value: "NM", label: t("NM") },
+    { value: "LP", label: t("LP") },
+    { value: "MP", label: t("MP") },
+    { value: "HP", label: t("HP") },
+    { value: "DMG", label: t("DMG") },
+  ];
 
   const [customerName, setCustomerName] = useState("");
   const [email, setEmail] = useState("");
@@ -73,7 +76,7 @@ export default function NewRequestScreen() {
     params.finish === "foil" || params.finish === "etched" ? params.finish : "nonfoil",
   );
   const [condition, setCondition] = useState<Condition>(
-    CONDITIONS.some((item) => item.value === params.condition)
+    conditions.some((item) => item.value === params.condition)
       ? (params.condition as Condition)
       : "NM",
   );
@@ -86,24 +89,24 @@ export default function NewRequestScreen() {
   const [submitting, setSubmitting] = useState(false);
 
   const activeShopSlug = params.shopSlug ?? "";
-  const shopName = params.shopName || "the shop";
+  const shopName = params.shopName || t("the shop");
 
   async function submit() {
     if (!hydrated) return;
     const contactEmail = token ? (customer?.email ?? "") : email.trim();
     const next: Errors = {};
-    if (!customerName.trim()) next.customerName = "Enter your name.";
-    if (!token && !EMAIL.test(contactEmail)) next.email = "Enter a valid email address.";
-    if (!cardName.trim()) next.cardName = "Which card are you looking for?";
+    if (!customerName.trim()) next.customerName = t("Enter your name.");
+    if (!token && !EMAIL.test(contactEmail)) next.email = t("Enter a valid email address.");
+    if (!cardName.trim()) next.cardName = t("Which card are you looking for?");
     const parsedQuantity = Number.parseInt(quantity, 10);
     if (!Number.isFinite(parsedQuantity) || parsedQuantity < 1 || parsedQuantity > 999) {
-      next.quantity = "Choose a quantity between 1 and 999.";
+      next.quantity = t("Choose a quantity between 1 and 999.");
     }
     let targetMinor: number | null = null;
     if (targetPrice.trim()) {
       const amount = Number(targetPrice.trim().replace(",", "."));
       if (!Number.isFinite(amount) || amount < 0) {
-        next.targetPrice = "Enter a price like 12.50, or leave it empty.";
+        next.targetPrice = t("Enter a price like 12.50, or leave it empty.");
       } else {
         targetMinor = Math.round(amount * 100);
       }
@@ -139,7 +142,7 @@ export default function NewRequestScreen() {
       }
       router.replace(`/requests/${request.id}`);
     } catch (error) {
-      setApiError(error instanceof Error ? error.message : "Could not send this request.");
+      setApiError(t(error instanceof Error ? error.message : "Could not send this request."));
     } finally {
       setSubmitting(false);
     }
@@ -150,9 +153,9 @@ export default function NewRequestScreen() {
       <View style={styles.screen}>
         <EmptyState
           icon="storefront-outline"
-          title="Choose a shop first"
-          body="Open a shop and choose Request a special order so the request goes directly to that shop."
-          actionLabel="Browse shops"
+          title={t("Choose a shop first")}
+          body={t("Open a shop and choose Request a special order so the request goes directly to that shop.")}
+          actionLabel={t("Browse shops")}
           onAction={() => router.replace("/")}
         />
       </View>
@@ -178,16 +181,17 @@ export default function NewRequestScreen() {
             <Ionicons name="sparkles-outline" size={20} color={colors.accent} />
           </View>
           <View style={styles.introText}>
-            <Text style={styles.introTitle}>Request a special order</Text>
+            <Text style={styles.introTitle}>{t("Request a special order")}</Text>
             <Text style={styles.introBody}>
-              Your request goes directly to {shopName}. It will reply with a quote if it can
-              source the card. Nothing is reserved until you accept.
+              {t("Your request goes directly to {shopName}. It will reply with a quote if it can source the card. Nothing is reserved until you accept.", {
+                shopName,
+              })}
             </Text>
           </View>
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Shop</Text>
+          <Text style={styles.sectionTitle}>{t("Shop")}</Text>
           <View style={styles.selectedShop}>
             <View style={styles.selectedShopIcon}>
               <Ionicons name="storefront-outline" size={20} color={colors.primary} />
@@ -200,49 +204,49 @@ export default function NewRequestScreen() {
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>The card</Text>
+          <Text style={styles.sectionTitle}>{t("The card")}</Text>
           <Field
             autoCapitalize="words"
             error={errors.cardName}
-            label="Card name"
+            label={t("Card name")}
             onChangeText={setCardName}
-            placeholder="e.g. Lightning Bolt"
+            placeholder={t("e.g. Lightning Bolt")}
             value={cardName}
           />
           <View style={styles.row}>
             <View style={styles.half}>
               <Field
                 autoCapitalize="characters"
-                label="Set code"
+                label={t("Set code")}
                 onChangeText={setSetCode}
-                placeholder="LEB"
+                placeholder={t("LEB")}
                 value={setCode}
               />
             </View>
             <View style={styles.half}>
               <Field
-                label="Collector number"
+                label={t("Collector number")}
                 onChangeText={setCollectorNumber}
-                placeholder="161"
+                placeholder={t("161")}
                 value={collectorNumber}
               />
             </View>
           </View>
-          <Choice label="Finish" onChange={setFinish} options={FINISHES} value={finish} />
+          <Choice label={t("Finish")} onChange={setFinish} options={finishes} value={finish} />
           <Choice
-            label="Condition"
+            label={t("Condition")}
             onChange={setCondition}
-            options={CONDITIONS}
+            options={conditions}
             value={condition}
           />
           <View style={styles.row}>
             <View style={styles.half}>
               <Field
                 autoCapitalize="none"
-                label="Language"
+                label={t("Language")}
                 maxLength={5}
                 onChangeText={setLanguage}
-                placeholder="en"
+                placeholder={t("en")}
                 value={language}
               />
             </View>
@@ -250,7 +254,7 @@ export default function NewRequestScreen() {
               <Field
                 error={errors.quantity}
                 keyboardType="number-pad"
-                label="Quantity"
+                label={t("Quantity")}
                 onChangeText={setQuantity}
                 value={quantity}
               />
@@ -259,31 +263,31 @@ export default function NewRequestScreen() {
           <Field
             error={errors.targetPrice}
             keyboardType="decimal-pad"
-            label="Target price (optional)"
+            label={t("Target price (optional)")}
             onChangeText={setTargetPrice}
-            placeholder="Leave empty for the shop’s quote"
+            placeholder={t("Leave empty for the shop’s quote")}
             value={targetPrice}
           />
           <Field
-            label="Note (optional)"
+            label={t("Note (optional)")}
             maxLength={2000}
             multiline
             numberOfLines={3}
             onChangeText={setNote}
-            placeholder="Edition, art, or anything else that matters"
+            placeholder={t("Edition, art, or anything else that matters")}
             value={note}
           />
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Your contact details</Text>
+          <Text style={styles.sectionTitle}>{t("Your contact details")}</Text>
           <Field
             autoCapitalize="words"
             autoComplete="name"
             error={errors.customerName}
-            label="Name"
+            label={t("Name")}
             onChangeText={setCustomerName}
-            placeholder="Your name"
+            placeholder={t("Your name")}
             textContentType="name"
             value={customerName}
           />
@@ -293,9 +297,9 @@ export default function NewRequestScreen() {
             editable={!token}
             error={token ? null : errors.email}
             keyboardType="email-address"
-            label="Email"
+            label={t("Email")}
             onChangeText={setEmail}
-            placeholder="you@example.com"
+            placeholder={t("you@example.com")}
             textContentType="emailAddress"
             value={token ? (customer?.email ?? "") : email}
           />
@@ -303,9 +307,9 @@ export default function NewRequestScreen() {
             autoCapitalize="none"
             autoComplete="tel"
             keyboardType="phone-pad"
-            label="Phone (optional)"
+            label={t("Phone (optional)")}
             onChangeText={setPhone}
-            placeholder="For quote questions"
+            placeholder={t("For quote questions")}
             textContentType="telephoneNumber"
             value={phone}
           />
@@ -319,12 +323,16 @@ export default function NewRequestScreen() {
         ) : null}
 
         <PrimaryButton
-          label={shopName === "the shop" ? "Send request" : `Send request to ${shopName}`}
+          label={
+            shopName === t("the shop")
+              ? t("Send request")
+              : t("Send request to {shopName}", { shopName })
+          }
           loading={submitting || !hydrated}
           onPress={() => void submit()}
         />
         <Text style={styles.disclaimer}>
-          No payment is taken. The shop may decline if it cannot source the card.
+          {t("No payment is taken. The shop may decline if it cannot source the card.")}
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>

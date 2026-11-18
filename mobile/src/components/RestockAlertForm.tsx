@@ -17,6 +17,7 @@ import {
   type AlertListItem,
 } from "../lib/accountMerge";
 import { useAuth } from "../state/auth";
+import { useLocale } from "../state/locale";
 import { useRestockAlerts } from "../state/restockAlerts";
 import { Field } from "./Field";
 import { PrimaryButton } from "./PrimaryButton";
@@ -32,6 +33,7 @@ type Props = {
 
 export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
   const queryClient = useQueryClient();
+  const { t } = useLocale();
   const { customer, token } = useAuth();
   const { findForVariant, getToken, hydrated, remove, save } = useRestockAlerts();
   const accountAlerts = useMyRestockAlerts(token);
@@ -69,7 +71,7 @@ export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
     if (!hydrated) return;
     const value = (token ? (customer?.email ?? "") : email).trim();
     if (!EMAIL.test(value)) {
-      setEmailError("Enter a valid email address.");
+      setEmailError(t("Enter a valid email address."));
       return;
     }
     setEmailError(null);
@@ -97,7 +99,7 @@ export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
       setEmail("");
       setName("");
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Could not save this alert.");
+      setSubmitError(t(error instanceof Error ? error.message : "Could not save this alert."));
     } finally {
       setSubmitting(false);
     }
@@ -109,19 +111,21 @@ export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
     setUnsubscribing(true);
     try {
       if (saved.source === "account") {
-        if (!token) throw new Error("Sign in again to remove this alert.");
+        if (!token) throw new Error(t("Sign in again to remove this alert."));
         await deleteMyRestockAlert(saved.id, token);
         await queryClient.invalidateQueries({ queryKey: accountKeys.restockAlerts });
       } else {
         const guestToken = await getToken(saved.id);
         if (!guestToken) {
-          throw new Error("This alert is missing its guest token. Add it again from this device.");
+          throw new Error(
+            t("This alert is missing its guest token. Add it again from this device."),
+          );
         }
         await unsubscribeRestockAlert(shopSlug, saved.id, guestToken);
       }
       await remove(saved.id);
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Could not remove this alert.");
+      setSubmitError(t(error instanceof Error ? error.message : "Could not remove this alert."));
     } finally {
       setUnsubscribing(false);
     }
@@ -130,7 +134,7 @@ export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
   if (!hydrated || (token && accountAlerts.isLoading)) {
     return (
       <View style={styles.panel}>
-        <Text style={styles.body}>Loading your alerts…</Text>
+        <Text style={styles.body}>{t("Loading your alerts…")}</Text>
       </View>
     );
   }
@@ -142,15 +146,21 @@ export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
           <Ionicons name="notifications-outline" size={19} color={colors.primary} />
         </View>
         <View style={styles.headingText}>
-          <Text style={styles.title}>{saved ? "You’re on the list" : "Notify me"}</Text>
+          <Text style={styles.title}>
+            {saved ? t("You’re on the list") : t("Notify me")}
+          </Text>
           <Text style={styles.body}>
             {saved
               ? saved.source === "account"
-                ? `We’ll notify you when this exact variant is back at ${shopName}.`
-                : `Saved for ${saved.email}. Sign in with this email to get notified when it’s back.`
+                ? t("We’ll notify you when this exact variant is back at {shop}.", {
+                    shop: shopName,
+                  })
+                : t("Saved for {email}. Sign in with this email to get notified when it’s back.", {
+                    email: saved.email,
+                  })
               : token
-                ? "Get a notification when this variant is back in stock."
-                : "Save this variant and we’ll notify you once you sign in with this email."}
+                ? t("Get a notification when this variant is back in stock.")
+                : t("Save this variant and we’ll notify you once you sign in with this email.")}
           </Text>
         </View>
       </View>
@@ -160,8 +170,8 @@ export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
           <Ionicons name="checkmark-circle-outline" size={18} color={colors.success} />
           <Text style={styles.savedText}>
             {saved.source === "account"
-              ? "Your alert is saved to your account."
-              : "Your alert is saved on this device."}
+              ? t("Your alert is saved to your account.")
+              : t("Your alert is saved on this device.")}
           </Text>
         </View>
       ) : (
@@ -169,7 +179,7 @@ export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
           {token ? (
             <Field
               editable={false}
-              label="Email"
+              label={t("Email")}
               onChangeText={() => undefined}
               value={customer?.email ?? ""}
             />
@@ -179,9 +189,9 @@ export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
               autoComplete="email"
               error={emailError}
               keyboardType="email-address"
-              label="Email"
+              label={t("Email")}
               onChangeText={setEmail}
-              placeholder="you@example.com"
+              placeholder={t("you@example.com")}
               textContentType="emailAddress"
               value={email}
             />
@@ -189,9 +199,9 @@ export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
           <Field
             autoCapitalize="words"
             autoComplete="name"
-            label="Name (optional)"
+            label={t("Name (optional)")}
             onChangeText={setName}
-            placeholder="Your name"
+            placeholder={t("Your name")}
             textContentType="name"
             value={name}
           />
@@ -207,21 +217,23 @@ export function RestockAlertForm({ shopSlug, shopName, item }: Props) {
 
       {saved ? (
         <PrimaryButton
-          label="Remove this alert"
+          label={t("Remove this alert")}
           loading={unsubscribing}
           onPress={() => void unsubscribe()}
           variant="secondary"
         />
       ) : (
         <PrimaryButton
-          label={token ? "Notify me when it’s back" : "Save this alert"}
+          label={token ? t("Notify me when it’s back") : t("Save this alert")}
           loading={submitting}
           onPress={() => void subscribe()}
         />
       )}
 
       <Text style={styles.note}>
-        A single back-in-stock notification, not a newsletter. You can remove it at any time.
+        {t(
+          "A single back-in-stock notification, not a newsletter. You can remove it at any time.",
+        )}
       </Text>
     </View>
   );

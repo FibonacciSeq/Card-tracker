@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ApiError } from "../api/client";
 import { useAudit } from "../api/queries";
 import { formatDateTime } from "../lib/format";
+import { useLocale } from "../state/locale";
 
 const FILTERS = [
   { value: "", label: "All activity" },
@@ -39,21 +40,22 @@ const ACTION_TONES: Record<string, string> = {
 
 export function ActivityPage() {
   const [filter, setFilter] = useState("");
+  const { t } = useLocale();
   const { data, isPending, error } = useAudit(filter);
 
   return (
     <div className="page">
       <header className="page__header">
         <div>
-          <h1>Activity</h1>
-          <p className="muted">A record of who changed what, newest first. Entries cannot be edited.</p>
+          <h1>{t("Activity")}</h1>
+          <p className="muted">{t("A record of who changed what, newest first. Entries cannot be edited.")}</p>
         </div>
         <label className="field field--inline">
-          <span>Show</span>
+          <span>{t("Show")}</span>
           <select value={filter} onChange={(event) => setFilter(event.target.value)} data-testid="activity-filter">
             {FILTERS.map((option) => (
               <option key={option.value} value={option.value}>
-                {option.label}
+                {t(option.label)}
               </option>
             ))}
           </select>
@@ -62,28 +64,28 @@ export function ActivityPage() {
 
       {error ? (
         <p className="alert alert--error" role="alert">
-          {error instanceof ApiError ? error.message : "Could not load activity."}
+          {error instanceof ApiError ? t(error.message) : t("Could not load activity.")}
         </p>
       ) : null}
 
-      {isPending ? <p className="muted">Loading…</p> : null}
+      {isPending ? <p className="muted">{t("Loading…")}</p> : null}
 
       {data && data.length === 0 ? (
         <div className="card">
-          <p className="muted">Nothing recorded yet. Stock and reservation changes will appear here.</p>
+          <p className="muted">{t("Nothing recorded yet. Stock and reservation changes will appear here.")}</p>
         </div>
       ) : null}
 
       {data && data.length > 0 ? (
         <div className="table-wrap">
           <table className="table" data-testid="activity-table">
-            <caption className="sr-only">Audit trail</caption>
+            <caption className="sr-only">{t("Audit trail")}</caption>
             <thead>
               <tr>
-                <th scope="col">When</th>
-                <th scope="col">Who</th>
-                <th scope="col">Action</th>
-                <th scope="col">Details</th>
+                <th scope="col">{t("When")}</th>
+                <th scope="col">{t("Who")}</th>
+                <th scope="col">{t("Action")}</th>
+                <th scope="col">{t("Details")}</th>
               </tr>
             </thead>
             <tbody>
@@ -92,11 +94,11 @@ export function ActivityPage() {
                 return (
                   <tr key={event.id}>
                     <td className="nowrap">{formatDateTime(event.created_at)}</td>
-                    <td>{event.actor_email ?? "Customer"}</td>
+                    <td>{event.actor_email ?? t("Customer")}</td>
                     <td>
                       <span className={`badge ${ACTION_TONES[group] ?? ""}`}>
                         <span aria-hidden="true" className="badge__dot" />
-                        {ACTION_LABELS[event.action] ?? event.action}
+                        {t(ACTION_LABELS[event.action] ?? event.action)}
                       </span>
                     </td>
                     <td>{event.summary}</td>

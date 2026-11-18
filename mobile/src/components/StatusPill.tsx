@@ -1,10 +1,25 @@
 import { StyleSheet, Text, View } from "react-native";
 
 import { statusTone, titleCase } from "../lib/format";
+import { useLocale } from "../state/locale";
 import { colors, radii, spacing, type } from "../theme";
 
+const STATUS_LABELS: Record<string, string> = {
+  READY: "Ready",
+  REQUESTED: "Requested",
+  CONFIRMED: "Confirmed",
+  QUOTED: "Quoted",
+  ACCEPTED: "Accepted",
+  CONVERTED: "Converted",
+  CANCELLED: "Cancelled",
+  EXPIRED: "Expired",
+  DECLINED: "Declined",
+};
+
 export function StatusPill({ status }: { status: string }) {
+  const { t } = useLocale();
   const tone = statusTone(status);
+  const label = STATUS_LABELS[status] ?? t(titleCase(status));
   return (
     <View
       style={[
@@ -22,7 +37,7 @@ export function StatusPill({ status }: { status: string }) {
           tone === "danger" && styles.dangerLabel,
         ]}
       >
-        {titleCase(status)}
+        {t(label)}
       </Text>
     </View>
   );

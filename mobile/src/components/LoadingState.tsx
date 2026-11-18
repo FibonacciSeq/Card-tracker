@@ -1,14 +1,16 @@
 import { Ionicons } from "@expo/vector-icons";
 import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 
+import { useLocale } from "../state/locale";
 import { colors, spacing, type } from "../theme";
 import { PrimaryButton } from "./PrimaryButton";
 
-export function LoadingState({ label = "Loading…" }: { label?: string }) {
+export function LoadingState({ label }: { label?: string }) {
+  const { t } = useLocale();
   return (
     <View style={styles.wrap}>
       <ActivityIndicator color={colors.primary} />
-      <Text style={styles.text}>{label}</Text>
+      <Text style={styles.text}>{label ?? t("Loading…")}</Text>
     </View>
   );
 }
@@ -20,12 +22,13 @@ export function ErrorState({
   message: string;
   onRetry?: () => void;
 }) {
+  const { t } = useLocale();
   return (
     <View style={styles.wrap}>
       <Ionicons name="alert-circle-outline" size={30} color={colors.danger} />
       <Text style={styles.errorText}>{message}</Text>
       {onRetry ? (
-        <PrimaryButton label="Try again" onPress={onRetry} variant="secondary" style={styles.retry} />
+        <PrimaryButton label={t("Try again")} onPress={onRetry} variant="secondary" style={styles.retry} />
       ) : null}
     </View>
   );

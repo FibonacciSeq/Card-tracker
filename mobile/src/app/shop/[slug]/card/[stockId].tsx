@@ -20,6 +20,7 @@ import { RestockAlertForm } from "../../../../components/RestockAlertForm";
 import { formatDateTime, formatMoney, titleCase } from "../../../../lib/format";
 import { shopPath } from "../../../../lib/config";
 import { useCart } from "../../../../state/cart";
+import { useLocale } from "../../../../state/locale";
 import { colors, radii, shadow, spacing, type } from "../../../../theme";
 
 export default function CardDetailScreen() {
@@ -27,12 +28,13 @@ export default function CardDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const cart = useCart();
+  const { t } = useLocale();
 
   const shopQuery = useShop(slug);
   const itemQuery = useStockItem(slug, stockId);
   const item = itemQuery.data;
   const shop = shopQuery.data;
-  const shopName = shop?.brand_name || shop?.name || "Shop";
+  const shopName = shop?.brand_name || shop?.name || t("Shop");
 
   const quantity =
     cart.linesFor(slug).find((line) => line.stockId === stockId)?.quantity ?? 0;
@@ -42,8 +44,8 @@ export default function CardDetailScreen() {
   if (itemQuery.isLoading) {
     return (
       <View style={styles.screen}>
-        <Stack.Screen options={{ title: "Card" }} />
-        <LoadingState label="Looking up this card…" />
+        <Stack.Screen options={{ title: t("Card") }} />
+        <LoadingState label={t("Looking up this card…")} />
       </View>
     );
   }
@@ -52,16 +54,16 @@ export default function CardDetailScreen() {
     const notFound = (itemQuery.error as { status?: number } | null)?.status === 404;
     return (
       <View style={styles.screen}>
-        <Stack.Screen options={{ title: "Card" }} />
+        <Stack.Screen options={{ title: t("Card") }} />
         <EmptyState
           icon="albums-outline"
-          title={notFound ? "Card not listed" : "Could not load this card"}
+          title={notFound ? t("Card not listed") : t("Could not load this card")}
           body={
             notFound
-              ? "The shop may have sold or removed this variant. Scan the code again if it just went back on the shelf."
-              : "Check your connection and try again."
+              ? t("The shop may have sold or removed this variant. Scan the code again if it just went back on the shelf.")
+              : t("Check your connection and try again.")
           }
-          actionLabel={notFound ? `Browse ${shopName}` : "Try again"}
+          actionLabel={notFound ? t("Browse {shopName}", { shopName }) : t("Try again")}
           onAction={() => {
             if (notFound) router.replace(shopPath(slug));
             else void itemQuery.refetch();
@@ -96,14 +98,14 @@ export default function CardDetailScreen() {
             <View style={styles.syncNote}>
               <Ionicons name="cloud-offline-outline" size={16} color={colors.inkMuted} />
               <Text style={styles.syncNoteText}>
-                Showing the copy saved on this device. Pull to refresh when you are back online.
+                {t("Showing the copy saved on this device. Pull to refresh when you are back online.")}
               </Text>
             </View>
           ) : null}
 
           <View style={styles.priceRow}>
             <View>
-              <Text style={styles.kicker}>PRICE</Text>
+              <Text style={styles.kicker}>{t("PRICE")}</Text>
               <Text style={styles.price}>{formatMoney(item.price)}</Text>
             </View>
             <View style={[styles.stockPill, soldOut && styles.stockPillOff]}>
@@ -113,31 +115,34 @@ export default function CardDetailScreen() {
                 color={soldOut ? colors.inkMuted : colors.success}
               />
               <Text style={[styles.stockText, soldOut && styles.stockTextOff]}>
-                {soldOut ? "Sold out" : `${item.available} available`}
+                {soldOut ? t("Sold out") : t("{count} available", { count: item.available })}
               </Text>
             </View>
           </View>
 
           <View style={styles.addPanel}>
-            <Text style={styles.addTitle}>Put it on hold</Text>
+            <Text style={styles.addTitle}>{t("Put it on hold")}</Text>
             <Text style={styles.addBody}>
               {soldOut
-                ? "This variant is not on the shelf right now."
-                : `Reserve it now and collect it at ${shopName}. The shop keeps it aside for ${shop?.hold_hours ?? 24} hours.`}
+                ? t("This variant is not on the shelf right now.")
+                : t("Reserve it now and collect it at {shopName}. The shop keeps it aside for {count} hours.", {
+                    shopName,
+                    count: shop?.hold_hours ?? 24,
+                  })}
             </Text>
 
             {soldOut ? (
               <View style={styles.soldOutBox}>
                 <Ionicons name="information-circle-outline" size={18} color={colors.inkMuted} />
                 <Text style={styles.soldOutText}>
-                  Ask the shop when this variant is coming back.
+                  {t("Ask the shop when this variant is coming back.")}
                 </Text>
               </View>
             ) : quantity > 0 ? (
               <View style={styles.stepperRow}>
                 <View style={styles.stepper}>
                   <Pressable
-                    accessibilityLabel={`Remove one ${item.card.name}`}
+                    accessibilityLabel={t("Remove one {cardName}", { cardName: item.card.name })}
                     accessibilityRole="button"
                     hitSlop={6}
                     onPress={() => cart.setQuantity(slug, item.stock_id, quantity - 1)}
@@ -147,7 +152,7 @@ export default function CardDetailScreen() {
                   </Pressable>
                   <Text style={styles.quantity}>{quantity}</Text>
                   <Pressable
-                    accessibilityLabel={`Add another ${item.card.name}`}
+                    accessibilityLabel={t("Add another {cardName}", { cardName: item.card.name })}
                     accessibilityRole="button"
                     disabled={quantity >= item.available}
                     hitSlop={6}
@@ -162,19 +167,19 @@ export default function CardDetailScreen() {
                 </View>
                 <Text style={styles.stepHint}>
                   {quantity >= item.available
-                    ? "That is every copy this shop has listed."
-                    : "In your hold"}
+                    ? t("That is every copy this shop has listed.")
+                    : t("In your hold")}
                 </Text>
               </View>
             ) : (
               <Pressable
-                accessibilityLabel={`Add ${item.card.name} to your hold`}
+                accessibilityLabel={t("Add {cardName} to your hold", { cardName: item.card.name })}
                 accessibilityRole="button"
                 onPress={() => cart.add(slug, item)}
                 style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
               >
                 <Ionicons name="add" size={18} color={colors.white} />
-                <Text style={styles.addLabel}>Add to hold</Text>
+                <Text style={styles.addLabel}>{t("Add to hold")}</Text>
               </Pressable>
             )}
           </View>
@@ -187,8 +192,8 @@ export default function CardDetailScreen() {
 
           {shop?.allow_backorders ? (
             <Pressable
-              accessibilityHint="Opens the special-order request form"
-              accessibilityLabel={`Ask ${shopName} to source this card`}
+              accessibilityHint={t("Opens the special-order request form")}
+              accessibilityLabel={t("Ask {shopName} to source this card", { shopName })}
               accessibilityRole="button"
               onPress={() =>
                 router.push({
@@ -212,9 +217,9 @@ export default function CardDetailScreen() {
                 <Ionicons name="sparkles-outline" size={18} color={colors.accent} />
               </View>
               <View style={styles.specialOrderText}>
-                <Text style={styles.specialOrderTitle}>Need a different copy?</Text>
+                <Text style={styles.specialOrderTitle}>{t("Need a different copy?")}</Text>
                 <Text style={styles.specialOrderBody}>
-                  Ask {shopName} to source this card as a special order.
+                  {t("Ask {shopName} to source this card as a special order.", { shopName })}
                 </Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.inkMuted} />
@@ -222,14 +227,14 @@ export default function CardDetailScreen() {
           ) : null}
 
           <Pressable
-            accessibilityLabel={`See everything at ${shopName}`}
+            accessibilityLabel={t("See everything at {shopName}", { shopName })}
             accessibilityRole="link"
             onPress={() => router.push(shopPath(slug))}
             style={({ pressed }) => [styles.shopLink, pressed && styles.pressed]}
           >
             <Ionicons name="storefront-outline" size={18} color={colors.primary} />
             <View style={styles.shopLinkText}>
-              <Text style={styles.shopLinkTitle}>See everything at {shopName}</Text>
+              <Text style={styles.shopLinkTitle}>{t("See everything at {shopName}", { shopName })}</Text>
               <Text style={styles.shopLinkBody}>@{slug}</Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={colors.inkMuted} />
@@ -250,6 +255,7 @@ export default function CardDetailScreen() {
 }
 
 function CardHero({ item, shopName }: { item: StockItem; shopName: string }) {
+  const { t } = useLocale();
   const image =
     item.card.image_large ?? item.card.image_normal ?? item.card.image_small ?? null;
   return (
@@ -273,27 +279,28 @@ function CardHero({ item, shopName }: { item: StockItem; shopName: string }) {
           <Text style={styles.typeLine}>{item.card.type_line}</Text>
         ) : null}
         <View style={styles.badgeRow}>
-          <Text style={styles.badge}>{titleCase(item.finish)}</Text>
-          <Text style={styles.badge}>{item.condition}</Text>
+          <Text style={styles.badge}>{t(titleCase(item.finish))}</Text>
+          <Text style={styles.badge}>{t(item.condition)}</Text>
           <Text style={styles.badge}>{item.language.toUpperCase()}</Text>
-          <Text style={styles.badge}>{titleCase(item.card.rarity)}</Text>
+          <Text style={styles.badge}>{t(titleCase(item.card.rarity))}</Text>
         </View>
-        <Text style={styles.atShop}>At {shopName}</Text>
+        <Text style={styles.atShop}>{t("At {shopName}", { shopName })}</Text>
       </View>
     </View>
   );
 }
 
 function Details({ item }: { item: StockItem }) {
+  const { t } = useLocale();
   return (
     <View style={styles.details}>
-      <DetailRow label="Set" value={`${item.card.set_name} (${item.card.set_code.toUpperCase()})`} />
-      <DetailRow label="Collector number" value={`#${item.card.collector_number}`} />
-      <DetailRow label="Rarity" value={titleCase(item.card.rarity)} />
-      <DetailRow label="Finish" value={titleCase(item.finish)} />
-      <DetailRow label="Condition" value={item.condition} />
-      <DetailRow label="Language" value={item.language.toUpperCase()} />
-      <DetailRow label="Last updated" value={formatDateTime(item.updated_at)} last />
+      <DetailRow label={t("Set")} value={`${item.card.set_name} (${item.card.set_code.toUpperCase()})`} />
+      <DetailRow label={t("Collector number")} value={`#${item.card.collector_number}`} />
+      <DetailRow label={t("Rarity")} value={t(titleCase(item.card.rarity))} />
+      <DetailRow label={t("Finish")} value={t(titleCase(item.finish))} />
+      <DetailRow label={t("Condition")} value={t(item.condition)} />
+      <DetailRow label={t("Language")} value={item.language.toUpperCase()} />
+      <DetailRow label={t("Last updated")} value={formatDateTime(item.updated_at)} last />
     </View>
   );
 }

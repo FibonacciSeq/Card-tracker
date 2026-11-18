@@ -27,6 +27,7 @@ import { PrimaryButton } from "../../components/PrimaryButton";
 import { StatusPill } from "../../components/StatusPill";
 import { formatDateTime, formatMoney, formatRemaining, titleCase } from "../../lib/format";
 import { useNow } from "../../lib/useNow";
+import { useLocale } from "../../state/locale";
 import { useAuth } from "../../state/auth";
 import { useReservations } from "../../state/reservations";
 import { colors, radii, spacing, type } from "../../theme";
@@ -35,14 +36,17 @@ import { colors, radii, spacing, type } from "../../theme";
 // serializes status as a plain string.
 const ACTIVE = new Set(["REQUESTED", "CONFIRMED", "READY"]);
 
-function shopInfo(reservation: SavedReservation | Reservation): {
+function shopInfo(
+  reservation: SavedReservation | Reservation,
+  t: ReturnType<typeof useLocale>["t"],
+): {
   slug: string;
   name: string;
 } {
   const shop = reservation.shop as { slug?: string; name?: string };
   return {
     slug: typeof shop.slug === "string" ? shop.slug : "",
-    name: typeof shop.name === "string" ? shop.name : "Shop",
+    name: typeof shop.name === "string" ? shop.name : t("Shop"),
   };
 }
 
@@ -53,6 +57,7 @@ export default function ReservationScreen() {
   const queryClient = useQueryClient();
   const { get, getToken, hydrated, update } = useReservations();
   const { isAuthenticated, token: accountToken } = useAuth();
+  const { t } = useLocale();
   const saved = get(id);
   const [token, setToken] = useState<string | null>(null);
   const [tokenLoaded, setTokenLoaded] = useState(false);
@@ -64,9 +69,9 @@ export default function ReservationScreen() {
   const accountQuery = useMyReservation(id, accountToken);
   const accountReservation = isAuthenticated ? accountQuery.data : undefined;
   const info = accountReservation
-    ? shopInfo(accountReservation)
+    ? shopInfo(accountReservation, t)
     : saved
-      ? shopInfo(saved)
+      ? shopInfo(saved, t)
       : null;
   const shopQuery = useShop(info?.slug ?? "");
   const reservationQuery = useGuestReservation(id, info?.slug ?? "", token);
@@ -93,16 +98,16 @@ export default function ReservationScreen() {
   }, [id, reservationQuery.data, update]);
 
   if (!hydrated || !tokenLoaded || (accountToken && accountQuery.isLoading)) {
-    return <LoadingState label="Loading reservation…" />;
+    return <LoadingState label={t("Loading reservation…")} />;
   }
 
   if (!saved && !accountReservation) {
     return (
       <EmptyState
         icon="receipt-outline"
-        title="Reservation not found"
-        body="This hold is not stored on this device or linked to your signed-in email."
-        actionLabel="Browse shops"
+        title={t("Reservation not found")}
+        body={t("This hold is not stored on this device or linked to your signed-in email.")}
+        actionLabel={t("Browse shops")}
         onAction={() => router.replace("/")}
       />
     );
@@ -116,14 +121,16 @@ export default function ReservationScreen() {
   const payment = shop?.payment_instructions;
   const expiryText =
     reservation.status === "CANCELLED"
-      ? "This hold was cancelled"
+      ? t("This hold was cancelled")
       : reservation.status === "EXPIRED"
-        ? "This hold has expired"
+        ? t("This hold has expired")
         : reservation.status === "COMPLETED"
-          ? "This hold was completed"
+          ? t("This hold was completed")
           : expired
-            ? "This hold has expired"
-            : `Collect within ${formatRemaining(reservation.expires_at, now)}`;
+            ? t("This hold has expired")
+            : t("Collect within {remaining}", {
+                remaining: formatRemaining(reservation.expires_at, now, t),
+              });
   const expiryIcon =
     reservation.status === "COMPLETED"
       ? "checkmark-circle-outline"
@@ -157,7 +164,7 @@ export default function ReservationScreen() {
         queryClient.setQueryData([...queryKeys.reservation(id), token], updated);
       }
     } catch (error) {
-      setCancelError(error instanceof Error ? error.message : "Could not cancel this hold.");
+      setCancelError(t(error instanceof Error ? error.message : "Could not cancel this hold."));
     } finally {
       setCancelling(false);
     }
@@ -166,7 +173,10 @@ export default function ReservationScreen() {
   async function share() {
     try {
       await Share.share({
-        message: `My Card Tracker hold at ${info?.name ?? "the shop"}: #${reservation.public_ref}`,
+        message: t("My Card Tracker hold at {shopName}: #{publicRef}", {
+          shopName: info?.name ?? t("the shop"),
+          publicRef: reservation.public_ref,
+        }),
       });
     } catch {
       // Sharing is optional; a dismissed or unsupported share sheet is not an error.
@@ -187,7 +197,7 @@ export default function ReservationScreen() {
         <View style={styles.statusCard}>
           <View style={styles.statusTop}>
             <View style={styles.statusTitle}>
-              <Text style={styles.eyebrow}>RESERVATION</Text>
+              <Text style={styles.eyebrow}>{t("RESERVATION")}</Text>
               <Text style={styles.shopName}>{info?.name}</Text>
             </View>
             <StatusPill status={reservation.status} />
@@ -202,7 +212,7 @@ export default function ReservationScreen() {
           {!accountReservation &&
           (reservationQuery.isError || (accountToken && accountQuery.isError)) &&
           saved ? (
-            <Text style={styles.syncNote}>Showing the copy saved on this device.</Text>
+            <Text style={styles.syncNote}>{t("Showing the copy saved on this device.")}</Text>
           ) : null}
         </View>
 
@@ -210,16 +220,16 @@ export default function ReservationScreen() {
           <View style={styles.showCard}>
             <Ionicons name="storefront-outline" size={22} color={colors.primary} />
             <View style={styles.showText}>
-              <Text style={styles.showTitle}>Show this reference at the shop</Text>
+              <Text style={styles.showTitle}>{t("Show this reference at the shop")}</Text>
               <Text style={styles.showBody}>
-                The shop will match your hold and prepare the cards for pickup.
+                {t("The shop will match your hold and prepare the cards for pickup.")}
               </Text>
             </View>
           </View>
         ) : null}
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Your cards</Text>
+          <Text style={styles.sectionTitle}>{t("Your cards")}</Text>
           <View style={styles.lines}>
             {reservation.lines.map((line) => (
               <View key={line.line_id} style={styles.line}>
@@ -227,7 +237,8 @@ export default function ReservationScreen() {
                   <Text style={styles.lineName}>{line.name}</Text>
                   <Text style={styles.lineMeta}>
                     {line.set_code.toUpperCase()} · #{line.collector_number} ·{" "}
-                    {titleCase(line.finish)} · {line.condition} · {line.language.toUpperCase()}
+                    {t(titleCase(line.finish))} · {t(line.condition)} ·{" "}
+                    {line.language.toUpperCase()}
                   </Text>
                 </View>
                 <View style={styles.lineNumbers}>
@@ -243,7 +254,7 @@ export default function ReservationScreen() {
             ))}
           </View>
           <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Total</Text>
+            <Text style={styles.totalLabel}>{t("Total")}</Text>
             <Text style={styles.total}>{formatMoney(reservation.total)}</Text>
           </View>
         </View>
@@ -252,21 +263,21 @@ export default function ReservationScreen() {
           <View style={styles.infoCard}>
             <Ionicons name="card-outline" size={19} color={colors.accent} />
             <View style={styles.infoText}>
-              <Text style={styles.infoTitle}>Payment</Text>
+              <Text style={styles.infoTitle}>{t("Payment")}</Text>
               <Text style={styles.infoBody}>{payment}</Text>
             </View>
           </View>
         ) : null}
 
         <View style={styles.infoGrid}>
-          <Info label="Placed" value={formatDateTime(reservation.created_at)} />
-          <Info label="Expires" value={formatDateTime(reservation.expires_at)} />
+          <Info label={t("Placed")} value={formatDateTime(reservation.created_at)} />
+          <Info label={t("Expires")} value={formatDateTime(reservation.expires_at)} />
         </View>
 
         {reservation.status === "READY" ? (
           <View style={styles.readyCard}>
             <Ionicons name="checkmark-circle-outline" size={22} color={colors.success} />
-            <Text style={styles.readyText}>Your cards are ready. Head to the shop.</Text>
+            <Text style={styles.readyText}>{t("Your cards are ready. Head to the shop.")}</Text>
           </View>
         ) : null}
 
@@ -278,17 +289,17 @@ export default function ReservationScreen() {
         ) : null}
 
         <View style={styles.actions}>
-          <PrimaryButton label="Share reference" onPress={() => void share()} variant="secondary" />
+          <PrimaryButton label={t("Share reference")} onPress={() => void share()} variant="secondary" />
           {active ? (
             <PrimaryButton
-              label="Cancel this hold"
+              label={t("Cancel this hold")}
               loading={cancelling}
               onPress={() => setConfirmingCancel(true)}
               variant="danger"
             />
           ) : (
             <PrimaryButton
-              label="Browse this shop"
+              label={t("Browse this shop")}
               onPress={() => router.push(`/shop/${info?.slug ?? ""}`)}
               variant="secondary"
             />
@@ -297,7 +308,7 @@ export default function ReservationScreen() {
 
         {!accountReservation && !token && !reservationQuery.isError ? (
           <Text style={styles.disclaimer}>
-            This hold was saved without a guest token, so live updates are unavailable.
+            {t("This hold was saved without a guest token, so live updates are unavailable.")}
           </Text>
         ) : null}
       </ScrollView>
@@ -313,18 +324,17 @@ export default function ReservationScreen() {
             <View style={styles.modalIcon}>
               <Ionicons name="alert-circle-outline" size={24} color={colors.danger} />
             </View>
-            <Text style={styles.modalTitle}>Cancel this hold?</Text>
+            <Text style={styles.modalTitle}>{t("Cancel this hold?")}</Text>
             <Text style={styles.modalBody}>
-              The shop will release your cards. You can place a new hold later if they are still
-              available.
+              {t("The shop will release your cards. You can place a new hold later if they are still available.")}
             </Text>
             <PrimaryButton
-              label="Keep my hold"
+              label={t("Keep my hold")}
               onPress={() => setConfirmingCancel(false)}
               variant="secondary"
             />
             <PrimaryButton
-              label="Cancel hold"
+              label={t("Cancel hold")}
               loading={cancelling}
               onPress={() => {
                 setConfirmingCancel(false);

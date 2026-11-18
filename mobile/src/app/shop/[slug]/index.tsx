@@ -22,12 +22,14 @@ import { SearchField } from "../../../components/SearchField";
 import { SortBar } from "../../../components/SortBar";
 import { StockCard } from "../../../components/StockCard";
 import { useCart } from "../../../state/cart";
+import { useLocale } from "../../../state/locale";
 import { colors, radii, spacing, type } from "../../../theme";
 
 export default function ShopScreen() {
   const { slug, q } = useLocalSearchParams<{ slug: string; q?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useLocale();
   const [search, setSearch] = useState(typeof q === "string" ? q : "");
   const [sort, setSort] = useState<StockSort>("relevance");
   const [availableOnly, setAvailableOnly] = useState(false);
@@ -43,7 +45,7 @@ export default function ShopScreen() {
   const cartCount = cart.countFor(slug);
   const cartTotal = cart.totalFor(slug);
 
-  const title = shop?.brand_name || shop?.name || "Shop";
+  const title = shop?.brand_name || shop?.name || t("Shop");
 
   return (
     <>
@@ -52,7 +54,7 @@ export default function ShopScreen() {
           title,
           headerRight: () => (
             <Pressable
-              accessibilityLabel="Scan a shop or card code"
+              accessibilityLabel={t("Scan a shop or card code")}
               accessibilityRole="button"
               hitSlop={8}
               onPress={() => router.push("/scan")}
@@ -88,12 +90,12 @@ export default function ShopScreen() {
           }
           ListHeaderComponent={
             <View>
-              {shop ? <ShopHero shop={shop} /> : shopQuery.isLoading ? <LoadingState label="Opening shop…" /> : null}
+              {shop ? <ShopHero shop={shop} /> : shopQuery.isLoading ? <LoadingState label={t("Opening shop…")} /> : null}
               {shop?.allow_backorders ? (
                 <View style={styles.specialOrderWrap}>
                   <Pressable
-                    accessibilityHint="Opens the special-order request form for this shop"
-                    accessibilityLabel={`Request a special order from ${title}`}
+                    accessibilityHint={t("Opens the special-order request form for this shop")}
+                    accessibilityLabel={t("Request a special order from {shopName}", { shopName: title })}
                     accessibilityRole="button"
                     onPress={() =>
                       router.push({
@@ -111,9 +113,9 @@ export default function ShopScreen() {
                       <Ionicons name="sparkles-outline" size={20} color={colors.accent} />
                     </View>
                     <View style={styles.specialOrderText}>
-                      <Text style={styles.specialOrderTitle}>Request a special order</Text>
+                      <Text style={styles.specialOrderTitle}>{t("Request a special order")}</Text>
                       <Text style={styles.specialOrderBody}>
-                        Ask {title} to source a card that is not on the shelf.
+                        {t("Ask {shopName} to source a card that is not on the shelf.", { shopName: title })}
                       </Text>
                     </View>
                     <Ionicons name="chevron-forward" size={18} color={colors.inkMuted} />
@@ -123,7 +125,7 @@ export default function ShopScreen() {
               {shopQuery.isError ? (
                 <View style={styles.pad}>
                   <ErrorState
-                    message="We could not load this shop."
+                    message={t("We could not load this shop.")}
                     onRetry={() => void shopQuery.refetch()}
                   />
                 </View>
@@ -133,7 +135,7 @@ export default function ShopScreen() {
                 <SearchField
                   value={search}
                   onChangeText={setSearch}
-                  placeholder={`Search ${title}`}
+                  placeholder={t("Search {shopName}", { shopName: title })}
                 />
                 <SortBar
                   value={sort}
@@ -144,8 +146,14 @@ export default function ShopScreen() {
                 <View style={styles.resultRow}>
                   <Text style={styles.resultLabel}>
                     {stockQuery.isLoading
-                      ? "Looking for cards…"
-                      : `${items.length}${stockQuery.hasNextPage ? "+" : ""} card${items.length === 1 ? "" : "s"}`}
+                      ? t("Looking for cards…")
+                      : stockQuery.hasNextPage
+                        ? items.length === 1
+                          ? t("{count}+ card", { count: items.length })
+                          : t("{count}+ cards", { count: items.length })
+                        : items.length === 1
+                          ? t("{count} card", { count: items.length })
+                          : t("{count} cards", { count: items.length })}
                   </Text>
                   {stockQuery.isFetching && !stockQuery.isLoading ? (
                     <ActivityIndicator size="small" color={colors.inkMuted} />
@@ -173,26 +181,26 @@ export default function ShopScreen() {
           ItemSeparatorComponent={() => <View style={styles.separator} />}
           ListEmptyComponent={
             stockQuery.isLoading ? (
-              <LoadingState label="Finding cards…" />
+              <LoadingState label={t("Finding cards…")} />
             ) : stockQuery.isError ? (
               <ErrorState
-                message={
+                message={t(
                   stockQuery.error instanceof Error
                     ? stockQuery.error.message
-                    : "We could not load this shop's stock."
-                }
+                    : "We could not load this shop's stock.",
+                )}
                 onRetry={() => void stockQuery.refetch()}
               />
             ) : (
               <EmptyState
                 icon="search-outline"
-                title="No cards found"
+                title={t("No cards found")}
                 body={
                   debouncedSearch || availableOnly
-                    ? "Try another search, or turn off the availability filter."
-                    : "This shop has no cards listed right now."
+                    ? t("Try another search, or turn off the availability filter.")
+                    : t("This shop has no cards listed right now.")
                 }
-                actionLabel={search || availableOnly ? "Clear filters" : undefined}
+                actionLabel={search || availableOnly ? t("Clear filters") : undefined}
                 onAction={() => {
                   setSearch("");
                   setAvailableOnly(false);
@@ -206,7 +214,7 @@ export default function ShopScreen() {
                 <ActivityIndicator color={colors.primary} style={styles.footerSpinner} />
               ) : null}
               {!stockQuery.hasNextPage && items.length > 0 ? (
-                <Text style={styles.endLabel}>That’s the whole shelf.</Text>
+                <Text style={styles.endLabel}>{t("That’s the whole shelf.")}</Text>
               ) : null}
             </View>
           }
@@ -226,6 +234,7 @@ export default function ShopScreen() {
 }
 
 function ShopHero({ shop }: { shop: NonNullable<ReturnType<typeof useShop>["data"]> }) {
+  const { t } = useLocale();
   const contact = (shop.contact ?? {}) as { email?: string; phone?: string; address?: string };
   const name = shop.brand_name || shop.name;
   return (
@@ -239,13 +248,13 @@ function ShopHero({ shop }: { shop: NonNullable<ReturnType<typeof useShop>["data
           )}
         </View>
         <View style={styles.heroText}>
-          <Text style={styles.kicker}>LOCAL CARD SHOP</Text>
+          <Text style={styles.kicker}>{t("LOCAL CARD SHOP")}</Text>
           <Text style={styles.shopName}>{name}</Text>
           <Text style={styles.shopSlug}>@{shop.slug}</Text>
         </View>
       </View>
       <View style={styles.heroMeta}>
-        <Meta icon="time-outline" text={`${shop.hold_hours}h holds`} />
+        <Meta icon="time-outline" text={t("{count}h holds", { count: shop.hold_hours })} />
         <Meta icon="pricetag-outline" text={shop.currency} />
         {contact.address ? <Meta icon="location-outline" text={contact.address} /> : null}
         {contact.email ? <Meta icon="mail-outline" text={contact.email} /> : null}

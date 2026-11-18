@@ -10,6 +10,7 @@ import {
 import type { StaffCardRequest } from "../api/types";
 import { StatusBadge } from "../components/StatusBadge";
 import { formatDateTime, formatMoney } from "../lib/format";
+import { useLocale } from "../state/locale";
 
 const FILTERS = [
   "ALL",
@@ -25,12 +26,24 @@ const FILTERS = [
 type Panel = { id: string; mode: "quote" | "decline" | "convert" } | null;
 
 export function RequestsPage() {
+  const { t } = useLocale();
   const [params, setParams] = useSearchParams();
   const status = params.get("status") ?? "ALL";
   const [panel, setPanel] = useState<Panel>(null);
   const { data, isPending, error, refetch, isFetching } = useCardRequests(status);
 
   const requests = data ?? [];
+  const filterLabels: Record<string, string> = {
+    ALL: t("All"),
+    REQUESTED: t("Requested"),
+    QUOTED: t("Quoted"),
+    ACCEPTED: t("Accepted"),
+    DECLINED: t("Declined"),
+    CONVERTED: t("Converted"),
+    CANCELLED: t("Cancelled"),
+    EXPIRED: t("Expired"),
+  };
+  const statusLabel = filterLabels[status] ?? status.toLowerCase();
   const open = (item: StaffCardRequest, mode: NonNullable<Panel>["mode"]) =>
     setPanel(panel?.id === item.id && panel.mode === mode ? null : { id: item.id, mode });
 
@@ -38,17 +51,17 @@ export function RequestsPage() {
     <div className="page">
       <header className="page__header">
         <div>
-          <h1>Special orders</h1>
+          <h1>{t("Special orders")}</h1>
           <p className="muted">
-            Customers ask, you quote, and the card becomes a normal reservation once it is back in stock.
+            {t("Customers ask, you quote, and the card becomes a normal reservation once it is back in stock.")}
           </p>
         </div>
         <button type="button" className="btn btn--ghost" onClick={() => void refetch()} disabled={isFetching}>
-          {isFetching ? "Refreshing…" : "Refresh"}
+          {isFetching ? t("Refreshing…") : t("Refresh")}
         </button>
       </header>
 
-      <div className="tabs" role="tablist" aria-label="Filter by status">
+      <div className="tabs" role="tablist" aria-label={t("Filter by status")}>
         {FILTERS.map((filter) => (
           <button
             key={filter}
@@ -61,31 +74,31 @@ export function RequestsPage() {
               setParams(filter === "ALL" ? {} : { status: filter }, { replace: true });
             }}
           >
-            {filter === "ALL" ? "All" : filter.charAt(0) + filter.slice(1).toLowerCase()}
+            {filterLabels[filter]}
           </button>
         ))}
       </div>
 
       {error ? (
         <p className="alert alert--error" role="alert">
-          {error.message}
+          {t(error.message)}
         </p>
       ) : null}
 
       <div className="table-wrap">
         <table className="table" data-testid="requests-table">
-          <caption className="sr-only">Special-order requests</caption>
+          <caption className="sr-only">{t("Special-order requests")}</caption>
           <thead>
             <tr>
-              <th scope="col">Reference</th>
-              <th scope="col">Customer</th>
-              <th scope="col">Card</th>
-              <th scope="col">Qty</th>
-              <th scope="col">Target</th>
-              <th scope="col">Quote</th>
-              <th scope="col">Status</th>
+              <th scope="col">{t("Reference")}</th>
+              <th scope="col">{t("Customer")}</th>
+              <th scope="col">{t("Card")}</th>
+              <th scope="col">{t("Qty")}</th>
+              <th scope="col">{t("Target")}</th>
+              <th scope="col">{t("Quote")}</th>
+              <th scope="col">{t("Status")}</th>
               <th scope="col">
-                <span className="sr-only">Actions</span>
+                <span className="sr-only">{t("Actions")}</span>
               </th>
             </tr>
           </thead>
@@ -158,7 +171,7 @@ export function RequestsPage() {
                               aria-expanded={expanded && panel?.mode === "quote"}
                               data-testid={`quote-btn-${item.public_ref}`}
                             >
-                              {item.status === "QUOTED" ? "Re-quote" : "Quote"}
+                              {item.status === "QUOTED" ? t("Re-quote") : t("Quote")}
                             </button>
                             <button
                               type="button"
@@ -167,7 +180,7 @@ export function RequestsPage() {
                               aria-expanded={expanded && panel?.mode === "decline"}
                               data-testid={`decline-btn-${item.public_ref}`}
                             >
-                              Decline
+                              {t("Decline")}
                             </button>
                           </>
                         ) : null}
@@ -179,11 +192,11 @@ export function RequestsPage() {
                             aria-expanded={expanded && panel?.mode === "convert"}
                             data-testid={`convert-btn-${item.public_ref}`}
                           >
-                            Convert to reservation
+                            {t("Convert to reservation")}
                           </button>
                         ) : null}
                         {item.reservation_ref ? (
-                          <span className="muted small nowrap">Reservation {item.reservation_ref}</span>
+                          <span className="muted small nowrap">{t("Reservation {ref}", { ref: item.reservation_ref })}</span>
                         ) : null}
                       </div>
                     </td>
@@ -203,20 +216,20 @@ export function RequestsPage() {
 
         {!isPending && requests.length === 0 ? (
           <div className="empty">
-            <h2>Nothing here</h2>
+            <h2>{t("Nothing here")}</h2>
             <p className="muted">
               {status === "ALL"
-                ? "No special orders yet. Requests from the customer app appear here."
-                : `No ${status.toLowerCase()} requests.`}
+                ? t("No special orders yet. Requests from the customer app appear here.")
+                : t("No {status} requests.", { status: statusLabel })}
             </p>
           </div>
         ) : null}
       </div>
 
       <p className="hint">
-        No stock is held while a card is being sourced. Converting requires the exact card, finish, condition, and
-        language to be in stock, and creates the hold at the current shelf price. Quotes shown to customers are
-        indicative, not price locks.
+        {t(
+          "No stock is held while a card is being sourced. Converting requires the exact card, finish, condition, and language to be in stock, and creates the hold at the current shelf price. Quotes shown to customers are indicative, not price locks.",
+        )}
       </p>
     </div>
   );
@@ -231,14 +244,15 @@ function RequestPanel({
   mode: "quote" | "decline" | "convert";
   onClose: () => void;
 }) {
+  const { t } = useLocale();
+  const actionLabel = mode === "quote" ? t("Quote") : mode === "decline" ? t("Decline") : t("Convert");
+
   return (
     <div className="editor">
       <div className="detail__header">
-        <h3>
-          {mode === "quote" ? "Quote" : mode === "decline" ? "Decline" : "Convert"} {item.public_ref}
-        </h3>
+        <h3>{t("{action} {ref}", { action: actionLabel, ref: item.public_ref })}</h3>
         <button type="button" className="btn btn--ghost btn--small" onClick={onClose}>
-          Close
+          {t("Close")}
         </button>
       </div>
 
@@ -272,7 +286,9 @@ function RequestPanel({
       </div>
 
       {item.customer_note ? <p className="note">“{item.customer_note}”</p> : null}
-      {item.vendor_note ? <p className="muted small">Previous note: {item.vendor_note}</p> : null}
+      {item.vendor_note ? (
+        <p className="muted small">{t("Previous note: {note}", { note: item.vendor_note })}</p>
+      ) : null}
 
       {mode === "quote" ? <QuoteForm item={item} onDone={onClose} /> : null}
       {mode === "decline" ? <DeclineForm item={item} onDone={onClose} /> : null}
@@ -281,12 +297,16 @@ function RequestPanel({
   );
 }
 
-function failureText(cause: unknown): string | null {
+function failureText(
+  cause: unknown,
+  t: (key: string, params?: Record<string, string | number>) => string,
+): string | null {
   if (!cause) return null;
-  return cause instanceof ApiError ? cause.message : String(cause);
+  return cause instanceof ApiError ? t(cause.message) : String(cause);
 }
 
 function QuoteForm({ item, onDone }: { item: StaffCardRequest; onDone: () => void }) {
+  const { t } = useLocale();
   const quote = useQuoteCardRequest();
   const initial =
     item.quote_price?.amount_minor ??
@@ -320,7 +340,7 @@ function QuoteForm({ item, onDone }: { item: StaffCardRequest; onDone: () => voi
     >
       <div className="field-row">
         <div className="field">
-          <label htmlFor={`quote-price-${item.id}`}>Quote price</label>
+          <label htmlFor={`quote-price-${item.id}`}>{t("Quote price")}</label>
           <input
             id={`quote-price-${item.id}`}
             type="number"
@@ -331,12 +351,10 @@ function QuoteForm({ item, onDone }: { item: StaffCardRequest; onDone: () => voi
             data-testid="quote-price"
             required
           />
-          <span className="hint">
-            Indicative price in the shop currency. Conversion uses the shelf price.
-          </span>
+          <span className="hint">{t("Indicative price in the shop currency. Conversion uses the shelf price.")}</span>
         </div>
         <div className="field">
-          <label htmlFor={`quote-expires-${item.id}`}>Quote expires (optional)</label>
+          <label htmlFor={`quote-expires-${item.id}`}>{t("Quote expires (optional)")}</label>
           <input
             id={`quote-expires-${item.id}`}
             type="datetime-local"
@@ -346,18 +364,18 @@ function QuoteForm({ item, onDone }: { item: StaffCardRequest; onDone: () => voi
         </div>
       </div>
       <div className="field">
-        <label htmlFor={`quote-note-${item.id}`}>Note for the customer</label>
+        <label htmlFor={`quote-note-${item.id}`}>{t("Note for the customer")}</label>
         <textarea
           id={`quote-note-${item.id}`}
           value={note}
           onChange={(event) => setNote(event.target.value)}
-          placeholder="For example: can have it by Friday."
+          placeholder={t("For example: can have it by Friday.")}
         />
       </div>
 
-      {failureText(quote.error) ? (
+      {failureText(quote.error, t) ? (
         <p className="alert alert--error" role="alert">
-          {failureText(quote.error)}
+          {failureText(quote.error, t)}
         </p>
       ) : null}
 
@@ -368,15 +386,16 @@ function QuoteForm({ item, onDone }: { item: StaffCardRequest; onDone: () => voi
           disabled={!valid || quote.isPending}
           data-testid="quote-submit"
         >
-          {quote.isPending ? "Sending…" : "Send quote"}
+          {quote.isPending ? t("Sending…") : t("Send quote")}
         </button>
-        <span className="hint">The customer is notified in the app and can accept or cancel the quote.</span>
+        <span className="hint">{t("The customer is notified in the app and can accept or cancel the quote.")}</span>
       </div>
     </form>
   );
 }
 
 function DeclineForm({ item, onDone }: { item: StaffCardRequest; onDone: () => void }) {
+  const { t } = useLocale();
   const decline = useDeclineCardRequest();
   const [note, setNote] = useState("");
 
@@ -389,24 +408,24 @@ function DeclineForm({ item, onDone }: { item: StaffCardRequest; onDone: () => v
       }}
     >
       <div className="field">
-        <label htmlFor={`decline-note-${item.id}`}>Reason (optional)</label>
+        <label htmlFor={`decline-note-${item.id}`}>{t("Reason (optional)")}</label>
         <textarea
           id={`decline-note-${item.id}`}
           value={note}
           onChange={(event) => setNote(event.target.value)}
-          placeholder="For example: out of print and cannot source a clean copy."
+          placeholder={t("For example: out of print and cannot source a clean copy.")}
         />
       </div>
 
-      {failureText(decline.error) ? (
+      {failureText(decline.error, t) ? (
         <p className="alert alert--error" role="alert">
-          {failureText(decline.error)}
+          {failureText(decline.error, t)}
         </p>
       ) : null}
 
       <div className="form__footer">
         <button type="submit" className="btn btn--danger" disabled={decline.isPending} data-testid="decline-submit">
-          {decline.isPending ? "Declining…" : "Decline request"}
+          {decline.isPending ? t("Declining…") : t("Decline request")}
         </button>
       </div>
     </form>
@@ -414,6 +433,7 @@ function DeclineForm({ item, onDone }: { item: StaffCardRequest; onDone: () => v
 }
 
 function ConvertForm({ item, onDone }: { item: StaffCardRequest; onDone: () => void }) {
+  const { t } = useLocale();
   const convert = useConvertCardRequest();
   const [quantity, setQuantity] = useState(String(item.quantity));
   const value = Number(quantity);
@@ -432,10 +452,12 @@ function ConvertForm({ item, onDone }: { item: StaffCardRequest; onDone: () => v
       }}
     >
       <p className="muted">
-        This creates a confirmed reservation for {item.customer_name} and holds the copies immediately.
+        {t("This creates a confirmed reservation for {name} and holds the copies immediately.", {
+          name: item.customer_name,
+        })}
       </p>
       <div className="inline-form">
-        <label htmlFor={`convert-qty-${item.id}`}>Copies to hold</label>
+        <label htmlFor={`convert-qty-${item.id}`}>{t("Copies to hold")}</label>
         <input
           id={`convert-qty-${item.id}`}
           type="number"
@@ -446,9 +468,9 @@ function ConvertForm({ item, onDone }: { item: StaffCardRequest; onDone: () => v
         />
       </div>
 
-      {failureText(convert.error) ? (
+      {failureText(convert.error, t) ? (
         <p className="alert alert--error" role="alert">
-          {failureText(convert.error)}
+          {failureText(convert.error, t)}
         </p>
       ) : null}
 
@@ -459,11 +481,9 @@ function ConvertForm({ item, onDone }: { item: StaffCardRequest; onDone: () => v
           disabled={!valid || convert.isPending}
           data-testid="convert-submit"
         >
-          {convert.isPending ? "Converting…" : "Create reservation"}
+          {convert.isPending ? t("Converting…") : t("Create reservation")}
         </button>
-        <span className="hint">
-          The card must already be in stock for the same variant; the hold uses the current shelf price.
-        </span>
+        <span className="hint">{t("The card must already be in stock for the same variant; the hold uses the current shelf price.")}</span>
       </div>
     </form>
   );

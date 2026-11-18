@@ -7,7 +7,7 @@ import { hydrateQueryClient, persistQueryCache } from "../lib/queryCache";
 import { colors, type } from "../theme";
 import { AuthProvider, useAuth } from "../state/auth";
 import { CartProvider } from "../state/cart";
-import { LocaleProvider } from "../state/locale";
+import { LocaleProvider, useLocale } from "../state/locale";
 import { PushProvider } from "../state/push";
 import { ReservationsProvider } from "../state/reservations";
 import { RestockAlertsProvider } from "../state/restockAlerts";
@@ -55,6 +55,7 @@ export default function RootLayout() {
 }
 
 function RootNavigator() {
+  const { t } = useLocale();
   const { hydrated, isAuthenticated } = useAuth();
   const pathname = usePathname();
   const canEnter = hydrated && isAuthenticated;
@@ -75,17 +76,17 @@ function RootNavigator() {
     >
       <Stack.Protected guard={canEnter} redirectTo={loginRedirect}>
         <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="account" options={{ title: "Your account" }} />
-        <Stack.Screen name="scan" options={{ title: "Scan a code", presentation: "modal" }} />
-        <Stack.Screen name="shop/[slug]/index" options={{ title: "Shop" }} />
-        <Stack.Screen name="shop/[slug]/cart" options={{ title: "Your hold" }} />
-        <Stack.Screen name="shop/[slug]/card/[stockId]" options={{ title: "Card" }} />
-        <Stack.Screen name="reservation/[id]" options={{ title: "Reservation" }} />
-        <Stack.Screen name="alerts" options={{ title: "Restock alerts" }} />
-        <Stack.Screen name="notifications" options={{ title: "Notifications" }} />
-        <Stack.Screen name="requests/index" options={{ title: "Special orders" }} />
-        <Stack.Screen name="requests/new" options={{ title: "Request a card" }} />
-        <Stack.Screen name="requests/[id]" options={{ title: "Special order" }} />
+        <Stack.Screen name="account" options={{ title: t("Your account") }} />
+        <Stack.Screen name="scan" options={{ title: t("Scan a code"), presentation: "modal" }} />
+        <Stack.Screen name="shop/[slug]/index" options={{ title: t("Shop") }} />
+        <Stack.Screen name="shop/[slug]/cart" options={{ title: t("Your hold") }} />
+        <Stack.Screen name="shop/[slug]/card/[stockId]" options={{ title: t("Card") }} />
+        <Stack.Screen name="reservation/[id]" options={{ title: t("Reservation") }} />
+        <Stack.Screen name="alerts" options={{ title: t("Restock alerts") }} />
+        <Stack.Screen name="notifications" options={{ title: t("Notifications") }} />
+        <Stack.Screen name="requests/index" options={{ title: t("Special orders") }} />
+        <Stack.Screen name="requests/new" options={{ title: t("Request a card") }} />
+        <Stack.Screen name="requests/[id]" options={{ title: t("Special order") }} />
       </Stack.Protected>
       <Stack.Screen name="login" options={{ headerShown: false }} />
     </Stack>

@@ -22,6 +22,7 @@ import { PrimaryButton } from "../../../components/PrimaryButton";
 import { formatMoney, titleCase } from "../../../lib/format";
 import { newIdempotencyKey } from "../../../lib/idempotency";
 import { useAuth } from "../../../state/auth";
+import { useLocale } from "../../../state/locale";
 import { useCart } from "../../../state/cart";
 import { useReservations } from "../../../state/reservations";
 import { colors, radii, spacing, type } from "../../../theme";
@@ -39,6 +40,7 @@ export default function CartScreen() {
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const { customer, token } = useAuth();
+  const { t } = useLocale();
   const shopQuery = useShop(slug);
   const cart = useCart();
   const { save } = useReservations();
@@ -60,9 +62,9 @@ export default function CartScreen() {
     const accountEmail = customer?.email ?? "";
     const contactEmail = token ? accountEmail : email.trim();
     const nextErrors: Errors = {};
-    if (!name.trim()) nextErrors.name = "Enter the name for the hold.";
+    if (!name.trim()) nextErrors.name = t("Enter the name for the hold.");
     if (!token && !EMAIL.test(contactEmail)) {
-      nextErrors.email = "Enter a valid email address.";
+      nextErrors.email = t("Enter a valid email address.");
     }
     setErrors(nextErrors);
     setApiError(null);
@@ -97,7 +99,7 @@ export default function CartScreen() {
       idempotencyKey.current = newIdempotencyKey();
       router.replace(`/reservation/${reservation.id}`);
     } catch (error) {
-      setApiError(error instanceof Error ? error.message : "Could not create the hold.");
+      setApiError(t(error instanceof Error ? error.message : "Could not create the hold."));
     } finally {
       setSubmitting(false);
     }
@@ -108,9 +110,9 @@ export default function CartScreen() {
       <View style={styles.screen}>
         <EmptyState
           icon="bag-handle-outline"
-          title="Your hold is empty"
-          body="Add a few cards from the shop shelf and come back here."
-          actionLabel="Back to the shop"
+          title={t("Your hold is empty")}
+          body={t("Add a few cards from the shop shelf and come back here.")}
+          actionLabel={t("Back to the shop")}
           onAction={() => router.back()}
         />
       </View>
@@ -132,10 +134,17 @@ export default function CartScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.summary}>
-          <Text style={styles.eyebrow}>YOUR HOLD</Text>
+          <Text style={styles.eyebrow}>{t("YOUR HOLD")}</Text>
           <Text style={styles.summaryTitle}>
-            {lines.length} {lines.length === 1 ? "card" : "cards"} from{" "}
-            {shop?.brand_name || shop?.name || "this shop"}
+            {lines.length === 1
+              ? t("{count} card from {shopName}", {
+                  count: lines.length,
+                  shopName: shop?.brand_name || shop?.name || t("this shop"),
+                })
+              : t("{count} cards from {shopName}", {
+                  count: lines.length,
+                  shopName: shop?.brand_name || shop?.name || t("this shop"),
+                })}
           </Text>
           <View style={styles.lines}>
             {lines.map((line) => (
@@ -146,15 +155,15 @@ export default function CartScreen() {
                   </Text>
                   <Text style={styles.lineMeta}>
                     {line.item.card.set_code.toUpperCase()} · #{line.item.card.collector_number} ·{" "}
-                    {titleCase(line.item.finish)} · {line.item.condition}
+                    {t(titleCase(line.item.finish))} · {t(line.item.condition)}
                   </Text>
                   <Text style={styles.linePrice}>
-                    {formatMoney(line.item.price)} each
+                    {t("{price} each", { price: formatMoney(line.item.price) })}
                   </Text>
                 </View>
                 <View style={styles.quantity}>
                   <Pressable
-                    accessibilityLabel={`Remove one ${line.item.card.name}`}
+                    accessibilityLabel={t("Remove one {cardName}", { cardName: line.item.card.name })}
                     accessibilityRole="button"
                     hitSlop={8}
                     onPress={() => cart.setQuantity(slug, line.stockId, line.quantity - 1)}
@@ -164,7 +173,7 @@ export default function CartScreen() {
                   </Pressable>
                   <Text style={styles.quantityText}>{line.quantity}</Text>
                   <Pressable
-                    accessibilityLabel={`Add one ${line.item.card.name}`}
+                    accessibilityLabel={t("Add one {cardName}", { cardName: line.item.card.name })}
                     accessibilityRole="button"
                     disabled={line.quantity >= line.item.available}
                     hitSlop={8}
@@ -178,7 +187,7 @@ export default function CartScreen() {
             ))}
           </View>
           <View style={styles.totalRow}>
-            <Text style={styles.totalLabel}>Total</Text>
+            <Text style={styles.totalLabel}>{t("Total")}</Text>
             <Text style={styles.totalValue}>{formatMoney(total)}</Text>
           </View>
         </View>
@@ -189,9 +198,9 @@ export default function CartScreen() {
               <Ionicons name="person-outline" size={18} color={colors.primary} />
             </View>
             <View style={styles.formTitleText}>
-              <Text style={styles.formTitle}>Contact details</Text>
+              <Text style={styles.formTitle}>{t("Contact details")}</Text>
               <Text style={styles.formSubtitle}>
-                The shop uses these to prepare and hold your cards.
+                {t("The shop uses these to prepare and hold your cards.")}
               </Text>
             </View>
           </View>
@@ -199,9 +208,9 @@ export default function CartScreen() {
             autoCapitalize="words"
             autoComplete="name"
             error={errors.name}
-            label="Name"
+            label={t("Name")}
             onChangeText={setName}
-            placeholder="Your name"
+            placeholder={t("Your name")}
             returnKeyType="next"
             textContentType="name"
             value={name}
@@ -212,9 +221,9 @@ export default function CartScreen() {
             editable={!token}
             error={token ? null : errors.email}
             keyboardType="email-address"
-            label="Email"
+            label={t("Email")}
             onChangeText={setEmail}
-            placeholder="you@example.com"
+            placeholder={t("you@example.com")}
             returnKeyType="next"
             textContentType="emailAddress"
             value={token ? (customer?.email ?? "") : email}
@@ -223,20 +232,20 @@ export default function CartScreen() {
             autoCapitalize="none"
             autoComplete="tel"
             keyboardType="phone-pad"
-            label="Phone (optional)"
+            label={t("Phone (optional)")}
             onChangeText={setPhone}
-            placeholder="For pickup questions"
+            placeholder={t("For pickup questions")}
             returnKeyType="next"
             textContentType="telephoneNumber"
             value={phone}
           />
           <Field
-            label="Note (optional)"
+            label={t("Note (optional)")}
             maxLength={2000}
             multiline
             numberOfLines={3}
             onChangeText={setNote}
-            placeholder="Anything the shop should know?"
+            placeholder={t("Anything the shop should know?")}
             value={note}
           />
         </View>
@@ -244,8 +253,9 @@ export default function CartScreen() {
         <View style={styles.policy}>
           <Ionicons name="time-outline" size={18} color={colors.primary} />
           <Text style={styles.policyText}>
-            The shop holds your cards for {shop?.hold_hours ?? 24} hours. You can cancel from this
-            app before pickup. Payment is arranged directly with the shop.
+            {t("The shop holds your cards for {count} hours. You can cancel from this app before pickup. Payment is arranged directly with the shop.", {
+              count: shop?.hold_hours ?? 24,
+            })}
           </Text>
         </View>
 
@@ -257,12 +267,12 @@ export default function CartScreen() {
         ) : null}
 
         <PrimaryButton
-          label="Request this hold"
+          label={t("Request this hold")}
           loading={submitting}
           onPress={() => void submit()}
         />
         <Text style={styles.disclaimer}>
-          You will receive a reservation reference. No payment is taken in the app.
+          {t("You will receive a reservation reference. No payment is taken in the app.")}
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>

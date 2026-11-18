@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { ReservationListItem } from "../lib/accountMerge";
 import { formatMoney, formatRemaining } from "../lib/format";
+import { useLocale } from "../state/locale";
 import { colors, radii, spacing, type } from "../theme";
 import { StatusPill } from "./StatusPill";
 
@@ -13,17 +14,18 @@ export function HoldCard({
   reservation: ReservationListItem;
   onPress: () => void;
 }) {
+  const { t } = useLocale();
   const shop = reservation.shop as { name?: string; slug?: string };
   return (
     <Pressable
-      accessibilityHint="Opens the reservation details"
+      accessibilityHint={t("Opens the reservation details")}
       accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
     >
       <View style={styles.top}>
         <View style={styles.titleWrap}>
-          <Text style={styles.shop}>{String(shop.name ?? shop.slug ?? "Shop")}</Text>
+          <Text style={styles.shop}>{String(shop.name ?? shop.slug ?? t("Shop"))}</Text>
           <Text style={styles.ref}>#{reservation.public_ref}</Text>
         </View>
         <StatusPill status={reservation.status} />
@@ -31,7 +33,7 @@ export function HoldCard({
       <View style={styles.bottom}>
         <View style={styles.meta}>
           <Ionicons name="time-outline" size={14} color={colors.inkMuted} />
-          <Text style={styles.metaText}>{formatRemaining(reservation.expires_at)}</Text>
+          <Text style={styles.metaText}>{formatRemaining(reservation.expires_at, undefined, t)}</Text>
         </View>
         <Text style={styles.total}>{formatMoney(reservation.total)}</Text>
       </View>

@@ -8,6 +8,7 @@ import { LoadingState } from "../../components/LoadingState";
 import { RequestCard } from "../../components/RequestCard";
 import { mergeCardRequests } from "../../lib/accountMerge";
 import { useAuth } from "../../state/auth";
+import { useLocale } from "../../state/locale";
 import { useSpecialOrders } from "../../state/specialOrders";
 import { colors, radii, spacing, type } from "../../theme";
 
@@ -15,6 +16,7 @@ export default function RequestsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { isAuthenticated, token } = useAuth();
+  const { t } = useLocale();
   const { hydrated, requests } = useSpecialOrders();
   const accountRequests = useMyCardRequests(token);
   const allRequests = mergeCardRequests(
@@ -23,7 +25,7 @@ export default function RequestsScreen() {
   );
 
   if (!hydrated || (token && accountRequests.isLoading)) {
-    return <LoadingState label="Loading special orders…" />;
+    return <LoadingState label={t("Loading special orders…")} />;
   }
 
   return (
@@ -37,20 +39,19 @@ export default function RequestsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.intro}>
-          <Text style={styles.eyebrow}>SPECIAL ORDERS</Text>
-          <Text style={styles.title}>Looking for something specific?</Text>
+          <Text style={styles.eyebrow}>{t("SPECIAL ORDERS")}</Text>
+          <Text style={styles.title}>{t("Looking for something specific?")}</Text>
           <Text style={styles.subtitle}>
-            Open a shop and choose Request a special order to ask it to source a card you cannot
-            find. You will get a quote before anything is reserved.
+            {t("Open a shop and choose Request a special order to ask it to source a card you cannot find. You will get a quote before anything is reserved.")}
           </Text>
         </View>
 
         {allRequests.length === 0 ? (
           <EmptyState
             icon="sparkles-outline"
-            title="No special orders yet"
-            body="Open a shop and choose “Request a special order”, or open any card at a shop and choose “Need a different copy?”."
-            actionLabel="Browse shops"
+            title={t("No special orders yet")}
+            body={t("Open a shop and choose “Request a special order”, or open any card at a shop and choose “Need a different copy?”.")}
+            actionLabel={t("Browse shops")}
             onAction={() => router.replace("/")}
           />
         ) : (

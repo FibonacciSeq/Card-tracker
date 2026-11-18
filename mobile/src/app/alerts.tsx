@@ -13,6 +13,7 @@ import { PrimaryButton } from "../components/PrimaryButton";
 import { mergeRestockAlerts, type AlertListItem } from "../lib/accountMerge";
 import { formatDateTime, titleCase } from "../lib/format";
 import { useAuth } from "../state/auth";
+import { useLocale } from "../state/locale";
 import { useRestockAlerts } from "../state/restockAlerts";
 import { colors, radii, spacing, type } from "../theme";
 
@@ -20,6 +21,7 @@ export default function AlertsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
+  const { t } = useLocale();
   const { isAuthenticated, token } = useAuth();
   const { alerts, getToken, hydrated, remove } = useRestockAlerts();
   const accountAlerts = useMyRestockAlerts(token);
@@ -36,27 +38,27 @@ export default function AlertsScreen() {
     setBusyId(alert.id);
     try {
       if (alert.source === "account") {
-        if (!token) throw new Error("Sign in again to remove this alert.");
+        if (!token) throw new Error(t("Sign in again to remove this alert."));
         await deleteMyRestockAlert(alert.id, token);
         await queryClient.invalidateQueries({ queryKey: accountKeys.restockAlerts });
       } else {
         const guestToken = await getToken(alert.id);
         if (!guestToken) {
-          throw new Error("This alert is missing its guest token. Add it again from a card page.");
+          throw new Error(t("This alert is missing its guest token. Add it again from a card page."));
         }
         await unsubscribeRestockAlert(alert.shopSlug, alert.id, guestToken);
       }
       await remove(alert.id);
       setConfirming(null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not remove this alert.");
+      setError(t(caught instanceof Error ? caught.message : "Could not remove this alert."));
     } finally {
       setBusyId(null);
     }
   }
 
   if (!hydrated || (token && accountAlerts.isLoading)) {
-    return <LoadingState label="Loading alerts…" />;
+    return <LoadingState label={t("Loading alerts…")} />;
   }
 
   return (
@@ -70,10 +72,10 @@ export default function AlertsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.intro}>
-          <Text style={styles.eyebrow}>RESTOCK ALERTS</Text>
-          <Text style={styles.title}>We’ll tell you when it’s back.</Text>
+          <Text style={styles.eyebrow}>{t("RESTOCK ALERTS")}</Text>
+          <Text style={styles.title}>{t("We’ll tell you when it’s back.")}</Text>
           <Text style={styles.subtitle}>
-            One-off notifications for the exact card variant you asked about. No newsletter.
+            {t("One-off notifications for the exact card variant you asked about. No newsletter.")}
           </Text>
         </View>
 
@@ -87,9 +89,9 @@ export default function AlertsScreen() {
         {allAlerts.length === 0 ? (
           <EmptyState
             icon="notifications-outline"
-            title="No restock alerts"
-            body="Open a sold-out card at a shop and ask to be notified when it returns."
-            actionLabel="Browse shops"
+            title={t("No restock alerts")}
+            body={t("Open a sold-out card at a shop and ask to be notified when it returns.")}
+            actionLabel={t("Browse shops")}
             onAction={() => router.replace("/")}
           />
         ) : (
@@ -97,7 +99,7 @@ export default function AlertsScreen() {
             {allAlerts.map((alert) => (
               <View key={alert.id} style={styles.card}>
                 <Pressable
-                  accessibilityHint="Opens the card in the shop"
+                  accessibilityHint={t("Opens the card in the shop")}
                   accessibilityRole="button"
                   onPress={() =>
                     router.push(
@@ -118,15 +120,15 @@ export default function AlertsScreen() {
                     <Ionicons name="chevron-forward" size={18} color={colors.inkMuted} />
                   </View>
                   <Text style={styles.variant}>
-                    {titleCase(alert.finish)} · {alert.condition} ·{" "}
+                    {t(titleCase(alert.finish))} · {t(alert.condition)} ·{" "}
                     {alert.language.toUpperCase()}
                   </Text>
                   <Text style={styles.email}>{alert.email}</Text>
-                  <Text style={styles.created}>Added {formatDateTime(alert.createdAt)}</Text>
+                  <Text style={styles.created}>{t("Added {date}", { date: formatDateTime(alert.createdAt) })}</Text>
                 </Pressable>
 
                 <Pressable
-                  accessibilityLabel={`Remove restock alert for ${alert.cardName}`}
+                  accessibilityLabel={t("Remove restock alert for {card}", { card: alert.cardName })}
                   accessibilityRole="button"
                   onPress={() => {
                     setError(null);
@@ -135,7 +137,7 @@ export default function AlertsScreen() {
                   style={({ pressed }) => [styles.removeButton, pressed && styles.pressed]}
                 >
                   <Ionicons name="trash-outline" size={16} color={colors.danger} />
-                  <Text style={styles.removeLabel}>Remove alert</Text>
+                  <Text style={styles.removeLabel}>{t("Remove alert")}</Text>
                 </Pressable>
               </View>
             ))}
@@ -154,20 +156,23 @@ export default function AlertsScreen() {
             <View style={styles.modalIcon}>
               <Ionicons name="notifications-off-outline" size={24} color={colors.danger} />
             </View>
-            <Text style={styles.modalTitle}>Remove this alert?</Text>
+            <Text style={styles.modalTitle}>{t("Remove this alert?")}</Text>
             <Text style={styles.modalBody}>
               {confirming
-                ? `You will not be notified when ${confirming.cardName} is back at ${confirming.shopName}.`
+                ? t("You will not be notified when {card} is back at {shop}.", {
+                    card: confirming.cardName,
+                    shop: confirming.shopName,
+                  })
                 : ""}
             </Text>
             {error ? <Text style={styles.modalError}>{error}</Text> : null}
             <PrimaryButton
-              label="Keep alert"
+              label={t("Keep alert")}
               onPress={() => setConfirming(null)}
               variant="secondary"
             />
             <PrimaryButton
-              label="Remove alert"
+              label={t("Remove alert")}
               loading={busyId === confirming?.id}
               onPress={() => {
                 if (confirming) void unsubscribe(confirming);

@@ -77,9 +77,9 @@ export default function AccountScreen() {
     setNotice(null);
     try {
       await updateProfile(values);
-      setNotice("Profile updated.");
+      setNotice(t("Profile updated."));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not update your profile.");
+      setError(t(caught instanceof Error ? caught.message : "Could not update your profile."));
     }
   }
 
@@ -108,27 +108,29 @@ export default function AccountScreen() {
       if (accountAction === "delete") {
         await deleteAccount();
         setNotice(
-          "Your account is closed and every device is signed out. Guest items saved on this device remain available.",
+          t("Your account is closed and every device is signed out. Guest items saved on this device remain available."),
         );
       } else if (accountAction === "sign-out-all") {
         await signOutEverywhere();
         resetEmailChangeForm();
-        setNotice("Signed out on every device that was using this account.");
+        setNotice(t("Signed out on every device that was using this account."));
       } else {
         await signOut();
         resetEmailChangeForm();
-        setNotice("Signed out on this device. Other devices stay signed in.");
+        setNotice(t("Signed out on this device. Other devices stay signed in."));
       }
       setAccountAction(null);
     } catch (caught) {
       setAccountActionError(
-        caught instanceof Error
-          ? caught.message
-          : accountAction === "delete"
-            ? "Could not delete your account."
-            : accountAction === "sign-out-all"
-              ? "Could not sign out every device."
-              : "Could not sign out this device.",
+        t(
+          caught instanceof Error
+            ? caught.message
+            : accountAction === "delete"
+              ? "Could not delete your account."
+              : accountAction === "sign-out-all"
+                ? "Could not sign out every device."
+                : "Could not sign out this device.",
+        ),
       );
     } finally {
       setBusy(false);
@@ -145,9 +147,13 @@ export default function AccountScreen() {
       setEmailCode("");
       setEmailDebugCode(result.debug_code ?? null);
       setEmailResendIn(result.resend_after);
-      setNotice(`We sent a confirmation code to ${newEmail.trim().toLowerCase()}.`);
+      setNotice(
+        t("We sent a confirmation code to {email}.", { email: newEmail.trim().toLowerCase() }),
+      );
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not send a confirmation code.");
+      setError(
+        t(caught instanceof Error ? caught.message : "Could not send a confirmation code."),
+      );
     } finally {
       setChangingEmail(false);
     }
@@ -164,10 +170,12 @@ export default function AccountScreen() {
       setEmailCode("");
       setEmailDebugCode(null);
       setEmailResendIn(0);
-      setNotice(emailChangeMessage(result.claimed));
+      setNotice(emailChangeMessage(result.claimed, t));
       await queryClient.invalidateQueries({ queryKey: accountKeys.all });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not confirm the new email.");
+      setError(
+        t(caught instanceof Error ? caught.message : "Could not confirm the new email."),
+      );
     } finally {
       setChangingEmail(false);
     }
@@ -189,7 +197,9 @@ export default function AccountScreen() {
       await changePassword(currentPassword, newPassword);
       setNotice(hadPassword ? t("passwordUpdated") : t("passwordSet"));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not update your password.");
+      setError(
+        t(caught instanceof Error ? caught.message : "Could not update your password."),
+      );
     }
   }
 
@@ -200,14 +210,16 @@ export default function AccountScreen() {
       await refreshCustomer();
       await queryClient.invalidateQueries({ queryKey: accountKeys.all });
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Could not refresh your account.");
+      setError(
+        t(caught instanceof Error ? caught.message : "Could not refresh your account."),
+      );
     } finally {
       setRefreshing(false);
     }
   }
 
   if (!hydrated || !isAuthenticated || !customer) {
-    return <LoadingState label="Loading your account…" />;
+    return <LoadingState label={t("Loading your account…")} />;
   }
 
   if (isAuthenticated && customer) {
@@ -216,6 +228,7 @@ export default function AccountScreen() {
       requests: requests.data?.items.length ?? 0,
       alerts: alerts.data?.items.length ?? 0,
     };
+    const linkedCount = lastClaimed ? totalClaimed(lastClaimed) : 0;
     return (
       <>
         <ScrollView
@@ -238,7 +251,7 @@ export default function AccountScreen() {
         <LanguagePicker />
 
         <PrimaryButton
-          label="Browse shops"
+          label={t("Browse shops")}
           onPress={() => router.replace("/")}
           variant="secondary"
         />
@@ -256,19 +269,20 @@ export default function AccountScreen() {
           <View style={styles.linked}>
             <Ionicons name="link-outline" size={18} color={colors.primary} />
             <Text style={styles.linkedText}>
-              Linked {totalClaimed(lastClaimed)} earlier item
-              {totalClaimed(lastClaimed) === 1 ? "" : "s"} with this email.
+              {linkedCount === 1
+                ? t("Linked {count} earlier item with this email.", { count: linkedCount })
+                : t("Linked {count} earlier items with this email.", { count: linkedCount })}
             </Text>
           </View>
         ) : null}
 
         <View style={styles.infoCard}>
-          <Row label="Verified" value="Yes" />
+          <Row label={t("Verified")} value={t("Yes")} />
           <Row
-            label="Account created"
-            value={customer.created_at ? formatDateTime(customer.created_at) : "—"}
+            label={t("Account created")}
+            value={customer.created_at ? formatDateTime(customer.created_at) : t("—")}
           />
-          <Row label="Session" value="Secure storage with refresh" />
+          <Row label={t("Session")} value={t("Secure storage with refresh")} />
         </View>
 
         <ProfileCard customer={customer} onSave={saveProfile} />
@@ -279,10 +293,9 @@ export default function AccountScreen() {
         />
 
         <View style={styles.profileCard}>
-          <Text style={styles.pushTitle}>Email address</Text>
+          <Text style={styles.pushTitle}>{t("Email address")}</Text>
           <Text style={styles.pushBody}>
-            Changing your email signs out other devices and links guest items that use the new
-            address. We send a confirmation code before applying the change.
+            {t("Changing your email signs out other devices and links guest items that use the new address. We send a confirmation code before applying the change.")}
           </Text>
           {emailStep === "idle" ? (
             <>
@@ -290,9 +303,9 @@ export default function AccountScreen() {
                 autoCapitalize="none"
                 autoComplete="email"
                 keyboardType="email-address"
-                label="New email"
+                label={t("New email")}
                 onChangeText={setNewEmail}
-                placeholder="new@example.com"
+                placeholder={t("new@example.com")}
                 textContentType="emailAddress"
                 value={newEmail}
               />
@@ -302,7 +315,7 @@ export default function AccountScreen() {
                   newEmail.trim().length === 0 ||
                   newEmail.trim().toLowerCase() === customer.email.toLowerCase()
                 }
-                label="Send confirmation code"
+                label={t("Send confirmation code")}
                 loading={changingEmail}
                 onPress={() => void sendEmailChangeCode()}
                 variant="secondary"
@@ -311,22 +324,22 @@ export default function AccountScreen() {
           ) : (
             <>
               <Text style={styles.pushBody}>
-                Enter the 6-digit code sent to {newEmail.trim().toLowerCase()}.
+                {t("Enter the 6-digit code sent to {email}.", { email: newEmail.trim().toLowerCase() })}
               </Text>
               <Field
                 autoCapitalize="none"
                 keyboardType="number-pad"
-                label="Confirmation code"
+                label={t("Confirmation code")}
                 maxLength={6}
                 onChangeText={(value) => setEmailCode(value.replace(/\D/g, "").slice(0, 6))}
-                placeholder="000000"
+                placeholder={t("000000")}
                 returnKeyType="done"
                 textContentType="oneTimeCode"
                 value={emailCode}
               />
               <PrimaryButton
                 disabled={changingEmail || emailCode.length !== 6}
-                label="Confirm new email"
+                label={t("Confirm new email")}
                 loading={changingEmail}
                 onPress={() => void confirmEmailChange()}
               />
@@ -338,13 +351,13 @@ export default function AccountScreen() {
               >
                 <Text style={[styles.resendLabel, emailResendIn > 0 && styles.resendDisabled]}>
                   {emailResendIn > 0
-                    ? `Send a new code in ${emailResendIn}s`
-                    : "Send a new code"}
+                    ? t("Send a new code in {count}s", { count: emailResendIn })
+                    : t("Send a new code")}
                 </Text>
               </Pressable>
               {__DEV__ && emailDebugCode ? (
                 <View style={styles.debug}>
-                  <Text style={styles.debugLabel}>Development code</Text>
+                  <Text style={styles.debugLabel}>{t("Development code")}</Text>
                   <Text selectable style={styles.debugCode}>
                     {emailDebugCode}
                   </Text>
@@ -356,7 +369,7 @@ export default function AccountScreen() {
                 onPress={cancelEmailChange}
                 style={({ pressed }) => [styles.resend, pressed && styles.pressed]}
               >
-                <Text style={styles.resendLabel}>Cancel email change</Text>
+                <Text style={styles.resendLabel}>{t("Cancel email change")}</Text>
               </Pressable>
             </>
           )}
@@ -367,18 +380,18 @@ export default function AccountScreen() {
             <Ionicons name="notifications-outline" size={18} color={colors.primary} />
             <Text style={styles.pushTitle}>{t("turnOnPush")}</Text>
           </View>
-          <Text style={styles.pushBody}>{pushMessage(push.status)}</Text>
-          {push.error ? <Text style={styles.pushError}>{push.error}</Text> : null}
+          <Text style={styles.pushBody}>{pushMessage(push.status, t)}</Text>
+          {push.error ? <Text style={styles.pushError}>{t(push.error)}</Text> : null}
           {push.status === "enabled" ? (
             <PrimaryButton
-              label="Turn off push notifications"
+              label={t("Turn off push notifications")}
               onPress={() => void push.disable()}
               variant="secondary"
             />
           ) : push.status === "denied" || push.status === "unsupported" ? null : (
             <PrimaryButton
               disabled={push.status === "enabling"}
-              label="Enable push notifications"
+              label={t("Enable push notifications")}
               loading={push.status === "enabling"}
               onPress={() => void push.enable()}
             />
@@ -388,47 +401,42 @@ export default function AccountScreen() {
         <View style={styles.pushCard}>
           <View style={styles.pushHeader}>
             <Ionicons name="list-outline" size={18} color={colors.primary} />
-            <Text style={styles.pushTitle}>Notification delivery</Text>
+            <Text style={styles.pushTitle}>{t("Notification delivery")}</Text>
           </View>
           <Text style={styles.pushBody}>
-            See which hold, request, and restock updates were sent, skipped, or failed, and check
-            whether this account still has an active push device.
+            {t("See which hold, request, and restock updates were sent, skipped, or failed, and check whether this account still has an active push device.")}
           </Text>
           <PrimaryButton
-            label="View notification log"
+            label={t("View notification log")}
             onPress={() => router.push("/notifications")}
             variant="secondary"
           />
         </View>
 
         <Text style={styles.note}>
-          This signed-in session is kept in secure device storage so you can stay signed in across
-          app restarts. Signing out revokes this device&apos;s refresh session; other devices stay
-          signed in. Guest holds saved on this device remain available.
+          {t("This signed-in session is kept in secure device storage so you can stay signed in across app restarts. Signing out revokes this device's refresh session; other devices stay signed in. Guest holds saved on this device remain available.")}
         </Text>
         <Text style={styles.note}>
-          Deleting your account closes it for this email and signs out every device. Your hold,
-          special-order, and restock-alert history stays with the shops, and guest data saved on
-          this device is not removed.
+          {t("Deleting your account closes it for this email and signs out every device. Your hold, special-order, and restock-alert history stays with the shops, and guest data saved on this device is not removed.")}
         </Text>
 
         <PrimaryButton
-          label="Refresh account data"
+          label={t("Refresh account data")}
           loading={refreshing}
           onPress={() => void refresh()}
           variant="secondary"
         />
         <PrimaryButton
-          label="Sign out all devices"
+          label={t("Sign out all devices")}
           onPress={() => openAccountAction("sign-out-all")}
           variant="secondary"
         />
         <PrimaryButton
-          label="Delete account"
+          label={t("Delete account")}
           onPress={() => openAccountAction("delete")}
           variant="danger"
         />
-        <PrimaryButton label="Sign out" onPress={() => openAccountAction("sign-out")} variant="danger" />
+        <PrimaryButton label={t("Sign out")} onPress={() => openAccountAction("sign-out")} variant="danger" />
         </ScrollView>
         <Modal
           animationType="fade"
@@ -445,18 +453,18 @@ export default function AccountScreen() {
                   color={colors.danger}
                 />
               </View>
-              <Text style={styles.modalTitle}>{accountActionTitle(accountAction)}</Text>
-              <Text style={styles.modalBody}>{accountActionBody(accountAction)}</Text>
+              <Text style={styles.modalTitle}>{accountActionTitle(accountAction, t)}</Text>
+              <Text style={styles.modalBody}>{accountActionBody(accountAction, t)}</Text>
               {accountActionError ? (
                 <Text style={styles.modalError}>{accountActionError}</Text>
               ) : null}
               <PrimaryButton
-                label={accountActionCancelLabel(accountAction)}
+                label={accountActionCancelLabel(accountAction, t)}
                 onPress={() => setAccountAction(null)}
                 variant="secondary"
               />
               <PrimaryButton
-                label={accountActionConfirmLabel(accountAction)}
+                label={accountActionConfirmLabel(accountAction, t)}
                 loading={busy}
                 onPress={() => void performAccountAction()}
                 variant="danger"
@@ -468,7 +476,7 @@ export default function AccountScreen() {
     );
   }
 
-  return <LoadingState label="Redirecting to sign in…" />;
+  return <LoadingState label={t("Redirecting to sign in…")} />;
 }
 
 function PasswordCard({
@@ -520,7 +528,7 @@ function PasswordCard({
           autoCorrect={false}
           label={t("currentPasswordLabel")}
           onChangeText={setCurrentPassword}
-          placeholder="••••••••"
+          placeholder={t("••••••••")}
           secureTextEntry
           textContentType="password"
           value={currentPassword}
@@ -532,7 +540,7 @@ function PasswordCard({
         autoCorrect={false}
         label={t("newPasswordLabel")}
         onChangeText={setNewPassword}
-        placeholder="••••••••"
+        placeholder={t("••••••••")}
         secureTextEntry
         textContentType="newPassword"
         value={newPassword}
@@ -543,7 +551,7 @@ function PasswordCard({
         autoCorrect={false}
         label={t("confirmPasswordLabel")}
         onChangeText={setConfirmPassword}
-        placeholder="••••••••"
+        placeholder={t("••••••••")}
         secureTextEntry
         textContentType="newPassword"
         value={confirmPassword}
@@ -565,55 +573,63 @@ function PasswordCard({
   );
 }
 
-function pushMessage(status: PushStatus): string {
+type Translate = ReturnType<typeof useLocale>["t"];
+
+function pushMessage(status: PushStatus, t: Translate): string {
   if (status === "enabled") {
-    return "This device gets a notification when a hold is ready, a special order is quoted, or a card is back in stock.";
+    return t("This device gets a notification when a hold is ready, a special order is quoted, or a card is back in stock.");
   }
   if (status === "denied") {
-    return "Notifications are blocked for Card Tracker. Allow them in your device settings, then try again.";
+    return t("Notifications are blocked for Card Tracker. Allow them in your device settings, then try again.");
   }
   if (status === "unsupported") {
-    return "Push notifications need a physical iOS or Android device. The web preview and simulators cannot register a native token.";
+    return t("Push notifications need a physical iOS or Android device. The web preview and simulators cannot register a native token.");
   }
-  if (status === "enabling") return "Requesting notification permission…";
-  if (status === "error") return "Notifications could not be enabled. Check your connection and try again.";
-  return "Get a notification when a hold is ready, a special order is quoted, or a card is back in stock.";
+  if (status === "enabling") return t("Requesting notification permission…");
+  if (status === "error") return t("Notifications could not be enabled. Check your connection and try again.");
+  return t("Get a notification when a hold is ready, a special order is quoted, or a card is back in stock.");
 }
 
 function totalClaimed(claimed: ClaimedCounts): number {
   return claimed.reservations + claimed.restock_alerts + claimed.card_requests;
 }
 
-function emailChangeMessage(claimed: ClaimedCounts): string {
+function emailChangeMessage(claimed: ClaimedCounts, t: Translate): string {
   const total = totalClaimed(claimed);
-  if (total === 0) return "Email updated. Other devices were signed out.";
-  return `Email updated and linked ${total} earlier item${total === 1 ? "" : "s"}. Other devices were signed out.`;
+  if (total === 0) return t("Email updated. Other devices were signed out.");
+  return total === 1
+    ? t("Email updated and linked {count} earlier item. Other devices were signed out.", {
+        count: total,
+      })
+    : t("Email updated and linked {count} earlier items. Other devices were signed out.", {
+        count: total,
+      });
 }
 
-function accountActionTitle(action: AccountAction): string {
-  if (action === "delete") return "Delete this account?";
-  if (action === "sign-out-all") return "Sign out on every device?";
-  return "Sign out on this device?";
+function accountActionTitle(action: AccountAction, t: Translate): string {
+  if (action === "delete") return t("Delete this account?");
+  if (action === "sign-out-all") return t("Sign out on every device?");
+  return t("Sign out on this device?");
 }
 
-function accountActionBody(action: AccountAction): string {
+function accountActionBody(action: AccountAction, t: Translate): string {
   if (action === "delete") {
-    return "This closes your account and stops sign-in with this email. Every device is signed out. Your shop history is kept, and guest data saved on this device is not removed.";
+    return t("This closes your account and stops sign-in with this email. Every device is signed out. Your shop history is kept, and guest data saved on this device is not removed.");
   }
   if (action === "sign-out-all") {
-    return "Every device using this account is signed out and can no longer refresh its session. Guest items saved on this device remain available.";
+    return t("Every device using this account is signed out and can no longer refresh its session. Guest items saved on this device remain available.");
   }
-  return "This device's session is revoked. Other devices stay signed in. Guest items saved on this device remain available.";
+  return t("This device's session is revoked. Other devices stay signed in. Guest items saved on this device remain available.");
 }
 
-function accountActionCancelLabel(action: AccountAction): string {
-  return action === "delete" ? "Keep my account" : "Stay signed in";
+function accountActionCancelLabel(action: AccountAction, t: Translate): string {
+  return action === "delete" ? t("Keep my account") : t("Stay signed in");
 }
 
-function accountActionConfirmLabel(action: AccountAction): string {
-  if (action === "delete") return "Delete account";
-  if (action === "sign-out-all") return "Sign out everywhere";
-  return "Sign out";
+function accountActionConfirmLabel(action: AccountAction, t: Translate): string {
+  if (action === "delete") return t("Delete account");
+  if (action === "sign-out-all") return t("Sign out everywhere");
+  return t("Sign out");
 }
 
 function CountCard({
@@ -650,6 +666,7 @@ function ProfileCard({
   customer: CustomerAccount;
   onSave: (values: CustomerProfileUpdate) => Promise<void>;
 }) {
+  const { t } = useLocale();
   const [displayName, setDisplayName] = useState(customer.display_name ?? "");
   const [phone, setPhone] = useState(customer.phone ?? "");
   const [pushEnabled, setPushEnabled] = useState(customer.push_notifications_enabled ?? true);
@@ -676,39 +693,39 @@ function ProfileCard({
 
   return (
     <View style={styles.profileCard}>
-      <Text style={styles.pushTitle}>Profile</Text>
+      <Text style={styles.pushTitle}>{t("Profile")}</Text>
       <Field
-        label="Display name"
+        label={t("Display name")}
         onChangeText={setDisplayName}
-        placeholder="Your name"
+        placeholder={t("Your name")}
         value={displayName}
       />
       <Field
         autoComplete="tel"
         keyboardType="phone-pad"
-        label="Phone"
+        label={t("Phone")}
         onChangeText={setPhone}
-        placeholder="+381600000000"
+        placeholder={t("+381600000000")}
         textContentType="telephoneNumber"
         value={phone}
       />
       <SettingToggle
-        label="Push notifications"
+        label={t("Push notifications")}
         value={pushEnabled}
         onValueChange={setPushEnabled}
       />
       <SettingToggle
-        label="Quiet hours"
+        label={t("Quiet hours")}
         value={quietHoursEnabled}
         onValueChange={setQuietHoursEnabled}
       />
       <SettingToggle
-        label="Opt out of all notifications"
+        label={t("Opt out of all notifications")}
         value={notificationsOptOut}
         onValueChange={setNotificationsOptOut}
       />
       <PrimaryButton
-        label="Save profile"
+        label={t("Save profile")}
         loading={saving}
         onPress={() => void save()}
         variant="secondary"

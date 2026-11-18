@@ -46,11 +46,11 @@ export default function HomeScreen() {
   const searchResults = shops.data ?? [];
   const inStockCount = searchResults.filter((shop) => (shop.product_available ?? 0) > 0).length;
   const soldOutCount = searchResults.length - inStockCount;
-  const emptyTitle = debouncedSearch ? "No shop carries this card" : "No shops yet";
+  const emptyTitle = debouncedSearch ? t("No shop carries this card") : t("No shops yet");
   const emptyBody = debouncedSearch
-    ? "Try another card name, set, or collector number. Sold-out shops stay in the results."
-    : "Start the demo API and seed a shop, then pull to refresh.";
-  const emptyActionLabel = debouncedSearch ? "Clear search" : "Try again";
+    ? t("Try another card name, set, or collector number. Sold-out shops stay in the results.")
+    : t("Start the demo API and seed a shop, then pull to refresh.");
+  const emptyActionLabel = debouncedSearch ? t("Clear search") : t("Try again");
   const { customer, isAuthenticated, token } = useAuth();
   const { hydrated, reservations } = useReservations();
   const { hydrated: alertsHydrated, alerts } = useRestockAlerts();
@@ -108,8 +108,8 @@ export default function HomeScreen() {
           <Text style={styles.title}>{t("homeTitle")}</Text>
           <Text style={styles.subtitle}>{t("homeSubtitle")}</Text>
           <Pressable
-            accessibilityHint="Opens your account and password settings"
-            accessibilityLabel="Your account"
+            accessibilityHint={t("Opens your account and password settings")}
+            accessibilityLabel={t("Your account")}
             accessibilityRole="button"
             onPress={() => router.push("/account")}
             style={({ pressed }) => [styles.accountBar, pressed && styles.scanPressed]}
@@ -117,17 +117,17 @@ export default function HomeScreen() {
             <Ionicons name="person-circle" size={22} color={colors.white} />
             <View style={styles.accountText}>
               <Text numberOfLines={1} style={styles.accountTitle}>
-                {customer?.email ?? "Your account"}
+                {customer?.email ?? t("Your account")}
               </Text>
               <Text style={styles.accountSubtitle}>
-                Holds, alerts, and requests across devices
+                {t("Holds, alerts, and requests across devices")}
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={16} color="#D8E8E1" />
           </Pressable>
           <Pressable
-            accessibilityHint="Opens the camera to scan a QR code at a shop"
-            accessibilityLabel="Scan a shop code"
+            accessibilityHint={t("Opens the camera to scan a QR code at a shop")}
+            accessibilityLabel={t("Scan a shop code")}
             accessibilityRole="button"
             onPress={() => router.push("/scan")}
             style={({ pressed }) => [styles.scanButton, pressed && styles.scanPressed]}
@@ -141,10 +141,10 @@ export default function HomeScreen() {
           <SearchField
             value={search}
             onChangeText={setSearch}
-            placeholder="Search cards by name, set, or number"
+            placeholder={t("Search cards by name, set, or number")}
           />
           <Text style={styles.searchHint}>
-            Search by product to see which shops carry it. Sold-out shops are still listed.
+            {t("Search by product to see which shops carry it. Sold-out shops are still listed.")}
           </Text>
 
           <View style={styles.quickRow}>
@@ -183,7 +183,7 @@ export default function HomeScreen() {
           {listsHydrated && allRequests.length > 0 ? (
             <View style={styles.section}>
               <View style={styles.sectionHeader}>
-                <Text style={styles.sectionTitle}>Your special orders</Text>
+                <Text style={styles.sectionTitle}>{t("Your special orders")}</Text>
                 <Text style={styles.sectionCount}>{allRequests.length}</Text>
               </View>
               <View style={styles.holdList}>
@@ -201,7 +201,7 @@ export default function HomeScreen() {
                   onPress={() => router.push("/requests")}
                   style={({ pressed }) => [styles.seeAll, pressed && styles.scanPressed]}
                 >
-                  <Text style={styles.seeAllLabel}>See all {allRequests.length} requests</Text>
+                  <Text style={styles.seeAllLabel}>{t("See all {count} requests", { count: allRequests.length })}</Text>
                   <Ionicons name="arrow-forward" size={16} color={colors.primary} />
                 </Pressable>
               ) : null}
@@ -211,28 +211,30 @@ export default function HomeScreen() {
           <View style={styles.section}>
             <View style={styles.sectionHeader}>
               <Text style={styles.sectionTitle}>
-                {debouncedSearch ? "Shops with this card" : t("shopsOnCardTracker")}
+                {debouncedSearch ? t("Shops with this card") : t("shopsOnCardTracker")}
               </Text>
               {shops.isFetching ? (
-                <Text style={styles.sectionCount}>Updating…</Text>
+                <Text style={styles.sectionCount}>{t("Updating…")}</Text>
               ) : null}
             </View>
 
             {debouncedSearch && shops.isSuccess && searchResults.length > 0 ? (
               <Text style={styles.resultSummary}>
-                {searchResults.length} shop{searchResults.length === 1 ? "" : "s"} carry this card
+                {searchResults.length === 1
+                  ? t("{count} shop carry this card", { count: searchResults.length })
+                  : t("{count} shops carry this card", { count: searchResults.length })}
                 {" · "}
-                {inStockCount} in stock
-                {soldOutCount > 0 ? ` · ${soldOutCount} out of stock` : ""}
+                {t("{count} in stock", { count: inStockCount })}
+                {soldOutCount > 0 ? ` · ${t("{count} out of stock", { count: soldOutCount })}` : ""}
               </Text>
             ) : null}
 
-            {shops.isLoading ? <LoadingState label="Finding shops…" /> : null}
+            {shops.isLoading ? <LoadingState label={t("Finding shops…")} /> : null}
 
             {shops.isError ? (
               <ErrorState
                 message={
-                  "We could not reach the shop directory. Check that the API is running and try again."
+                  t("We could not reach the shop directory. Check that the API is running and try again.")
                 }
                 onRetry={() => void shops.refetch()}
               />
@@ -272,15 +274,15 @@ export default function HomeScreen() {
           </View>
 
           <View style={styles.howItWorks}>
-            <Text style={styles.howTitle}>How holds work</Text>
+            <Text style={styles.howTitle}>{t("How holds work")}</Text>
             <View style={styles.steps}>
-              <Step icon="search-outline" number="01" label="Find your card" />
-              <Step icon="bag-handle-outline" number="02" label="Request a hold" />
-              <Step icon="storefront-outline" number="03" label="Pick up in store" />
+              <Step icon="search-outline" number="01" label={t("Find your card")} />
+              <Step icon="bag-handle-outline" number="02" label={t("Request a hold")} />
+              <Step icon="storefront-outline" number="03" label={t("Pick up in store")} />
             </View>
           </View>
 
-          {__DEV__ ? <Text style={styles.devHint}>API: {API_BASE_URL}</Text> : null}
+          {__DEV__ ? <Text style={styles.devHint}>{t("API:")} {API_BASE_URL}</Text> : null}
         </View>
       </ScrollView>
     </View>
@@ -298,9 +300,10 @@ function QuickAction({
   label: string;
   onPress: () => void;
 }) {
+  const { t } = useLocale();
   return (
     <Pressable
-      accessibilityLabel={`${label}${count ? `, ${count} saved` : ""}`}
+      accessibilityLabel={count ? t("{label}, {count} saved", { label, count }) : label}
       accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => [styles.quickCard, pressed && styles.scanPressed]}
@@ -310,7 +313,7 @@ function QuickAction({
       </View>
       <View style={styles.quickText}>
         <Text style={styles.quickLabel}>{label}</Text>
-        <Text style={styles.quickCount}>{count === 0 ? "None yet" : `${count} saved`}</Text>
+        <Text style={styles.quickCount}>{count === 0 ? t("None yet") : t("{count} saved", { count })}</Text>
       </View>
       <Ionicons name="chevron-forward" size={16} color={colors.inkMuted} />
     </Pressable>

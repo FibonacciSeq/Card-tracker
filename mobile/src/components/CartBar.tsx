@@ -3,6 +3,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { Money } from "../api/types";
 import { formatMoney } from "../lib/format";
+import { useLocale } from "../state/locale";
 import { colors, radii, shadow, spacing, type } from "../theme";
 
 export function CartBar({
@@ -16,10 +17,11 @@ export function CartBar({
   bottomInset: number;
   onPress: () => void;
 }) {
+  const { t } = useLocale();
   return (
     <View style={[styles.wrap, { paddingBottom: bottomInset + spacing.sm }]}>
       <Pressable
-        accessibilityLabel={`Review your hold, ${count} cards`}
+        accessibilityLabel={t("Review your hold, {count} cards", { count })}
         accessibilityRole="button"
         onPress={onPress}
         style={({ pressed }) => [styles.bar, pressed && styles.pressed]}
@@ -29,7 +31,7 @@ export function CartBar({
             <Text style={styles.countText}>{count}</Text>
           </View>
           <View>
-            <Text style={styles.label}>Review your hold</Text>
+            <Text style={styles.label}>{t("Review your hold")}</Text>
             <Text style={styles.total}>{formatMoney(total)}</Text>
           </View>
         </View>

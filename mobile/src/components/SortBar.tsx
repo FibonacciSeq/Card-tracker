@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Pressable, ScrollView, StyleSheet, Text } from "react-native";
 
 import type { StockSort } from "../api/types";
+import { useLocale } from "../state/locale";
 import { colors, radii, spacing, type } from "../theme";
 
 const SORTS: { value: StockSort; label: string }[] = [
@@ -23,6 +24,7 @@ export function SortBar({
   availableOnly: boolean;
   onToggleAvailable: () => void;
 }) {
+  const { t } = useLocale();
   return (
     <ScrollView
       horizontal
@@ -37,7 +39,7 @@ export function SortBar({
           style={[styles.chip, value === option.value && styles.activeChip]}
         >
           <Text style={[styles.label, value === option.value && styles.activeLabel]}>
-            {option.label}
+            {t(option.label)}
           </Text>
         </Pressable>
       ))}
@@ -52,7 +54,7 @@ export function SortBar({
           size={14}
           color={availableOnly ? colors.white : colors.inkMuted}
         />
-        <Text style={[styles.label, availableOnly && styles.activeLabel]}>Available</Text>
+        <Text style={[styles.label, availableOnly && styles.activeLabel]}>{t("Available")}</Text>
       </Pressable>
     </ScrollView>
   );

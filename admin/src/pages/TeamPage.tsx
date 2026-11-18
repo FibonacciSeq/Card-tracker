@@ -4,19 +4,21 @@ import { useCreateStaff, useTeam, useUpdateStaff } from "../api/queries";
 import type { StaffUser, StaffUserUpdate } from "../api/types";
 import { useAuth } from "../auth/context";
 import { formatDateTime } from "../lib/format";
+import { useLocale } from "../state/locale";
 
 type Role = "staff" | "owner";
 
 export function TeamPage() {
   const { session } = useAuth();
+  const { t } = useLocale();
   const isOwner = session?.me.role === "owner";
   const { data, isPending, error } = useTeam(isOwner);
 
   if (!isOwner) {
     return (
       <div className="page">
-        <h1>Team</h1>
-        <p className="muted">Only the shop owner can manage team members.</p>
+        <h1>{t("Team")}</h1>
+        <p className="muted">{t("Only the shop owner can manage team members.")}</p>
       </div>
     );
   }
@@ -25,21 +27,21 @@ export function TeamPage() {
     <div className="page">
       <header className="page__header">
         <div>
-          <h1>Team</h1>
-          <p className="muted">Give staff their own sign-in instead of sharing the owner password.</p>
+          <h1>{t("Team")}</h1>
+          <p className="muted">{t("Give staff their own sign-in instead of sharing the owner password.")}</p>
         </div>
       </header>
 
       <AddMember />
 
       <section className="card" aria-labelledby="team-list-title">
-        <h2 id="team-list-title">People with access</h2>
+        <h2 id="team-list-title">{t("People with access")}</h2>
         {error ? (
           <p className="alert alert--error" role="alert">
-            {error instanceof ApiError ? error.message : "Could not load the team."}
+            {error instanceof ApiError ? t(error.message) : t("Could not load the team.")}
           </p>
         ) : null}
-        {isPending ? <p className="muted">Loading…</p> : null}
+        {isPending ? <p className="muted">{t("Loading…")}</p> : null}
         {data ? <TeamTable people={data} currentUserId={session?.me.id ?? ""} /> : null}
       </section>
     </div>
@@ -47,6 +49,7 @@ export function TeamPage() {
 }
 
 function AddMember() {
+  const { t } = useLocale();
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
   const [password, setPassword] = useState("");
@@ -66,7 +69,7 @@ function AddMember() {
       },
       {
         onSuccess: (person) => {
-          setNotice(`${person.email} can now sign in.`);
+          setNotice(t("{email} can now sign in.", { email: person.email }));
           setEmail("");
           setDisplayName("");
           setPassword("");
@@ -78,9 +81,9 @@ function AddMember() {
 
   return (
     <section className="card" aria-labelledby="add-member-title">
-      <h2 id="add-member-title">Add a team member</h2>
+      <h2 id="add-member-title">{t("Add a team member")}</h2>
       <form className="inline-form" onSubmit={submit}>
-        <label htmlFor="member-email">Email</label>
+        <label htmlFor="member-email">{t("Email")}</label>
         <input
           id="member-email"
           type="email"
@@ -91,7 +94,7 @@ function AddMember() {
           data-testid="member-email"
         />
 
-        <label htmlFor="member-name">Name</label>
+        <label htmlFor="member-name">{t("Name")}</label>
         <input
           id="member-name"
           value={displayName}
@@ -99,17 +102,17 @@ function AddMember() {
           data-testid="member-name"
         />
 
-        <label htmlFor="member-role">Role</label>
+        <label htmlFor="member-role">{t("Role")}</label>
         <select
           id="member-role"
           value={role}
           onChange={(event) => setRole(event.target.value as Role)}
         >
-          <option value="staff">Staff</option>
-          <option value="owner">Owner</option>
+          <option value="staff">{t("Staff")}</option>
+          <option value="owner">{t("Owner")}</option>
         </select>
 
-        <label htmlFor="member-password">Temporary password</label>
+        <label htmlFor="member-password">{t("Temporary password")}</label>
         <input
           id="member-password"
           type="password"
@@ -120,16 +123,16 @@ function AddMember() {
           onChange={(event) => setPassword(event.target.value)}
           data-testid="member-password"
         />
-        <p className="muted small">At least 10 characters. Share it with them, then let them change it.</p>
+        <p className="muted small">{t("At least 10 characters. Share it with them, then let them change it.")}</p>
 
         <button type="submit" className="btn btn--primary" disabled={create.isPending} data-testid="member-submit">
-          {create.isPending ? "Adding…" : "Add member"}
+          {create.isPending ? t("Adding…") : t("Add member")}
         </button>
       </form>
 
       {create.error ? (
         <p className="alert alert--error" role="alert">
-          {create.error instanceof ApiError ? create.error.message : "Could not add this person."}
+          {create.error instanceof ApiError ? t(create.error.message) : t("Could not add this person.")}
         </p>
       ) : null}
       {notice ? (
@@ -142,6 +145,7 @@ function AddMember() {
 }
 
 function TeamTable({ people, currentUserId }: { people: StaffUser[]; currentUserId: string }) {
+  const { t } = useLocale();
   const [resetting, setResetting] = useState<string | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
@@ -155,12 +159,12 @@ function TeamTable({ people, currentUserId }: { people: StaffUser[]; currentUser
       { id, patch },
       {
         onSuccess: (person) => {
-          setNotice(`Saved ${person.email}.`);
+          setNotice(t("Saved {email}.", { email: person.email }));
           setResetting(null);
           setNewPassword("");
         },
         onError: (error) => {
-          setProblem(error instanceof ApiError ? error.message : "Could not save this change.");
+          setProblem(error instanceof ApiError ? t(error.message) : t("Could not save this change."));
         },
       },
     );
@@ -181,14 +185,14 @@ function TeamTable({ people, currentUserId }: { people: StaffUser[]; currentUser
 
       <div className="table-wrap">
         <table className="table">
-          <caption className="sr-only">Team members and their access</caption>
+          <caption className="sr-only">{t("Team members and their access")}</caption>
           <thead>
             <tr>
-              <th scope="col">Member</th>
-              <th scope="col">Role</th>
-              <th scope="col">Status</th>
-              <th scope="col">Added</th>
-              <th scope="col">Actions</th>
+              <th scope="col">{t("Member")}</th>
+              <th scope="col">{t("Role")}</th>
+              <th scope="col">{t("Status")}</th>
+              <th scope="col">{t("Added")}</th>
+              <th scope="col">{t("Actions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -201,11 +205,11 @@ function TeamTable({ people, currentUserId }: { people: StaffUser[]; currentUser
                     <br />
                     <span className="muted small">{person.email}</span>
                   </td>
-                  <td>{person.role === "owner" ? "Owner" : "Staff"}</td>
+                  <td>{person.role === "owner" ? t("Owner") : t("Staff")}</td>
                   <td>
                     <span className={`badge badge--${person.is_active ? "confirmed" : "offline"}`}>
                       <span aria-hidden="true" className="badge__dot" />
-                      {person.is_active ? "Active" : "Deactivated"}
+                      {person.is_active ? t("Active") : t("Deactivated")}
                     </span>
                   </td>
                   <td className="nowrap">{formatDateTime(person.created_at)}</td>
@@ -219,16 +223,16 @@ function TeamTable({ people, currentUserId }: { people: StaffUser[]; currentUser
                           save(person.id, { role: person.role === "owner" ? "staff" : "owner" })
                         }
                       >
-                        {person.role === "owner" ? "Make staff" : "Make owner"}
+                        {person.role === "owner" ? t("Make staff") : t("Make owner")}
                       </button>
                       <button
                         type="button"
                         className="btn btn--small"
                         disabled={update.isPending || (isSelf && person.is_active)}
-                        title={isSelf && person.is_active ? "You cannot deactivate your own account" : undefined}
+                        title={isSelf && person.is_active ? t("You cannot deactivate your own account") : undefined}
                         onClick={() => save(person.id, { is_active: !person.is_active })}
                       >
-                        {person.is_active ? "Deactivate" : "Reactivate"}
+                        {person.is_active ? t("Deactivate") : t("Reactivate")}
                       </button>
                       <button
                         type="button"
@@ -238,7 +242,7 @@ function TeamTable({ people, currentUserId }: { people: StaffUser[]; currentUser
                           setNewPassword("");
                         }}
                       >
-                        {resetting === person.id ? "Cancel" : "Reset password"}
+                        {resetting === person.id ? t("Cancel") : t("Reset password")}
                       </button>
                     </div>
                     {resetting === person.id ? (
@@ -249,7 +253,7 @@ function TeamTable({ people, currentUserId }: { people: StaffUser[]; currentUser
                           save(person.id, { password: newPassword });
                         }}
                       >
-                        <label htmlFor={`new-password-${person.id}`}>New password</label>
+                        <label htmlFor={`new-password-${person.id}`}>{t("New password")}</label>
                         <input
                           id={`new-password-${person.id}`}
                           type="password"
@@ -260,7 +264,7 @@ function TeamTable({ people, currentUserId }: { people: StaffUser[]; currentUser
                           onChange={(event) => setNewPassword(event.target.value)}
                         />
                         <button type="submit" className="btn btn--small btn--primary" disabled={update.isPending}>
-                          Save password
+                          {t("Save password")}
                         </button>
                       </form>
                     ) : null}

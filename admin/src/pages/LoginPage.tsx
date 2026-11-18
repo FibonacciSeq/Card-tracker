@@ -3,10 +3,12 @@ import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth/context";
 import { LanguagePicker } from "../components/LanguagePicker";
+import { useLocale } from "../state/locale";
 
 const LAST_SLUG_KEY = "cardtracker.admin.last-slug";
 
 export function LoginPage() {
+  const { t } = useLocale();
   const { session, signIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
@@ -30,7 +32,9 @@ export function LoginPage() {
       const from = (location.state as { from?: string } | null)?.from;
       navigate(from && from !== "/login" ? from : "/", { replace: true });
     } catch (cause) {
-      setError(cause instanceof ApiError ? cause.message : "Could not reach the shop server. Check your connection.");
+      setError(
+        cause instanceof ApiError ? t(cause.message) : t("Could not reach the shop server. Check your connection."),
+      );
     } finally {
       setPending(false);
     }
@@ -45,37 +49,37 @@ export function LoginPage() {
           </span>
           <span className="brand__text">
             <strong>Card Tracker</strong>
-            <small>Shop admin</small>
+            <small>{t("Shop admin")}</small>
           </span>
         </div>
 
-        <h1 id="login-title">Sign in to your shop</h1>
+        <h1 id="login-title">{t("Sign in to your shop")}</h1>
         <p className="muted">
-          Manage live stock, reservations, and shop settings. Customers reserve through the mobile app.
+          {t("Manage live stock, reservations, and shop settings. Customers reserve through the mobile app.")}
         </p>
 
         <LanguagePicker />
 
         <form className="form" onSubmit={handleSubmit} noValidate>
           <div className="field">
-            <label htmlFor="slug">Shop address</label>
+            <label htmlFor="slug">{t("Shop address")}</label>
             <input
               id="slug"
               name="slug"
               data-testid="login-slug"
               value={slug}
               onChange={(event) => setSlug(event.target.value)}
-              placeholder="bolt-shop"
+              placeholder={t("bolt-shop")}
               autoComplete="organization"
               autoCapitalize="none"
               spellCheck={false}
               required
             />
-            <small className="hint">The short name in your shop link, e.g. bolt-shop.</small>
+            <small className="hint">{t("The short name in your shop link, e.g. bolt-shop.")}</small>
           </div>
 
           <div className="field">
-            <label htmlFor="email">Email</label>
+            <label htmlFor="email">{t("Email")}</label>
             <input
               id="email"
               name="email"
@@ -89,7 +93,7 @@ export function LoginPage() {
           </div>
 
           <div className="field">
-            <label htmlFor="password">Password</label>
+            <label htmlFor="password">{t("Password")}</label>
             <input
               id="password"
               name="password"
@@ -109,22 +113,22 @@ export function LoginPage() {
           ) : null}
 
           <button type="submit" className="btn btn--primary btn--block" disabled={pending} data-testid="login-submit">
-            {pending ? "Signing in…" : "Sign in"}
+            {pending ? t("Signing in…") : t("Sign in")}
           </button>
         </form>
 
         <p className="muted small">
-          Staff accounts are created by the shop owner. Forgotten your password? Ask the owner to reset it.
+          {t("Staff accounts are created by the shop owner. Forgotten your password? Ask the owner to reset it.")}
         </p>
       </section>
 
       <aside className="login__aside" aria-hidden="true">
         <div className="login__aside-inner">
-          <h2>Live stock, honest holds.</h2>
+          <h2>{t("Live stock, honest holds.")}</h2>
           <ul>
-            <li>Reservations hold stock the moment a customer submits them.</li>
-            <li>Cancellations and expiries release stock automatically.</li>
-            <li>Completed reservations become sales with a full ledger.</li>
+            <li>{t("Reservations hold stock the moment a customer submits them.")}</li>
+            <li>{t("Cancellations and expiries release stock automatically.")}</li>
+            <li>{t("Completed reservations become sales with a full ledger.")}</li>
           </ul>
         </div>
       </aside>

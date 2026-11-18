@@ -17,8 +17,10 @@ import type { StaffStock, StockImportReportWithRates } from "../api/types";
 import { StockLevels } from "../components/StockLevels";
 import { formatDateTime, formatMoney } from "../lib/format";
 import { useDebounced } from "../lib/useDebounced";
+import { useLocale } from "../state/locale";
 
 export function StockPage() {
+  const { t } = useLocale();
   const [search, setSearch] = useState("");
   const [onlyOnline, setOnlyOnline] = useState(false);
   const [archivedView, setArchivedView] = useState(false);
@@ -70,7 +72,7 @@ export function StockPage() {
       link.click();
       URL.revokeObjectURL(url);
     } catch (cause) {
-      setExportError(cause instanceof ApiError ? cause.message : "Could not export stock.");
+      setExportError(cause instanceof ApiError ? t(cause.message) : t("Could not export stock."));
     } finally {
       setExporting(false);
     }
@@ -84,9 +86,9 @@ export function StockPage() {
         showView(true);
         setArchiveNotice(
           result.reserved > 0
-            ? `Archived ${result.archived} stock item${result.archived === 1 ? "" : "s"}. ` +
-                `${result.reserved} reserved cop${result.reserved === 1 ? "y is" : "ies are"} still held for customers.`
-            : `Archived ${result.archived} stock item${result.archived === 1 ? "" : "s"}.`,
+            ? `${t("Archived {count} stock items.", { count: result.archived })} ` +
+                t("{count} reserved copies are still held for customers.", { count: result.reserved })
+            : t("Archived {count} stock items.", { count: result.archived }),
         );
       },
     });
@@ -99,11 +101,11 @@ export function StockPage() {
         setExpanded(null);
         setDeleteNotice(
           result.deleted === 0 && result.kept === 0
-            ? "There was no archived stock to delete."
+            ? t("There was no archived stock to delete.")
             : result.kept > 0
-              ? `Permanently deleted ${result.deleted} archived item${result.deleted === 1 ? "" : "s"}. ` +
-                  `${result.kept} item${result.kept === 1 ? " was" : "s were"} kept because customers still have holds on them.`
-              : `Permanently deleted ${result.deleted} archived item${result.deleted === 1 ? "" : "s"}.`,
+              ? `${t("Permanently deleted {count} archived items.", { count: result.deleted })} ` +
+                  t("{count} items were kept because customers still have holds on them.", { count: result.kept })
+              : t("Permanently deleted {count} archived items.", { count: result.deleted }),
         );
       },
     });
@@ -113,21 +115,25 @@ export function StockPage() {
     <div className="page">
       <header className="page__header">
         <div>
-          <h1>Stock</h1>
+          <h1>{t("Stock")}</h1>
           <p className="muted">
             {archivedView
-              ? "Archived stock is hidden from the customer app. Restore a row, import a matching card, or delete it permanently."
+              ? t(
+                  "Archived stock is hidden from the customer app. Restore a row, import a matching card, or delete it permanently.",
+                )
               : staleOnly
-                ? "Online cards that have not been updated recently. Confirm each count is still accurate so customers can trust the shelf."
-                : "Only online stock is visible to customers in the app."}
+                ? t(
+                    "Online cards that have not been updated recently. Confirm each count is still accurate so customers can trust the shelf.",
+                  )
+                : t("Only online stock is visible to customers in the app.")}
           </p>
         </div>
         <button type="button" className="btn btn--ghost" onClick={() => void refetch()} disabled={isFetching}>
-          {isFetching ? "Refreshing…" : "Refresh"}
+          {isFetching ? t("Refreshing…") : t("Refresh")}
         </button>
       </header>
 
-      <div className="tabs" role="tablist" aria-label="Stock view">
+      <div className="tabs" role="tablist" aria-label={t("Stock view")}>
         <button
           type="button"
           role="tab"
@@ -136,7 +142,7 @@ export function StockPage() {
           onClick={() => showView(false)}
           data-testid="stock-tab-active"
         >
-          Active stock
+          {t("Active stock")}
         </button>
         <button
           type="button"
@@ -146,17 +152,17 @@ export function StockPage() {
           onClick={() => showView(true)}
           data-testid="stock-tab-archived"
         >
-          Archived
+          {t("Archived")}
         </button>
       </div>
 
       <div className="toolbar">
         <div className="field field--inline">
-          <label htmlFor="stock-search">Search cards</label>
+          <label htmlFor="stock-search">{t("Search cards")}</label>
           <input
             id="stock-search"
             type="search"
-            placeholder="Card name, set, or collector number"
+            placeholder={t("Card name, set, or collector number")}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             data-testid="stock-search"
@@ -170,7 +176,7 @@ export function StockPage() {
                 checked={onlyOnline}
                 onChange={(event) => setOnlyOnline(event.target.checked)}
               />
-              Online only
+              {t("Online only")}
             </label>
             <label className="checkbox">
               <input
@@ -179,18 +185,22 @@ export function StockPage() {
                 onChange={(event) => setStaleOnly(event.target.checked)}
                 data-testid="stock-stale-only"
               />
-              Stale only
+              {t("Stale only")}
             </label>
           </>
         ) : null}
         <span className="muted small" aria-live="polite">
           {isPending
-            ? "Loading…"
-            : `${items.length} ${archivedView ? "archived " : staleOnly ? "stale " : ""}card${items.length === 1 ? "" : "s"}`}
+            ? t("Loading…")
+            : archivedView
+              ? t("{count} archived cards", { count: items.length })
+              : staleOnly
+                ? t("{count} stale cards", { count: items.length })
+                : t("{count} cards", { count: items.length })}
         </span>
         <div className="toolbar__actions">
           <button type="button" className="btn btn--small" onClick={() => void downloadCsv()} disabled={exporting}>
-            {exporting ? "Exporting…" : "Export CSV"}
+            {exporting ? t("Exporting…") : t("Export CSV")}
           </button>
           {archivedView ? (
             <button
@@ -203,7 +213,7 @@ export function StockPage() {
               }}
               data-testid="archive-delete-all"
             >
-              Delete all archived
+              {t("Delete all archived")}
             </button>
           ) : null}
           {!archivedView ? (
@@ -215,7 +225,7 @@ export function StockPage() {
                 aria-expanded={importOpen}
                 data-testid="import-toggle"
               >
-                Import CSV
+                {t("Import CSV")}
               </button>
               <button
                 type="button"
@@ -227,7 +237,7 @@ export function StockPage() {
                 }}
                 data-testid="archive-all"
               >
-                Archive all stock
+                {t("Archive all stock")}
               </button>
             </>
           ) : null}
@@ -256,19 +266,20 @@ export function StockPage() {
         <section className="card import-panel" aria-labelledby="archive-title" data-testid="archive-panel">
           <div className="import-panel__header">
             <div>
-              <h2 id="archive-title">Archive all stock?</h2>
+              <h2 id="archive-title">{t("Archive all stock?")}</h2>
               <p className="muted small">
-                This hides every active stock row for this shop from the customer app. Existing reservations stay
-                valid. Re-importing a matching card automatically restores its row.
+                {t(
+                  "This hides every active stock row for this shop from the customer app. Existing reservations stay valid. Re-importing a matching card automatically restores its row.",
+                )}
               </p>
             </div>
             <button type="button" className="btn btn--ghost btn--small" onClick={() => setArchiveOpen(false)}>
-              Cancel
+              {t("Cancel")}
             </button>
           </div>
           {archive.error ? (
             <p className="alert alert--error" role="alert">
-              {archive.error instanceof ApiError ? archive.error.message : String(archive.error)}
+              {archive.error instanceof ApiError ? t(archive.error.message) : String(archive.error)}
             </p>
           ) : null}
           <div className="inline-form">
@@ -279,7 +290,7 @@ export function StockPage() {
               disabled={archive.isPending}
               data-testid="archive-confirm"
             >
-              {archive.isPending ? "Archiving…" : "Archive all stock"}
+              {archive.isPending ? t("Archiving…") : t("Archive all stock")}
             </button>
             <button
               type="button"
@@ -288,7 +299,7 @@ export function StockPage() {
               disabled={archive.isPending}
               data-testid="archive-cancel"
             >
-              Keep stock active
+              {t("Keep stock active")}
             </button>
           </div>
         </section>
@@ -298,10 +309,11 @@ export function StockPage() {
         <section className="card import-panel" aria-labelledby="archive-delete-title" data-testid="archive-delete-panel">
           <div className="import-panel__header">
             <div>
-              <h2 id="archive-delete-title">Delete the whole archive?</h2>
+              <h2 id="archive-delete-title">{t("Delete the whole archive?")}</h2>
               <p className="muted small">
-                This permanently removes every archived stock row for this shop. Reservation history is kept, but the
-                stock rows cannot be restored. Items with active customer holds are kept until those reservations close.
+                {t(
+                  "This permanently removes every archived stock row for this shop. Reservation history is kept, but the stock rows cannot be restored. Items with active customer holds are kept until those reservations close.",
+                )}
               </p>
             </div>
             <button
@@ -309,12 +321,12 @@ export function StockPage() {
               className="btn btn--ghost btn--small"
               onClick={() => setDeleteArchiveOpen(false)}
             >
-              Cancel
+              {t("Cancel")}
             </button>
           </div>
           {deleteArchive.error ? (
             <p className="alert alert--error" role="alert">
-              {deleteArchive.error instanceof ApiError ? deleteArchive.error.message : String(deleteArchive.error)}
+              {deleteArchive.error instanceof ApiError ? t(deleteArchive.error.message) : String(deleteArchive.error)}
             </p>
           ) : null}
           <div className="inline-form">
@@ -325,7 +337,7 @@ export function StockPage() {
               disabled={deleteArchive.isPending}
               data-testid="archive-delete-confirm"
             >
-              {deleteArchive.isPending ? "Deleting…" : "Delete all archived"}
+              {deleteArchive.isPending ? t("Deleting…") : t("Delete all archived")}
             </button>
             <button
               type="button"
@@ -334,7 +346,7 @@ export function StockPage() {
               disabled={deleteArchive.isPending}
               data-testid="archive-delete-cancel"
             >
-              Keep archived stock
+              {t("Keep archived stock")}
             </button>
           </div>
         </section>
@@ -344,23 +356,25 @@ export function StockPage() {
 
       {error ? (
         <p className="alert alert--error" role="alert">
-          {error.message}
+          {t(error.message)}
         </p>
       ) : null}
 
       <div className="table-wrap">
         <table className="table" data-testid="stock-table">
           <caption className="sr-only">
-            {archivedView ? "Archived stock" : "Stock"} with on-hand, reserved, and available counts
+            {archivedView
+              ? t("Archived stock with on-hand, reserved, and available counts")
+              : t("Stock with on-hand, reserved, and available counts")}
           </caption>
           <thead>
             <tr>
-              <th scope="col">Card</th>
-              <th scope="col">Availability</th>
-              <th scope="col">Price</th>
-              <th scope="col">{archivedView ? "Archived" : "Updated"}</th>
+              <th scope="col">{t("Card")}</th>
+              <th scope="col">{t("Availability")}</th>
+              <th scope="col">{t("Price")}</th>
+              <th scope="col">{archivedView ? t("Archived") : t("Updated")}</th>
               <th scope="col">
-                <span className="sr-only">Actions</span>
+                <span className="sr-only">{t("Actions")}</span>
               </th>
             </tr>
           </thead>
@@ -379,13 +393,15 @@ export function StockPage() {
 
         {!isPending && items.length === 0 ? (
           <div className="empty">
-            <h2>{archivedView ? "No archived stock" : "No stock found"}</h2>
+            <h2>{archivedView ? t("No archived stock") : t("No stock found")}</h2>
             <p className="muted">
               {archivedView
-                ? "Archive all stock from the active view to move it here. Importing a matching card restores it automatically."
+                ? t(
+                    "Archive all stock from the active view to move it here. Importing a matching card restores it automatically.",
+                  )
                 : query
-                  ? `Nothing matches “${query}”.`
-                  : "Add cards from the catalog to start selling them."}
+                  ? t('Nothing matches "{query}".', { query })
+                  : t("Add cards from the catalog to start selling them.")}
             </p>
           </div>
         ) : null}
@@ -405,6 +421,7 @@ function StockRow({
   staleView: boolean;
   onToggle: () => void;
 }) {
+  const { t } = useLocale();
   const restore = useRestoreStock();
   const remove = useDeleteArchivedStock();
   const confirm = useConfirmStock();
@@ -434,30 +451,32 @@ function StockRow({
                 {item.card.set_code.toUpperCase()} #{item.card.collector_number} · {item.condition} ·{" "}
                 {item.finish} · {item.language}
               </div>
-              {archived ? <span className="badge badge--offline">Archived</span> : null}
-              {!archived && !item.is_online ? <span className="badge badge--offline">Not online</span> : null}
+              {archived ? <span className="badge badge--offline">{t("Archived")}</span> : null}
+              {!archived && !item.is_online ? (
+                <span className="badge badge--offline">{t("Not online")}</span>
+              ) : null}
               {item.restock_waiting > 0 ? (
                 <span
                   className="badge badge--requested"
-                  title="Customers waiting for this variant to come back in stock"
+                  title={t("Customers waiting for this variant to come back in stock")}
                   data-testid="restock-waiting"
                 >
-                  {item.restock_waiting} waiting
+                  {t("{count} waiting", { count: item.restock_waiting })}
                 </span>
               ) : null}
               {restore.error ? (
                 <div className="tone--danger small" role="alert">
-                  {restore.error instanceof ApiError ? restore.error.message : String(restore.error)}
+                  {restore.error instanceof ApiError ? t(restore.error.message) : String(restore.error)}
                 </div>
               ) : null}
               {remove.error ? (
                 <div className="tone--danger small" role="alert" data-testid="stock-delete-error">
-                  {remove.error instanceof ApiError ? remove.error.message : String(remove.error)}
+                  {remove.error instanceof ApiError ? t(remove.error.message) : String(remove.error)}
                 </div>
               ) : null}
               {confirm.error ? (
                 <div className="tone--danger small" role="alert" data-testid="stock-confirm-error">
-                  {confirm.error instanceof ApiError ? confirm.error.message : String(confirm.error)}
+                  {confirm.error instanceof ApiError ? t(confirm.error.message) : String(confirm.error)}
                 </div>
               ) : null}
             </div>
@@ -480,7 +499,7 @@ function StockRow({
                     disabled={remove.isPending}
                     data-testid="stock-delete-confirm"
                   >
-                    {remove.isPending ? "Deleting…" : "Really delete"}
+                    {remove.isPending ? t("Deleting…") : t("Really delete")}
                   </button>
                   <button
                     type="button"
@@ -492,7 +511,7 @@ function StockRow({
                     disabled={remove.isPending}
                     data-testid="stock-delete-cancel"
                   >
-                    Cancel
+                    {t("Cancel")}
                   </button>
                 </>
               ) : (
@@ -504,7 +523,7 @@ function StockRow({
                     disabled={restore.isPending}
                     data-testid="stock-restore"
                   >
-                    {restore.isPending ? "Restoring…" : "Restore"}
+                    {restore.isPending ? t("Restoring…") : t("Restore")}
                   </button>
                   <button
                     type="button"
@@ -515,7 +534,7 @@ function StockRow({
                     }}
                     data-testid="stock-delete"
                   >
-                    Delete
+                    {t("Delete")}
                   </button>
                 </>
               )}
@@ -530,11 +549,11 @@ function StockRow({
                   disabled={confirm.isPending}
                   data-testid="stock-confirm"
                 >
-                  {confirm.isPending ? "Confirming…" : "Confirm available"}
+                  {confirm.isPending ? t("Confirming…") : t("Confirm available")}
                 </button>
               ) : null}
               <button type="button" className="btn btn--small" onClick={onToggle} aria-expanded={expanded}>
-                {expanded ? "Close" : "Manage"}
+                {expanded ? t("Close") : t("Manage")}
               </button>
             </div>
           )}
@@ -552,6 +571,7 @@ function StockRow({
 }
 
 function StockEditor({ item, onClose }: { item: StaffStock; onClose: () => void }) {
+  const { t } = useLocale();
   const update = useUpdateStock();
   const adjust = useAdjustStock();
   const sell = useSellStock();
@@ -568,7 +588,7 @@ function StockEditor({ item, onClose }: { item: StaffStock; onClose: () => void 
   const failure = update.error ?? adjust.error ?? sell.error ?? confirm.error;
 
   function errorText(cause: unknown): string {
-    return cause instanceof ApiError ? cause.message : String(cause);
+    return cause instanceof ApiError ? t(cause.message) : String(cause);
   }
 
   function saveStock(next: { quantity?: number; price_minor?: number; is_online?: boolean }, message: string) {
@@ -586,9 +606,9 @@ function StockEditor({ item, onClose }: { item: StaffStock; onClose: () => void 
     <div className="editor">
       <div className="editor__grid">
         <div className="editor__group">
-          <h3>Counts</h3>
+          <h3>{t("Counts")}</h3>
           <div className="inline-form">
-            <label htmlFor={`qty-${item.stock_id}`}>On hand</label>
+            <label htmlFor={`qty-${item.stock_id}`}>{t("On hand")}</label>
             <input
               id={`qty-${item.stock_id}`}
               type="number"
@@ -600,14 +620,16 @@ function StockEditor({ item, onClose }: { item: StaffStock; onClose: () => void 
               type="button"
               className="btn btn--small"
               disabled={busy || quantity === ""}
-              onClick={() => saveStock({ quantity: Number(quantity) }, "On-hand count saved.")}
+              onClick={() => saveStock({ quantity: Number(quantity) }, t("On-hand count saved."))}
             >
-              Save
+              {t("Save")}
             </button>
           </div>
           <p className="hint">
-            Cannot drop below the {item.reserved} reserved cop{item.reserved === 1 ? "y" : "ies"}. Use an adjustment
-            for deliveries or shelf recounts so the ledger stays correct.
+            {t(
+              "Cannot drop below the {count} reserved copies. Use an adjustment for deliveries or shelf recounts so the ledger stays correct.",
+              { count: item.reserved },
+            )}
           </p>
 
           <div className="inline-form">
@@ -617,18 +639,18 @@ function StockEditor({ item, onClose }: { item: StaffStock; onClose: () => void 
               disabled={busy}
               onClick={() =>
                 confirm.mutate(item.stock_id, {
-                  onSuccess: () => setNotice("Counts confirmed today — this row is no longer stale."),
+                  onSuccess: () => setNotice(t("Counts confirmed today — this row is no longer stale.")),
                 })
               }
               data-testid="stock-confirm-editor"
             >
-              {confirm.isPending ? "Confirming…" : "Confirm still available"}
+              {confirm.isPending ? t("Confirming…") : t("Confirm still available")}
             </button>
           </div>
-          <p className="hint">Marks the row as checked today without changing the quantity or ledger.</p>
+          <p className="hint">{t("Marks the row as checked today without changing the quantity or ledger.")}</p>
 
           <div className="inline-form">
-            <label htmlFor={`delta-${item.stock_id}`}>Adjust by</label>
+            <label htmlFor={`delta-${item.stock_id}`}>{t("Adjust by")}</label>
             <input
               id={`delta-${item.stock_id}`}
               type="number"
@@ -642,11 +664,14 @@ function StockEditor({ item, onClose }: { item: StaffStock; onClose: () => void 
               onClick={() =>
                 adjust.mutate(
                   { id: item.stock_id, delta: Math.abs(Number(delta)), reason: reason || undefined },
-                  { onSuccess: () => setNotice(`Added ${Math.abs(Number(delta))} to stock.`) },
+                  {
+                    onSuccess: () =>
+                      setNotice(t("Added {count} to stock.", { count: Math.abs(Number(delta)) })),
+                  },
                 )
               }
             >
-              Add
+              {t("Add")}
             </button>
             <button
               type="button"
@@ -655,19 +680,24 @@ function StockEditor({ item, onClose }: { item: StaffStock; onClose: () => void 
               onClick={() =>
                 adjust.mutate(
                   { id: item.stock_id, delta: -Math.abs(Number(delta)), reason: reason || undefined },
-                  { onSuccess: () => setNotice(`Removed ${Math.abs(Number(delta))} from stock.`) },
+                  {
+                    onSuccess: () =>
+                      setNotice(t("Removed {count} from stock.", { count: Math.abs(Number(delta)) })),
+                  },
                 )
               }
             >
-              Remove
+              {t("Remove")}
             </button>
           </div>
         </div>
 
         <div className="editor__group">
-          <h3>Price &amp; visibility</h3>
+          <h3>{t("Price & visibility")}</h3>
           <div className="inline-form">
-            <label htmlFor={`price-${item.stock_id}`}>Price ({item.price.currency})</label>
+            <label htmlFor={`price-${item.stock_id}`}>
+              {t("Price ({currency})", { currency: item.price.currency })}
+            </label>
             <input
               id={`price-${item.stock_id}`}
               inputMode="decimal"
@@ -678,9 +708,9 @@ function StockEditor({ item, onClose }: { item: StaffStock; onClose: () => void 
               type="button"
               className="btn btn--small"
               disabled={busy || !priceValid}
-              onClick={() => saveStock({ price_minor: priceMinor }, "Price saved.")}
+              onClick={() => saveStock({ price_minor: priceMinor }, t("Price saved."))}
             >
-              Save
+              {t("Save")}
             </button>
           </div>
 
@@ -692,18 +722,20 @@ function StockEditor({ item, onClose }: { item: StaffStock; onClose: () => void 
               onChange={(event) =>
                 saveStock(
                   { is_online: event.target.checked },
-                  event.target.checked ? "Card is now visible to customers." : "Card hidden from the app.",
+                  event.target.checked
+                    ? t("Card is now visible to customers.")
+                    : t("Card hidden from the app."),
                 )
               }
             />
-            Visible in the customer app
+            {t("Visible in the customer app")}
           </label>
         </div>
 
         <div className="editor__group">
-          <h3>In-store sale</h3>
+          <h3>{t("In-store sale")}</h3>
           <div className="inline-form">
-            <label htmlFor={`sale-${item.stock_id}`}>Copies</label>
+            <label htmlFor={`sale-${item.stock_id}`}>{t("Copies")}</label>
             <input
               id={`sale-${item.stock_id}`}
               type="number"
@@ -719,23 +751,25 @@ function StockEditor({ item, onClose }: { item: StaffStock; onClose: () => void 
               onClick={() =>
                 sell.mutate(
                   { id: item.stock_id, quantity: Number(saleQty), reason: reason || undefined },
-                  { onSuccess: () => setNotice(`Recorded a sale of ${saleQty}.`) },
+                  { onSuccess: () => setNotice(t("Recorded a sale of {count}.", { count: saleQty })) },
                 )
               }
             >
-              Record sale
+              {t("Record sale")}
             </button>
           </div>
-          <p className="hint">Sells only unreserved copies. Reserved stock must be sold by completing a reservation.</p>
+          <p className="hint">
+            {t("Sells only unreserved copies. Reserved stock must be sold by completing a reservation.")}
+          </p>
 
           <div className="field">
-            <label htmlFor={`reason-${item.stock_id}`}>Note (optional)</label>
+            <label htmlFor={`reason-${item.stock_id}`}>{t("Note (optional)")}</label>
             <input
               id={`reason-${item.stock_id}`}
               value={reason}
               maxLength={500}
               onChange={(event) => setReason(event.target.value)}
-              placeholder="Delivery, recount, damaged…"
+              placeholder={t("Delivery, recount, damaged…")}
             />
           </div>
         </div>
@@ -750,7 +784,7 @@ function StockEditor({ item, onClose }: { item: StaffStock; onClose: () => void 
           ) : null}
         </div>
         <button type="button" className="btn btn--ghost btn--small" onClick={onClose}>
-          Done
+          {t("Done")}
         </button>
       </div>
     </div>
@@ -758,6 +792,7 @@ function StockEditor({ item, onClose }: { item: StaffStock; onClose: () => void 
 }
 
 function StockImport({ onClose }: { onClose: () => void }) {
+  const { t } = useLocale();
   const [file, setFile] = useState<File | null>(null);
   const [checked, setChecked] = useState(false);
   const [report, setReport] = useState<StockImportReportWithRates | null>(null);
@@ -785,18 +820,18 @@ function StockImport({ onClose }: { onClose: () => void }) {
     <section className="card import-panel" aria-labelledby="import-title" data-testid="import-panel">
       <div className="import-panel__header">
         <div>
-          <h2 id="import-title">Import stock from CSV</h2>
+          <h2 id="import-title">{t("Import stock from CSV")}</h2>
           <p className="muted small">
-            Upload a stock CSV or ManaBox collection export. Check the file before applying any changes.
+            {t("Upload a stock CSV or ManaBox collection export. Check the file before applying any changes.")}
           </p>
         </div>
         <button type="button" className="btn btn--ghost btn--small" onClick={onClose}>
-          Close
+          {t("Close")}
         </button>
       </div>
 
       <div className="inline-form">
-        <label htmlFor="import-file">CSV file</label>
+        <label htmlFor="import-file">{t("CSV file")}</label>
         <input
           id="import-file"
           type="file"
@@ -814,7 +849,7 @@ function StockImport({ onClose }: { onClose: () => void }) {
           onClick={() => run(true)}
           data-testid="import-check"
         >
-          {mutation.isPending && !checked ? "Checking…" : "Check file"}
+          {mutation.isPending && !checked ? t("Checking…") : t("Check file")}
         </button>
         <button
           type="button"
@@ -823,43 +858,51 @@ function StockImport({ onClose }: { onClose: () => void }) {
           onClick={() => run(false)}
           data-testid="import-apply"
         >
-          Apply import
+          {t("Apply import")}
         </button>
       </div>
 
       {mutation.error ? (
         <p className="alert alert--error" role="alert">
-          {mutation.error instanceof ApiError ? mutation.error.message : String(mutation.error)}
+          {mutation.error instanceof ApiError ? t(mutation.error.message) : String(mutation.error)}
         </p>
       ) : null}
 
       {report ? (
         <div aria-live="polite" data-testid="import-report">
           <p>
-            <strong>{report.dry_run ? "Check only — nothing changed." : "Import applied."}</strong>{" "}
-            {report.rows} row{report.rows === 1 ? "" : "s"}: {report.created} new, {report.updated} updated,{" "}
-            {report.unchanged} unchanged, {report.errors.length} problem
-            {report.errors.length === 1 ? "" : "s"}.
+            <strong>{report.dry_run ? t("Check only — nothing changed.") : t("Import applied.")}</strong>{" "}
+            {t("{rows} rows: {created} new, {updated} updated, {unchanged} unchanged, {errors} problems.", {
+              rows: report.rows,
+              created: report.created,
+              updated: report.updated,
+              unchanged: report.unchanged,
+              errors: report.errors.length,
+            })}
           </p>
           {report.exchange_rates.length > 0 ? (
             <p className="muted small">
-              Daily rate used:{" "}
+              {t("Daily rate used:")}{" "}
               {report.exchange_rates
-                .map(
-                  (rate) =>
-                    `1 ${rate.source_currency} = ${rate.rate} ${rate.target_currency} (${rate.rate_date})`,
+                .map((rate) =>
+                  t("1 {source} = {rate} {target} ({date})", {
+                    source: rate.source_currency,
+                    rate: rate.rate,
+                    target: rate.target_currency,
+                    date: rate.rate_date,
+                  }),
                 )
                 .join("; ")}
             </p>
           ) : null}
           {report.errors.length > 0 ? (
             <table className="table table--tight">
-              <caption className="sr-only">Rows that will be skipped</caption>
+              <caption className="sr-only">{t("Rows that will be skipped")}</caption>
               <thead>
                 <tr>
-                  <th scope="col">Row</th>
-                  <th scope="col">Column</th>
-                  <th scope="col">Problem</th>
+                  <th scope="col">{t("Row")}</th>
+                  <th scope="col">{t("Column")}</th>
+                  <th scope="col">{t("Problem")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -867,7 +910,7 @@ function StockImport({ onClose }: { onClose: () => void }) {
                   <tr key={`${issue.row}-${issue.field ?? "row"}-${index}`}>
                     <td className="num">{issue.row}</td>
                     <td>{issue.field ?? "—"}</td>
-                    <td>{issue.message}</td>
+                    <td>{t(issue.message)}</td>
                   </tr>
                 ))}
               </tbody>

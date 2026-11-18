@@ -25,6 +25,7 @@ import { StatusPill } from "../../components/StatusPill";
 import { readShop } from "../../lib/accountMerge";
 import { formatDateTime, formatMoney, formatRemaining, titleCase } from "../../lib/format";
 import { useNow } from "../../lib/useNow";
+import { useLocale } from "../../state/locale";
 import { useAuth } from "../../state/auth";
 import { useSpecialOrders } from "../../state/specialOrders";
 import { colors, radii, spacing, type } from "../../theme";
@@ -40,6 +41,7 @@ export default function RequestScreen() {
   const queryClient = useQueryClient();
   const { get, getToken, hydrated, update } = useSpecialOrders();
   const { isAuthenticated, token: accountToken } = useAuth();
+  const { t } = useLocale();
   const saved = get(id);
   const [token, setToken] = useState<string | null>(null);
   const [tokenLoaded, setTokenLoaded] = useState(false);
@@ -52,7 +54,7 @@ export default function RequestScreen() {
   const accountRequest = isAuthenticated ? accountQuery.data : undefined;
   const requestQuery = useGuestCardRequest(id, saved?.shopSlug ?? "", token);
   const accountShop = accountRequest ? readShop(accountRequest.shop) : null;
-  const shopName = accountShop?.name ?? saved?.shopName ?? "Shop";
+  const shopName = accountShop?.name ?? saved?.shopName ?? t("Shop");
   const shopSlug = accountShop?.slug ?? saved?.shopSlug ?? "";
 
   useEffect(() => {
@@ -77,16 +79,16 @@ export default function RequestScreen() {
   }, [id, requestQuery.data, update]);
 
   if (!hydrated || !tokenLoaded || (accountToken && accountQuery.isLoading)) {
-    return <LoadingState label="Loading special order…" />;
+    return <LoadingState label={t("Loading special order…")} />;
   }
 
   if (!saved && !accountRequest) {
     return (
       <EmptyState
         icon="sparkles-outline"
-        title="Request not found"
-        body="This special order is not stored on this device or linked to your signed-in email."
-        actionLabel="My requests"
+        title={t("Request not found")}
+        body={t("This special order is not stored on this device or linked to your signed-in email.")}
+        actionLabel={t("My requests")}
         onAction={() => router.replace("/requests")}
       />
     );
@@ -121,7 +123,7 @@ export default function RequestScreen() {
         queryClient.setQueryData([...queryKeys.cardRequest(id), token], updated);
       }
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Could not accept this quote.");
+      setActionError(t(error instanceof Error ? error.message : "Could not accept this quote."));
       void (accountRequest ? accountQuery.refetch() : requestQuery.refetch());
     } finally {
       setActing(false);
@@ -149,7 +151,9 @@ export default function RequestScreen() {
       }
       setConfirmingCancel(false);
     } catch (error) {
-      setActionError(error instanceof Error ? error.message : "Could not cancel this request.");
+      setActionError(
+        t(error instanceof Error ? error.message : "Could not cancel this request."),
+      );
       void (accountRequest ? accountQuery.refetch() : requestQuery.refetch());
     } finally {
       setActing(false);
@@ -159,7 +163,10 @@ export default function RequestScreen() {
   async function share() {
     try {
       await Share.share({
-        message: `My Card Tracker special order at ${shopName}: #${request.public_ref}`,
+        message: t("My Card Tracker special order at {shopName}: #{publicRef}", {
+          shopName,
+          publicRef: request.public_ref,
+        }),
       });
     } catch {
       // A dismissed or unsupported share sheet is not an error.
@@ -191,17 +198,17 @@ export default function RequestScreen() {
         <View style={styles.statusCard}>
           <View style={styles.statusTop}>
             <View style={styles.statusTitle}>
-              <Text style={styles.eyebrow}>SPECIAL ORDER</Text>
+              <Text style={styles.eyebrow}>{t("SPECIAL ORDER")}</Text>
               <Text style={styles.shopName}>{shopName}</Text>
             </View>
             <StatusPill status={request.status} />
           </View>
           <Text style={styles.reference}>#{request.public_ref}</Text>
-          <Text style={styles.statusLine}>{statusMessage(request.status, quoteExpired)}</Text>
+          <Text style={styles.statusLine}>{statusMessage(request.status, quoteExpired, t)}</Text>
           {!accountRequest &&
           (requestQuery.isError || (accountToken && accountQuery.isError)) &&
           saved ? (
-            <Text style={styles.syncNote}>Showing the copy saved on this device.</Text>
+            <Text style={styles.syncNote}>{t("Showing the copy saved on this device.")}</Text>
           ) : null}
         </View>
 
@@ -209,7 +216,7 @@ export default function RequestScreen() {
           <View style={styles.quoteCard}>
             <View style={styles.quoteTop}>
               <View style={styles.quoteHeading}>
-                <Text style={styles.quoteEyebrow}>QUOTE FROM THE SHOP</Text>
+                <Text style={styles.quoteEyebrow}>{t("QUOTE FROM THE SHOP")}</Text>
                 <Text style={styles.quotePrice}>{formatMoney(request.quote_price)}</Text>
               </View>
               <Ionicons name="pricetag-outline" size={24} color={colors.accent} />
@@ -223,8 +230,10 @@ export default function RequestScreen() {
                 />
                 <Text style={[styles.quoteExpiryText, quoteExpired && styles.quoteExpiredText]}>
                   {quoteExpired
-                    ? "This quote has expired"
-                    : `Accept within ${formatRemaining(request.quote_expires_at, now)}`}
+                    ? t("This quote has expired")
+                    : t("Accept within {remaining}", {
+                        remaining: formatRemaining(request.quote_expires_at, now, t),
+                      })}
                 </Text>
               </View>
             ) : null}
@@ -232,8 +241,7 @@ export default function RequestScreen() {
               <Text style={styles.vendorNote}>{request.vendor_note}</Text>
             ) : null}
             <Text style={styles.quotePricingNote}>
-              This is an indicative quote. When the shop converts it, the hold uses the card&apos;s
-              current shelf price.
+              {t("This is an indicative quote. When the shop converts it, the hold uses the card's current shelf price.")}
             </Text>
           </View>
         ) : null}
@@ -242,8 +250,7 @@ export default function RequestScreen() {
           <View style={styles.infoCard}>
             <Ionicons name="checkmark-circle-outline" size={20} color={colors.success} />
             <Text style={styles.infoText}>
-              Quote accepted. The shop will reserve the card at its current shelf price and let you
-              know when it is ready.
+              {t("Quote accepted. The shop will reserve the card at its current shelf price and let you know when it is ready.")}
             </Text>
           </View>
         ) : null}
@@ -252,45 +259,47 @@ export default function RequestScreen() {
           <View style={styles.infoCard}>
             <Ionicons name="bag-check-outline" size={20} color={colors.success} />
             <Text style={styles.infoText}>
-              Your card is reserved
-              {request.reservation_ref ? ` under #${request.reservation_ref}` : ""}. Show that
-              reference at the shop when you collect it.
+              {request.reservation_ref
+                ? t("Your card is reserved under #{reservationRef}. Show that reference at the shop when you collect it.", {
+                    reservationRef: request.reservation_ref,
+                  })
+                : t("Your card is reserved. Show that reference at the shop when you collect it.")}
             </Text>
           </View>
         ) : null}
 
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>What you asked for</Text>
+          <Text style={styles.sectionTitle}>{t("What you asked for")}</Text>
           <View style={styles.cardLine}>
             <View style={styles.cardBody}>
               <Text style={styles.cardName}>{request.requested_name}</Text>
               <Text style={styles.cardMeta}>
-                {request.set_code ? request.set_code.toUpperCase() : "Set code not given"}
+                {request.set_code ? request.set_code.toUpperCase() : t("Set code not given")}
                 {request.collector_number ? ` · #${request.collector_number}` : ""}
               </Text>
               <Text style={styles.cardMeta}>
-                {titleCase(request.finish)} · {request.condition} ·{" "}
+                {t(titleCase(request.finish))} · {t(request.condition)} ·{" "}
                 {request.language.toUpperCase()} · ×{request.quantity}
               </Text>
             </View>
             {request.target_price ? (
               <View style={styles.target}>
-                <Text style={styles.targetLabel}>TARGET</Text>
+                <Text style={styles.targetLabel}>{t("TARGET")}</Text>
                 <Text style={styles.targetValue}>{formatMoney(request.target_price)}</Text>
               </View>
             ) : null}
           </View>
           {request.vendor_note && request.status !== "QUOTED" ? (
             <View style={styles.noteBox}>
-              <Text style={styles.noteLabel}>Note from the shop</Text>
+              <Text style={styles.noteLabel}>{t("Note from the shop")}</Text>
               <Text style={styles.noteText}>{request.vendor_note}</Text>
             </View>
           ) : null}
         </View>
 
         <View style={styles.infoGrid}>
-          <Info label="Requested" value={formatDateTime(request.created_at)} />
-          <Info label="Updated" value={formatDateTime(request.updated_at)} />
+          <Info label={t("Requested")} value={formatDateTime(request.created_at)} />
+          <Info label={t("Updated")} value={formatDateTime(request.updated_at)} />
         </View>
 
         {actionError ? (
@@ -301,17 +310,17 @@ export default function RequestScreen() {
         ) : null}
 
         <View style={styles.actions}>
-          <PrimaryButton label="Share reference" onPress={() => void share()} variant="secondary" />
+          <PrimaryButton label={t("Share reference")} onPress={() => void share()} variant="secondary" />
           {canAccept && (token || accountRequest) ? (
             <PrimaryButton
-              label="Accept this quote"
+              label={t("Accept this quote")}
               loading={acting}
               onPress={() => void accept()}
             />
           ) : null}
           {canCancel && (token || accountRequest) ? (
             <PrimaryButton
-              label="Cancel this request"
+              label={t("Cancel this request")}
               onPress={() => {
                 setActionError(null);
                 setConfirmingCancel(true);
@@ -321,7 +330,7 @@ export default function RequestScreen() {
           ) : null}
           {!ACTIVE.has(request.status) ? (
             <PrimaryButton
-              label="Browse this shop"
+              label={t("Browse this shop")}
               onPress={() => router.push(`/shop/${shopSlug}`)}
               variant="secondary"
             />
@@ -330,7 +339,7 @@ export default function RequestScreen() {
 
         {!token && !accountRequest ? (
           <Text style={styles.disclaimer}>
-            This request was saved without a guest token, so live updates are unavailable.
+            {t("This request was saved without a guest token, so live updates are unavailable.")}
           </Text>
         ) : null}
       </ScrollView>
@@ -346,18 +355,18 @@ export default function RequestScreen() {
             <View style={styles.modalIcon}>
               <Ionicons name="alert-circle-outline" size={24} color={colors.danger} />
             </View>
-            <Text style={styles.modalTitle}>Cancel this request?</Text>
+            <Text style={styles.modalTitle}>{t("Cancel this request?")}</Text>
             <Text style={styles.modalBody}>
-              The shop will stop looking for this card. You can send a new request later.
+              {t("The shop will stop looking for this card. You can send a new request later.")}
             </Text>
             {actionError ? <Text style={styles.modalError}>{actionError}</Text> : null}
             <PrimaryButton
-              label="Keep request"
+              label={t("Keep request")}
               onPress={() => setConfirmingCancel(false)}
               variant="secondary"
             />
             <PrimaryButton
-              label="Cancel request"
+              label={t("Cancel request")}
               loading={acting}
               onPress={() => void cancel()}
               variant="danger"
@@ -369,24 +378,28 @@ export default function RequestScreen() {
   );
 }
 
-function statusMessage(status: string, quoteExpired: boolean): string {
+function statusMessage(
+  status: string,
+  quoteExpired: boolean,
+  t: ReturnType<typeof useLocale>["t"],
+): string {
   switch (status) {
     case "REQUESTED":
-      return "The shop is checking whether it can source this card.";
+      return t("The shop is checking whether it can source this card.");
     case "QUOTED":
       return quoteExpired
-        ? "The quote expired. Ask the shop for a fresh one."
-        : "The shop found it. Review the quote below.";
+        ? t("The quote expired. Ask the shop for a fresh one.")
+        : t("The shop found it. Review the quote below.");
     case "ACCEPTED":
-      return "The shop is preparing your card.";
+      return t("The shop is preparing your card.");
     case "CONVERTED":
-      return "Your card is in and reserved.";
+      return t("Your card is in and reserved.");
     case "DECLINED":
-      return "The shop could not source this card this time.";
+      return t("The shop could not source this card this time.");
     case "EXPIRED":
-      return "This request expired.";
+      return t("This request expired.");
     case "CANCELLED":
-      return "You cancelled this request.";
+      return t("You cancelled this request.");
     default:
       return "";
   }

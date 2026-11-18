@@ -77,7 +77,7 @@ export default function LoginScreen() {
   }
 
   function describe(caught: unknown, fallback: string) {
-    return caught instanceof Error ? caught.message : fallback;
+    return t(caught instanceof Error ? caught.message : fallback);
   }
 
   async function submitSignIn() {
@@ -87,7 +87,7 @@ export default function LoginScreen() {
     try {
       await login(email, password);
     } catch (caught) {
-      setError(describe(caught, "Could not sign in."));
+      setError(describe(caught, t("Could not sign in.")));
     } finally {
       setBusy(false);
     }
@@ -105,7 +105,7 @@ export default function LoginScreen() {
       setResendIn(result.resend_after);
       setNotice(`${t("verificationSent")} ${email.trim().toLowerCase()}.`);
     } catch (caught) {
-      setError(describe(caught, "Could not send a verification code."));
+      setError(describe(caught, t("Could not send a verification code.")));
     } finally {
       setBusy(false);
     }
@@ -126,7 +126,7 @@ export default function LoginScreen() {
     try {
       await verifySignup(email, code, newPassword);
     } catch (caught) {
-      setError(describe(caught, "Could not create your account."));
+      setError(describe(caught, t("Could not create your account.")));
     } finally {
       setBusy(false);
     }
@@ -144,7 +144,7 @@ export default function LoginScreen() {
       setResendIn(result.resend_after);
       setNotice(`${t("resetSent")} ${email.trim().toLowerCase()}.`);
     } catch (caught) {
-      setError(describe(caught, "Could not send a reset code."));
+      setError(describe(caught, t("Could not send a reset code.")));
     } finally {
       setBusy(false);
     }
@@ -165,14 +165,14 @@ export default function LoginScreen() {
     try {
       await resetPassword(email, code, newPassword);
     } catch (caught) {
-      setError(describe(caught, "Could not reset your password."));
+      setError(describe(caught, t("Could not reset your password.")));
     } finally {
       setBusy(false);
     }
   }
 
-  if (!hydrated) return <LoadingState label="Checking your session…" />;
-  if (isAuthenticated) return <LoadingState label="Opening Card Tracker…" />;
+  if (!hydrated) return <LoadingState label={t("Checking your session…")} />;
+  if (isAuthenticated) return <LoadingState label={t("Opening Card Tracker…")} />;
 
   const resendLabel =
     resendIn > 0 ? `${t("sendNewCodeIn")} ${resendIn}s` : t("sendNewCode");
@@ -200,7 +200,7 @@ export default function LoginScreen() {
         </View>
 
         <View style={styles.hero}>
-          <Text style={styles.eyebrow}>SECURE ACCESS</Text>
+          <Text style={styles.eyebrow}>{t("SECURE ACCESS")}</Text>
           <Text style={styles.title}>{t("loginTitle")}</Text>
           <Text style={styles.subtitle}>{t("loginSubtitle")}</Text>
         </View>
@@ -272,7 +272,7 @@ export default function LoginScreen() {
                 keyboardType="email-address"
                 label={t("emailLabel")}
                 onChangeText={setEmail}
-                placeholder="you@example.com"
+                placeholder={t("you@example.com")}
                 textContentType="emailAddress"
                 value={email}
               />
@@ -282,7 +282,7 @@ export default function LoginScreen() {
                 autoCorrect={false}
                 label={t("passwordLabel")}
                 onChangeText={setPassword}
-                placeholder="••••••••"
+                placeholder={t("••••••••")}
                 secureTextEntry
                 textContentType="password"
                 value={password}
@@ -313,7 +313,7 @@ export default function LoginScreen() {
                 keyboardType="email-address"
                 label={t("emailLabel")}
                 onChangeText={setEmail}
-                placeholder="you@example.com"
+                placeholder={t("you@example.com")}
                 textContentType="emailAddress"
                 value={email}
               />
@@ -333,7 +333,7 @@ export default function LoginScreen() {
                     label={t("verificationCodeLabel")}
                     maxLength={6}
                     onChangeText={(value) => setCode(value.replace(/\D/g, "").slice(0, 6))}
-                    placeholder="000000"
+                    placeholder={t("000000")}
                     returnKeyType="done"
                     textContentType="oneTimeCode"
                     value={code}
@@ -344,7 +344,7 @@ export default function LoginScreen() {
                     autoCorrect={false}
                     label={t("newPasswordLabel")}
                     onChangeText={setNewPassword}
-                    placeholder="••••••••"
+                    placeholder={t("••••••••")}
                     secureTextEntry
                     textContentType="newPassword"
                     value={newPassword}
@@ -355,7 +355,7 @@ export default function LoginScreen() {
                     autoCorrect={false}
                     label={t("confirmPasswordLabel")}
                     onChangeText={setConfirmPassword}
-                    placeholder="••••••••"
+                    placeholder={t("••••••••")}
                     secureTextEntry
                     textContentType="newPassword"
                     value={confirmPassword}
@@ -404,7 +404,7 @@ export default function LoginScreen() {
                 keyboardType="email-address"
                 label={t("emailLabel")}
                 onChangeText={setEmail}
-                placeholder="you@example.com"
+                placeholder={t("you@example.com")}
                 textContentType="emailAddress"
                 value={email}
               />
@@ -424,7 +424,7 @@ export default function LoginScreen() {
                     label={t("verificationCodeLabel")}
                     maxLength={6}
                     onChangeText={(value) => setCode(value.replace(/\D/g, "").slice(0, 6))}
-                    placeholder="000000"
+                    placeholder={t("000000")}
                     returnKeyType="done"
                     textContentType="oneTimeCode"
                     value={code}
@@ -435,7 +435,7 @@ export default function LoginScreen() {
                     autoCorrect={false}
                     label={t("newPasswordLabel")}
                     onChangeText={setNewPassword}
-                    placeholder="••••••••"
+                    placeholder={t("••••••••")}
                     secureTextEntry
                     textContentType="newPassword"
                     value={newPassword}
@@ -446,7 +446,7 @@ export default function LoginScreen() {
                     autoCorrect={false}
                     label={t("confirmPasswordLabel")}
                     onChangeText={setConfirmPassword}
-                    placeholder="••••••••"
+                    placeholder={t("••••••••")}
                     secureTextEntry
                     textContentType="newPassword"
                     value={confirmPassword}
@@ -522,10 +522,11 @@ function ErrorBox({ text }: { text: string }) {
 }
 
 function DebugCode({ code }: { code: string | null }) {
+  const { t } = useLocale();
   if (!__DEV__ || !code) return null;
   return (
     <View style={styles.debug}>
-      <Text style={styles.debugLabel}>Development code</Text>
+      <Text style={styles.debugLabel}>{t("Development code")}</Text>
       <Text selectable style={styles.debugCode}>
         {code}
       </Text>

@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, TextInput, View } from "react-native";
 
+import { useLocale } from "../state/locale";
 import { colors, radii, spacing, type } from "../theme";
 
 type SearchFieldProps = {
@@ -10,6 +11,7 @@ type SearchFieldProps = {
 };
 
 export function SearchField({ value, onChangeText, placeholder }: SearchFieldProps) {
+  const { t } = useLocale();
   return (
     <View style={styles.wrap}>
       <Ionicons name="search" size={18} color={colors.inkMuted} />
@@ -26,7 +28,7 @@ export function SearchField({ value, onChangeText, placeholder }: SearchFieldPro
       />
       {value.length > 0 ? (
         <Pressable
-          accessibilityLabel="Clear search"
+          accessibilityLabel={t("Clear search")}
           accessibilityRole="button"
           hitSlop={10}
           onPress={() => onChangeText("")}

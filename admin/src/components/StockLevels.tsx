@@ -1,3 +1,5 @@
+import { useLocale } from "../state/locale";
+
 type Props = {
   onHand: number;
   reserved: number;
@@ -9,8 +11,10 @@ type Props = {
  * without colour vision and in print.
  */
 export function StockLevels({ onHand, reserved, available }: Props) {
+  const { t } = useLocale();
   const state = available <= 0 ? "out" : reserved > 0 ? "held" : "available";
-  const stateLabel = available <= 0 ? "Out of stock" : reserved > 0 ? "Partially held" : "Available";
+  const stateLabel =
+    available <= 0 ? t("Out of stock") : reserved > 0 ? t("Partially held") : t("Available");
 
   return (
     <div className="stock-levels">
@@ -20,15 +24,15 @@ export function StockLevels({ onHand, reserved, available }: Props) {
       </span>
       <dl className="stock-levels__numbers">
         <div>
-          <dt>On hand</dt>
+          <dt>{t("On hand")}</dt>
           <dd>{onHand}</dd>
         </div>
         <div>
-          <dt>Reserved</dt>
+          <dt>{t("Reserved")}</dt>
           <dd className="tone--reserved">{reserved}</dd>
         </div>
         <div>
-          <dt>Available</dt>
+          <dt>{t("Available")}</dt>
           <dd className="tone--available">{available}</dd>
         </div>
       </dl>

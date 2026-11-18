@@ -3,6 +3,7 @@ import { QRCodeCanvas } from "qrcode.react";
 import { ApiError } from "../api/client";
 import { useRefreshScryfallPrices, useSettings, useUpdateSettings } from "../api/queries";
 import type { SettingsUpdate, StaffShop } from "../api/types";
+import { useLocale } from "../state/locale";
 
 function asText(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
@@ -57,14 +58,15 @@ function toForm(shop: StaffShop): FormState {
 }
 
 export function SettingsPage() {
+  const { t } = useLocale();
   const { data: shop, isPending, error } = useSettings();
 
   if (error) {
     return (
       <div className="page">
-        <h1>Settings</h1>
+        <h1>{t("Settings")}</h1>
         <p className="alert alert--error" role="alert">
-          {error.message}
+          {t(error.message)}
         </p>
       </div>
     );
@@ -73,8 +75,8 @@ export function SettingsPage() {
   if (isPending || !shop) {
     return (
       <div className="page">
-        <h1>Settings</h1>
-        <p className="muted">Loading shop settings…</p>
+        <h1>{t("Settings")}</h1>
+        <p className="muted">{t("Loading shop settings…")}</p>
       </div>
     );
   }
@@ -84,6 +86,7 @@ export function SettingsPage() {
 }
 
 function ShopQrPanel({ slug }: { slug: string }) {
+  const { t } = useLocale();
   const publicBase = (import.meta.env.VITE_PUBLIC_APP_BASE_URL ?? import.meta.env.VITE_APP_BASE_URL ?? "https://app.cardtracker.local").replace(/\/+$/, "");
   const publicLink = `${publicBase}/shop/${encodeURIComponent(slug)}`;
   const fallbackLink = `cardtracker://shop/${encodeURIComponent(slug)}`;
@@ -132,18 +135,16 @@ function ShopQrPanel({ slug }: { slug: string }) {
           level="M"
           bgColor="#ffffff"
           fgColor="#15181d"
-          title={`QR code that opens the ${slug} storefront`}
+          title={t("QR code that opens the {slug} storefront", { slug })}
         />
       </div>
       <div className="qr-panel__body">
-        <h2 id="shop-qr-title">Shop QR code</h2>
+        <h2 id="shop-qr-title">{t("Shop QR code")}</h2>
         <p className="muted">
-          Print this and put it on the counter. Customers scan it in the Card Tracker app
-          to open your storefront and see live stock. The QR points at the public HTTPS app link,
-          while the fallback custom-scheme URL remains available for direct app installs.
+          {t("Print this and put it on the counter. Customers scan it in the Card Tracker app to open your storefront and see live stock. The QR points at the public HTTPS app link, while the fallback custom-scheme URL remains available for direct app installs.")}
         </p>
         <div className="mono small">{publicLink}</div>
-        <div className="mono small muted">App fallback: {fallbackLink}</div>
+        <div className="mono small muted">{t("App fallback: {link}", { link: fallbackLink })}</div>
         {(appStoreUrl || playStoreUrl) && (
           <div className="qr-panel__actions">
             {appStoreUrl ? (
@@ -160,13 +161,13 @@ function ShopQrPanel({ slug }: { slug: string }) {
         )}
         <div className="qr-panel__actions">
           <button type="button" className="btn btn--small" onClick={() => void copyLink()}>
-            {copied ? "Copied" : "Copy link"}
+            {copied ? t("Copied") : t("Copy link")}
           </button>
           <button type="button" className="btn btn--small" onClick={downloadPng}>
-            Download PNG
+            {t("Download PNG")}
           </button>
           <span className="small tone--available" aria-live="polite">
-            {copied ? "Link copied." : null}
+            {copied ? t("Link copied.") : null}
           </span>
         </div>
       </div>
@@ -175,6 +176,7 @@ function ShopQrPanel({ slug }: { slug: string }) {
 }
 
 function SettingsForm({ shop }: { shop: StaffShop }) {
+  const { t } = useLocale();
   const update = useUpdateSettings();
   const refreshScryfall = useRefreshScryfallPrices();
   const [form, setForm] = useState<FormState>(() => toForm(shop));
@@ -238,22 +240,22 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
     <div className="page">
       <header className="page__header">
         <div>
-          <h1>Settings</h1>
-          <p className="muted">Branding and policies customers see in the app.</p>
+          <h1>{t("Settings")}</h1>
+          <p className="muted">{t("Branding and policies customers see in the app.")}</p>
         </div>
       </header>
 
       <div className="facts">
         <div>
-          <span className="muted small">Shop address</span>
+          <span className="muted small">{t("Shop address")}</span>
           <div className="mono">{shop.slug}</div>
         </div>
         <div>
-          <span className="muted small">Currency</span>
+          <span className="muted small">{t("Currency")}</span>
           <div>{shop.currency}</div>
         </div>
         <div>
-          <span className="muted small">Timezone</span>
+          <span className="muted small">{t("Timezone")}</span>
           <div>{shop.timezone}</div>
         </div>
       </div>
@@ -262,9 +264,9 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
 
       <form className="form form--wide" onSubmit={handleSubmit} data-testid="settings-form">
         <fieldset>
-          <legend>Branding</legend>
+          <legend>{t("Branding")}</legend>
           <div className="field">
-            <label htmlFor="brand-name">Display name</label>
+            <label htmlFor="brand-name">{t("Display name")}</label>
             <input
               id="brand-name"
               value={form.brandName}
@@ -273,7 +275,7 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
             />
           </div>
           <div className="field">
-            <label htmlFor="logo-url">Logo URL</label>
+            <label htmlFor="logo-url">{t("Logo URL")}</label>
             <input
               id="logo-url"
               type="url"
@@ -281,11 +283,11 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
               onChange={(event) => patch({ logoUrl: event.target.value })}
               placeholder="https://…"
             />
-            <small className="hint">Square images work best. Leave empty to show the shop name only.</small>
+            <small className="hint">{t("Square images work best. Leave empty to show the shop name only.")}</small>
           </div>
           <div className="field-row">
             <div className="field">
-              <label htmlFor="color-primary">Primary colour</label>
+              <label htmlFor="color-primary">{t("Primary colour")}</label>
               <input
                 id="color-primary"
                 type="color"
@@ -294,7 +296,7 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
               />
             </div>
             <div className="field">
-              <label htmlFor="color-accent">Accent colour</label>
+              <label htmlFor="color-accent">{t("Accent colour")}</label>
               <input
                 id="color-accent"
                 type="color"
@@ -306,9 +308,9 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
         </fieldset>
 
         <fieldset>
-          <legend>Reservations</legend>
+          <legend>{t("Reservations")}</legend>
           <div className="field">
-            <label htmlFor="hold-hours">Hold duration (hours)</label>
+            <label htmlFor="hold-hours">{t("Hold duration (hours)")}</label>
             <input
               id="hold-hours"
               type="number"
@@ -319,15 +321,15 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
               aria-invalid={!holdValid}
             />
             <small className="hint">
-              Stock is released automatically when a hold is not collected in time. Default is 24 hours.
+              {t("Stock is released automatically when a hold is not collected in time. Default is 24 hours.")}
             </small>
           </div>
         </fieldset>
 
         <fieldset>
-          <legend>Archived stock</legend>
+          <legend>{t("Archived stock")}</legend>
           <div className="field">
-            <label htmlFor="archive-retention-days">Delete archived cards after (days)</label>
+            <label htmlFor="archive-retention-days">{t("Delete archived cards after (days)")}</label>
             <input
               id="archive-retention-days"
               type="number"
@@ -338,25 +340,24 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
               aria-invalid={!retentionValid}
             />
             <small className="hint">
-              Archived cards older than this are permanently deleted automatically. Use 0 to keep archived stock
-              forever. Rows with active customer holds are kept until those reservations close.
+              {t("Archived cards older than this are permanently deleted automatically. Use 0 to keep archived stock forever. Rows with active customer holds are kept until those reservations close.")}
             </small>
           </div>
         </fieldset>
 
         <fieldset>
-          <legend>Stock pricing</legend>
+          <legend>{t("Stock pricing")}</legend>
           <label className="checkbox">
             <input
               type="checkbox"
               checked={form.scryfallPricingEnabled}
               onChange={(event) => patch({ scryfallPricingEnabled: event.target.checked })}
             />
-            Automatically price stock using Scryfall market prices
+            {t("Automatically price stock using Scryfall market prices")}
           </label>
           <div className="field-row">
             <div className="field">
-              <label htmlFor="scryfall-minimum-price">Minimum price ({shop.currency})</label>
+              <label htmlFor="scryfall-minimum-price">{t("Minimum price ({currency})", { currency: shop.currency })}</label>
               <input
                 id="scryfall-minimum-price"
                 type="number"
@@ -368,7 +369,7 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
               />
             </div>
             <div className="field">
-              <label htmlFor="scryfall-markup">Markup at/above minimum (%)</label>
+              <label htmlFor="scryfall-markup">{t("Markup at/above minimum (%)")}</label>
               <input
                 id="scryfall-markup"
                 type="number"
@@ -381,7 +382,7 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
               />
             </div>
             <div className="field">
-              <label htmlFor="scryfall-rounding-increment">Round up to next multiple of ({shop.currency})</label>
+              <label htmlFor="scryfall-rounding-increment">{t("Round up to next multiple of ({currency})", { currency: shop.currency })}</label>
               <input
                 id="scryfall-rounding-increment"
                 type="number"
@@ -395,11 +396,7 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
             </div>
           </div>
           <p className="hint">
-            Below the minimum, the sale price is set to the minimum. At or above it, the configured percentage is added,
-            then the result rounds strictly up to the next multiple of the configured whole-currency increment. For
-            example, an increment of 5 rounds 121 up to 125 and 125 up to 130. Scryfall prices refresh nightly at 02:00
-            UTC and use the finish-specific market price. Cards without a reported market price are skipped during
-            imports; existing stock keeps its last price.
+            {t("Below the minimum, the sale price is set to the minimum. At or above it, the configured percentage is added, then the result rounds strictly up to the next multiple of the configured whole-currency increment. For example, an increment of 5 rounds 121 up to 125 and 125 up to 130. Scryfall prices refresh nightly at 02:00 UTC and use the finish-specific market price. Cards without a reported market price are skipped during imports; existing stock keeps its last price.")}
           </p>
           <div className="field">
             <button
@@ -411,31 +408,35 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
                 !form.scryfallPricingEnabled || !pricingValid || refreshScryfall.isPending || update.isPending
               }
             >
-              {refreshScryfall.isPending ? "Fetching prices…" : "Update prices from Scryfall now"}
+              {refreshScryfall.isPending ? t("Fetching prices…") : t("Update prices from Scryfall now")}
             </button>
             <small className="hint">
-              Fetches the current Scryfall market prices for the cards in stock and reprices them immediately, using the
-              saved rules above. The nightly refresh at 02:00 UTC keeps running either way.
+              {t("Fetches the current Scryfall market prices for the cards in stock and reprices them immediately, using the saved rules above. The nightly refresh at 02:00 UTC keeps running either way.")}
             </small>
             <span aria-live="polite" className="small tone--available" data-testid="scryfall-refresh-result">
               {refreshScryfall.data
-                ? `Fetched current Scryfall prices for ${refreshScryfall.data.cards_refreshed} cards (${refreshScryfall.data.cards_unavailable} unavailable). Updated ${refreshScryfall.data.repriced_stock} stock prices; ${refreshScryfall.data.stock_without_scryfall_prices} rows had no market price and were left unchanged.`
+                ? t("Fetched current Scryfall prices for {count} cards ({unavailable} unavailable). Updated {repriced} stock prices; {withoutPrice} rows had no market price and were left unchanged.", {
+                    count: refreshScryfall.data.cards_refreshed,
+                    unavailable: refreshScryfall.data.cards_unavailable,
+                    repriced: refreshScryfall.data.repriced_stock,
+                    withoutPrice: refreshScryfall.data.stock_without_scryfall_prices,
+                  })
                 : null}
             </span>
           </div>
         </fieldset>
 
         <fieldset>
-          <legend>Storefront</legend>
+          <legend>{t("Storefront")}</legend>
           <div className="field">
-            <label htmlFor="payment-instructions">Payment instructions</label>
+            <label htmlFor="payment-instructions">{t("Payment instructions")}</label>
             <textarea
               id="payment-instructions"
               rows={4}
               maxLength={4000}
               value={form.paymentInstructions}
               onChange={(event) => patch({ paymentInstructions: event.target.value })}
-              placeholder="Pay in store by card or cash when you collect."
+              placeholder={t("Pay in store by card or cash when you collect.")}
             />
           </div>
           <label className="checkbox">
@@ -444,13 +445,10 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
               checked={form.allowBackorders}
               onChange={(event) => patch({ allowBackorders: event.target.checked })}
             />
-            Accept special orders for cards that are out of stock
+            {t("Accept special orders for cards that are out of stock")}
           </label>
           <p className="hint">
-            When enabled, customers can ask this shop to source a card it does not have on the
-            shelf. The shop replies with a quote and converts accepted requests into a hold once
-            the card arrives. When disabled, the request form is hidden and the API rejects new
-            special orders.
+            {t("When enabled, customers can ask this shop to source a card it does not have on the shelf. The shop replies with a quote and converts accepted requests into a hold once the card arrives. When disabled, the request form is hidden and the API rejects new special orders.")}
           </p>
           <label className="checkbox">
             <input
@@ -458,14 +456,14 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
               checked={form.directoryOptIn}
               onChange={(event) => patch({ directoryOptIn: event.target.checked })}
             />
-            Show this shop in the public shop directory
+            {t("Show this shop in the public shop directory")}
           </label>
         </fieldset>
 
         <fieldset>
-          <legend>Contact</legend>
+          <legend>{t("Contact")}</legend>
           <div className="field">
-            <label htmlFor="contact-email">Email</label>
+            <label htmlFor="contact-email">{t("Email")}</label>
             <input
               id="contact-email"
               type="email"
@@ -474,7 +472,7 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
             />
           </div>
           <div className="field">
-            <label htmlFor="contact-phone">Phone</label>
+            <label htmlFor="contact-phone">{t("Phone")}</label>
             <input
               id="contact-phone"
               value={form.contactPhone}
@@ -482,7 +480,7 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
             />
           </div>
           <div className="field">
-            <label htmlFor="contact-address">Address</label>
+            <label htmlFor="contact-address">{t("Address")}</label>
             <input
               id="contact-address"
               value={form.contactAddress}
@@ -494,17 +492,17 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
                 checked={form.showAddress}
                 onChange={(event) => patch({ showAddress: event.target.checked })}
               />
-              Show this address to customers in the directory and shop profile
+              {t("Show this address to customers in the directory and shop profile")}
             </label>
           </div>
-          <p className="hint">Opening hours editing arrives with the storefront profile work.</p>
+          <p className="hint">{t("Opening hours editing arrives with the storefront profile work.")}</p>
         </fieldset>
 
         {failure ? (
           <p className="alert alert--error" role="alert">
             {failure instanceof ApiError && failure.status === 403
-              ? "Only the shop owner can change settings."
-              : failure.message}
+              ? t("Only the shop owner can change settings.")
+              : t(failure.message)}
           </p>
         ) : null}
 
@@ -514,13 +512,16 @@ function SettingsForm({ shop }: { shop: StaffShop }) {
             className="btn btn--primary"
             disabled={update.isPending || !holdValid || !retentionValid || !pricingValid}
           >
-            {update.isPending ? "Saving…" : "Save settings"}
+            {update.isPending ? t("Saving…") : t("Save settings")}
           </button>
           <span aria-live="polite" className="small tone--available">
             {saved
               ? update.data?.repriced_stock !== null && update.data?.repriced_stock !== undefined
-                ? `Settings saved. Updated ${update.data.repriced_stock} stock prices; ${update.data.stock_without_scryfall_prices ?? 0} rows had no Scryfall price and were left unchanged.`
-                : "Settings saved."
+                ? t("Settings saved. Updated {repriced} stock prices; {withoutPrice} rows had no Scryfall price and were left unchanged.", {
+                    repriced: update.data.repriced_stock,
+                    withoutPrice: update.data.stock_without_scryfall_prices ?? 0,
+                  })
+                : t("Settings saved.")
               : null}
           </span>
         </div>

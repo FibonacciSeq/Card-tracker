@@ -4,6 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { StockItem } from "../api/types";
 import { formatMoney, titleCase } from "../lib/format";
+import { useLocale } from "../state/locale";
 import { colors, radii, shadow, spacing, type } from "../theme";
 
 type StockCardProps = {
@@ -23,6 +24,7 @@ export function StockCard({
   onDecrease,
   onPress,
 }: StockCardProps) {
+  const { t } = useLocale();
   const soldOut = item.available <= 0;
   const image = (
     <View style={styles.imageWrap}>
@@ -52,8 +54,8 @@ export function StockCard({
         {item.card.set_code.toUpperCase()} · #{item.card.collector_number} · {item.card.rarity}
       </Text>
       <View style={styles.badgeRow}>
-        <Text style={styles.badge}>{titleCase(item.finish)}</Text>
-        <Text style={styles.badge}>{item.condition}</Text>
+        <Text style={styles.badge}>{t(titleCase(item.finish))}</Text>
+        <Text style={styles.badge}>{t(item.condition)}</Text>
         <Text style={styles.badge}>{item.language.toUpperCase()}</Text>
       </View>
     </View>
@@ -62,7 +64,7 @@ export function StockCard({
     <View style={styles.card}>
       {onPress ? (
         <Pressable
-          accessibilityLabel={`View ${item.card.name}`}
+          accessibilityLabel={t("View {name}", { name: item.card.name })}
           accessibilityRole="button"
           onPress={onPress}
           style={({ pressed }) => pressed && styles.pressed}
@@ -75,7 +77,7 @@ export function StockCard({
       <View style={styles.body}>
         {onPress ? (
           <Pressable
-            accessibilityLabel={`View details for ${item.card.name}`}
+            accessibilityLabel={t("View details for {name}", { name: item.card.name })}
             accessibilityRole="button"
             onPress={onPress}
             style={({ pressed }) => pressed && styles.pressed}
@@ -87,16 +89,16 @@ export function StockCard({
         )}
         <View style={styles.bottomRow}>
           <Text style={[styles.available, soldOut && styles.soldOut]}>
-            {soldOut ? "Sold out" : `${item.available} available`}
+            {soldOut ? t("Sold out") : t("{count} available", { count: item.available })}
           </Text>
           {soldOut ? (
             <View style={styles.unavailable}>
-              <Text style={styles.unavailableText}>No holds</Text>
+              <Text style={styles.unavailableText}>{t("No holds")}</Text>
             </View>
           ) : quantity > 0 ? (
             <View style={styles.stepper}>
               <Pressable
-                accessibilityLabel={`Remove one ${item.card.name}`}
+                accessibilityLabel={t("Remove one {name}", { name: item.card.name })}
                 accessibilityRole="button"
                 hitSlop={6}
                 onPress={onDecrease}
@@ -106,7 +108,7 @@ export function StockCard({
               </Pressable>
               <Text style={styles.quantity}>{quantity}</Text>
               <Pressable
-                accessibilityLabel={`Add another ${item.card.name}`}
+                accessibilityLabel={t("Add another {name}", { name: item.card.name })}
                 accessibilityRole="button"
                 disabled={quantity >= item.available}
                 hitSlop={6}
@@ -118,13 +120,13 @@ export function StockCard({
             </View>
           ) : (
             <Pressable
-              accessibilityLabel={`Add ${item.card.name} to your hold`}
+              accessibilityLabel={t("Add {name} to your hold", { name: item.card.name })}
               accessibilityRole="button"
               onPress={onAdd}
               style={({ pressed }) => [styles.addButton, pressed && styles.pressed]}
             >
               <Ionicons name="add" size={16} color={colors.white} />
-              <Text style={styles.addLabel}>Add</Text>
+              <Text style={styles.addLabel}>{t("Add")}</Text>
             </Pressable>
           )}
         </View>

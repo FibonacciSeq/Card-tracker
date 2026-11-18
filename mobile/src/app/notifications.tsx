@@ -10,7 +10,10 @@ import { ErrorState, LoadingState } from "../components/LoadingState";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { formatDateTime } from "../lib/format";
 import { useAuth } from "../state/auth";
+import { useLocale } from "../state/locale";
 import { colors, radii, spacing, type } from "../theme";
+
+type Translate = ReturnType<typeof useLocale>["t"];
 
 const statusColors: Record<AccountNotification["status"], string> = {
   pending: colors.inkMuted,
@@ -20,36 +23,40 @@ const statusColors: Record<AccountNotification["status"], string> = {
   failed: colors.danger,
 };
 
-const statusLabels: Record<AccountNotification["status"], string> = {
-  pending: "Queued",
-  retrying: "Retrying",
-  sent: "Sent",
-  skipped: "Skipped",
-  failed: "Failed",
-};
-
-function shopName(item: AccountNotification): string {
-  const name = item.shop.name;
-  const slug = item.shop.slug;
-  return typeof name === "string" ? name : typeof slug === "string" ? slug : "Shop";
+function getStatusLabels(t: Translate): Record<AccountNotification["status"], string> {
+  return {
+    pending: t("Queued"),
+    retrying: t("Retrying"),
+    sent: t("Sent"),
+    skipped: t("Skipped"),
+    failed: t("Failed"),
+  };
 }
 
-function channelLabel(channel: string): string {
-  if (channel === "in_app") return "In-app";
-  if (channel === "email") return "Email";
-  if (channel === "push") return "Push";
+function shopName(item: AccountNotification, t: Translate): string {
+  const name = item.shop.name;
+  const slug = item.shop.slug;
+  return typeof name === "string" ? name : typeof slug === "string" ? slug : t("Shop");
+}
+
+function channelLabel(channel: string, t: Translate): string {
+  if (channel === "in_app") return t("In-app");
+  if (channel === "email") return t("Email");
+  if (channel === "push") return t("Push");
   return channel;
 }
 
-function deviceLabel(token: PushToken): string {
-  if (token.platform === "ios") return "iOS device";
-  if (token.platform === "android") return "Android device";
+function deviceLabel(token: PushToken, t: Translate): string {
+  if (token.platform === "ios") return t("iOS device");
+  if (token.platform === "android") return t("Android device");
   return token.platform;
 }
 
 export default function NotificationsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const { t } = useLocale();
+  const statusLabels = getStatusLabels(t);
   const { token } = useAuth();
   const notifications = useMyNotifications(token);
   const pushTokens = useMyPushTokens(token);
@@ -69,28 +76,28 @@ export default function NotificationsScreen() {
     return (
       <View style={styles.screen}>
         <EmptyState
-          actionLabel="Sign in"
-          body="Sign in with your email to see delivery status for holds, requests, and restock alerts."
+          actionLabel={t("Sign in")}
+          body={t("Sign in with your email to see delivery status for holds, requests, and restock alerts.")}
           icon="log-in-outline"
           onAction={() => router.replace("/account")}
-          title="Sign in to view notifications"
+          title={t("Sign in to view notifications")}
         />
       </View>
     );
   }
 
   if (notifications.isLoading || pushTokens.isLoading) {
-    return <LoadingState label="Loading notification delivery…" />;
+    return <LoadingState label={t("Loading notification delivery…")} />;
   }
 
   if (notifications.error) {
     return (
       <ErrorState
-        message={
+        message={t(
           notifications.error instanceof Error
             ? notifications.error.message
-            : "Could not load your notification delivery log."
-        }
+            : "Could not load your notification delivery log.",
+        )}
         onRetry={() => void notifications.refetch()}
       />
     );
@@ -108,11 +115,10 @@ export default function NotificationsScreen() {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.intro}>
-          <Text style={styles.eyebrow}>NOTIFICATION DELIVERY</Text>
-          <Text style={styles.title}>Know what reached you.</Text>
+          <Text style={styles.eyebrow}>{t("NOTIFICATION DELIVERY")}</Text>
+          <Text style={styles.title}>{t("Know what reached you.")}</Text>
           <Text style={styles.subtitle}>
-            Every push and in-app update is listed with its delivery status. Failed and skipped
-            items stay visible so you can check your settings or this device.
+            {t("Every push and in-app update is listed with its delivery status. Failed and skipped items stay visible so you can check your settings or this device.")}
           </Text>
         </View>
 
@@ -120,21 +126,25 @@ export default function NotificationsScreen() {
           <View style={styles.sectionHeader}>
             <View style={styles.sectionTitleWrap}>
               <Ionicons name="phone-portrait-outline" size={18} color={colors.primary} />
-              <Text style={styles.sectionTitle}>Push devices</Text>
+              <Text style={styles.sectionTitle}>{t("Push devices")}</Text>
             </View>
             <Text style={styles.sectionMeta}>
               {pushUnavailable
-                ? "Unavailable"
-                : `${activeDevices} active${revokedDevices > 0 ? ` · ${revokedDevices} revoked` : ""}`}
+                ? t("Unavailable")
+                : revokedDevices > 0
+                  ? t("{active} active · {revoked} revoked", {
+                      active: activeDevices,
+                      revoked: revokedDevices,
+                    })
+                  : t("{count} active", { count: activeDevices })}
             </Text>
           </View>
 
           {pushUnavailable ? (
-            <Text style={styles.itemError}>Could not load push-device status.</Text>
+            <Text style={styles.itemError}>{t("Could not load push-device status.")}</Text>
           ) : devices.length === 0 ? (
             <Text style={styles.body}>
-              This account has no registered push devices. Enable push on the Account screen to
-              receive hold and request updates on this device.
+              {t("This account has no registered push devices. Enable push on the Account screen to receive hold and request updates on this device.")}
             </Text>
           ) : (
             <View style={styles.deviceList}>
@@ -143,17 +153,18 @@ export default function NotificationsScreen() {
                 return (
                   <View key={device.id} style={styles.deviceRow}>
                     <View style={styles.deviceMain}>
-                      <Text style={styles.deviceName}>{deviceLabel(device)}</Text>
+                      <Text style={styles.deviceName}>{deviceLabel(device, t)}</Text>
                       <Text style={styles.deviceMeta}>
-                        {revoked ? "Token revoked" : "Active"} · registered{" "}
-                        {formatDateTime(device.created_at)}
+                        {revoked ? t("Token revoked") : t("Active")}{" · "}
+                        {t("registered {date}", { date: formatDateTime(device.created_at) })}
                       </Text>
                       {device.failure_count > 0 ? (
                         <Text style={styles.deviceError}>
-                          {device.failure_count} failed attempt
-                          {device.failure_count === 1 ? "" : "s"}
+                          {device.failure_count === 1
+                            ? t("{count} failed attempt", { count: device.failure_count })
+                            : t("{count} failed attempts", { count: device.failure_count })}
                           {device.last_failure_at
-                            ? ` · last ${formatDateTime(device.last_failure_at)}`
+                            ? ` · ${t("last {date}", { date: formatDateTime(device.last_failure_at) })}`
                             : ""}
                         </Text>
                       ) : null}
@@ -170,7 +181,7 @@ export default function NotificationsScreen() {
                           revoked ? styles.deviceStatusTextOff : styles.deviceStatusTextOn,
                         ]}
                       >
-                        {revoked ? "Revoked" : "Active"}
+                        {revoked ? t("Revoked") : t("Active")}
                       </Text>
                     </View>
                   </View>
@@ -180,7 +191,7 @@ export default function NotificationsScreen() {
           )}
 
           <PrimaryButton
-            label={activeDevices > 0 ? "Manage push settings" : "Enable push notifications"}
+            label={activeDevices > 0 ? t("Manage push settings") : t("Enable push notifications")}
             onPress={() => router.push("/account")}
             variant="secondary"
           />
@@ -189,16 +200,16 @@ export default function NotificationsScreen() {
         <View style={styles.sectionHeader}>
           <View style={styles.sectionTitleWrap}>
             <Ionicons name="list-outline" size={18} color={colors.primary} />
-            <Text style={styles.sectionTitle}>Recent delivery attempts</Text>
+            <Text style={styles.sectionTitle}>{t("Recent delivery attempts")}</Text>
           </View>
-          <Text style={styles.sectionMeta}>{items.length} shown</Text>
+          <Text style={styles.sectionMeta}>{t("{count} shown", { count: items.length })}</Text>
         </View>
 
         {items.length === 0 ? (
           <EmptyState
-            body="When a hold is ready, a special order is quoted, or a restock alert is sent, its delivery status will appear here."
+            body={t("When a hold is ready, a special order is quoted, or a restock alert is sent, its delivery status will appear here.")}
             icon="notifications-outline"
-            title="No notification activity yet"
+            title={t("No notification activity yet")}
           />
         ) : (
           <View style={styles.list}>
@@ -209,7 +220,7 @@ export default function NotificationsScreen() {
                     <View
                       style={[styles.statusDot, { backgroundColor: statusColors[item.status] }]}
                     />
-                    <Text style={styles.channel}>{channelLabel(item.channel)}</Text>
+                    <Text style={styles.channel}>{channelLabel(item.channel, t)}</Text>
                   </View>
                   <Text style={[styles.status, { color: statusColors[item.status] }]}>
                     {statusLabels[item.status]}
@@ -218,15 +229,15 @@ export default function NotificationsScreen() {
                 <Text numberOfLines={2} style={styles.itemTitle}>
                   {item.title}
                 </Text>
-                <Text style={styles.itemShop}>{shopName(item)}</Text>
+                <Text style={styles.itemShop}>{shopName(item, t)}</Text>
                 <Text style={styles.itemMeta}>
                   {formatDateTime(item.created_at)}
                   {item.attempts > 0
-                    ? ` · ${item.attempts} attempt${item.attempts === 1 ? "" : "s"}`
+                    ? ` · ${item.attempts === 1 ? t("{count} attempt", { count: item.attempts }) : t("{count} attempts", { count: item.attempts })}`
                     : ""}
                 </Text>
                 {item.error && item.status !== "sent" ? (
-                  <Text style={styles.itemError}>{item.error}</Text>
+                  <Text style={styles.itemError}>{t(item.error)}</Text>
                 ) : null}
               </View>
             ))}
@@ -235,7 +246,7 @@ export default function NotificationsScreen() {
 
         {notifications.hasNextPage ? (
           <PrimaryButton
-            label="Load older notifications"
+            label={t("Load older notifications")}
             loading={notifications.isFetchingNextPage}
             onPress={() => void notifications.fetchNextPage()}
             variant="secondary"
@@ -243,10 +254,7 @@ export default function NotificationsScreen() {
         ) : null}
 
         <Text style={styles.note}>
-          Delivery status is recorded by the platform worker. In-app entries are recorded here and
-          are not sent through email or push. Skipped entries mean your account or this device was
-          opted out at the time. Invalid device tokens are revoked automatically when the push
-          provider rejects them.
+          {t("Delivery status is recorded by the platform worker. In-app entries are recorded here and are not sent through email or push. Skipped entries mean your account or this device was opted out at the time. Invalid device tokens are revoked automatically when the push provider rejects them.")}
         </Text>
       </ScrollView>
     </View>

@@ -19,6 +19,7 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { targetFromInput, targetPath } from "../lib/deeplink";
+import { useLocale } from "../state/locale";
 import { colors, radii, spacing, type } from "../theme";
 
 const REPEAT_SCAN_MS = 2500;
@@ -27,6 +28,7 @@ export default function ScanScreen() {
   const router = useRouter();
   const isFocused = useIsFocused();
   const insets = useSafeAreaInsets();
+  const { t } = useLocale();
   const [permission, requestPermission] = useCameraPermissions();
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
@@ -44,7 +46,7 @@ export default function ScanScreen() {
     if (navigating.current) return false;
     const target = targetFromInput(raw);
     if (!target) {
-      setScanError("That code is not a Card Tracker shop or card code.");
+      setScanError(t("That code is not a Card Tracker shop or card code."));
       return false;
     }
     setScanError(null);
@@ -71,13 +73,15 @@ export default function ScanScreen() {
 
   const manualEntry = (
     <View style={styles.manualPanel}>
-      <Text style={styles.panelTitle}>Enter a code by hand</Text>
+      <Text style={styles.panelTitle}>{t("Enter a code by hand")}</Text>
       <Text style={styles.panelBody}>
-        Type the shop code printed under the QR code, for example <Text style={styles.mono}>bolt-shop</Text>.
+        {t("Type the shop code printed under the QR code, for example ")}
+        <Text style={styles.mono}>{t("bolt-shop")}</Text>
+        {t(".")}
       </Text>
       <View style={styles.manualRow}>
         <TextInput
-          accessibilityLabel="Shop code or Card Tracker link"
+          accessibilityLabel={t("Shop code or Card Tracker link")}
           autoCapitalize="none"
           autoCorrect={false}
           onChangeText={(value) => {
@@ -85,14 +89,14 @@ export default function ScanScreen() {
             if (scanError) setScanError(null);
           }}
           onSubmitEditing={submitManual}
-          placeholder="bolt-shop"
+          placeholder={t("bolt-shop")}
           placeholderTextColor={colors.inkMuted}
           returnKeyType="go"
           style={styles.input}
           value={manual}
         />
         <Pressable
-          accessibilityLabel="Open this shop"
+          accessibilityLabel={t("Open this shop")}
           accessibilityRole="button"
           disabled={!manual.trim()}
           onPress={submitManual}
@@ -115,7 +119,7 @@ export default function ScanScreen() {
 
   return (
     <View style={styles.screen}>
-      <Stack.Screen options={{ title: "Scan a code" }} />
+      <Stack.Screen options={{ title: t("Scan a code") }} />
       <ScrollView
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + spacing.xl }]}
         keyboardShouldPersistTaps="handled"
@@ -123,17 +127,16 @@ export default function ScanScreen() {
       >
         {permission === null ? (
           <View style={styles.permissionPanel}>
-            <Text style={styles.panelBody}>Checking camera permission…</Text>
+            <Text style={styles.panelBody}>{t("Checking camera permission…")}</Text>
           </View>
         ) : !permission.granted ? (
           <View style={styles.permissionPanel}>
             <View style={styles.permissionIcon}>
               <Ionicons name="camera-outline" size={26} color={colors.primary} />
             </View>
-            <Text style={styles.panelTitle}>Scan with the camera</Text>
+            <Text style={styles.panelTitle}>{t("Scan with the camera")}</Text>
             <Text style={styles.panelBody}>
-              Allow camera access to scan the QR code on the shop counter or a card
-              label. You can always enter the shop code by hand instead.
+              {t("Allow camera access to scan the QR code on the shop counter or a card label. You can always enter the shop code by hand instead.")}
             </Text>
             {permission.canAskAgain ? (
               <Pressable
@@ -141,7 +144,7 @@ export default function ScanScreen() {
                 onPress={() => void requestPermission()}
                 style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
               >
-                <Text style={styles.primaryLabel}>Allow camera</Text>
+                <Text style={styles.primaryLabel}>{t("Allow camera")}</Text>
               </Pressable>
             ) : (
               <Pressable
@@ -149,7 +152,7 @@ export default function ScanScreen() {
                 onPress={() => void Linking.openSettings()}
                 style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
               >
-                <Text style={styles.primaryLabel}>Open settings</Text>
+                <Text style={styles.primaryLabel}>{t("Open settings")}</Text>
               </Pressable>
             )}
           </View>
@@ -158,16 +161,16 @@ export default function ScanScreen() {
             <View style={styles.permissionIcon}>
               <Ionicons name="alert-circle-outline" size={26} color={colors.danger} />
             </View>
-            <Text style={styles.panelTitle}>Camera unavailable</Text>
+            <Text style={styles.panelTitle}>{t("Camera unavailable")}</Text>
             <Text style={styles.panelBody}>
-              {cameraError} You can still enter the shop code below.
+              {t("{error} You can still enter the shop code below.", { error: cameraError })}
             </Text>
             <Pressable
               accessibilityRole="button"
               onPress={() => setCameraError(null)}
               style={({ pressed }) => [styles.primaryButton, pressed && styles.pressed]}
             >
-              <Text style={styles.primaryLabel}>Try the camera again</Text>
+              <Text style={styles.primaryLabel}>{t("Try the camera again")}</Text>
             </Pressable>
           </View>
         ) : (
@@ -177,13 +180,13 @@ export default function ScanScreen() {
                 barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
                 facing="back"
                 onBarcodeScanned={handleScan}
-                onMountError={(event) => setCameraError(event.message)}
+                onMountError={(event) => setCameraError(t(event.message))}
                 style={styles.camera}
               />
             ) : null}
             <View pointerEvents="none" style={styles.frame} />
             <View pointerEvents="none" style={styles.scanHint}>
-              <Text style={styles.scanHintText}>Point at the shop QR code</Text>
+              <Text style={styles.scanHintText}>{t("Point at the shop QR code")}</Text>
             </View>
           </View>
         )}
@@ -193,8 +196,7 @@ export default function ScanScreen() {
         <View style={styles.tip}>
           <Ionicons name="qr-code-outline" size={16} color={colors.inkMuted} />
           <Text style={styles.tipText}>
-            Codes point at a shop or a single card. A card code opens the card with its
-            price and availability.
+            {t("Codes point at a shop or a single card. A card code opens the card with its price and availability.")}
           </Text>
         </View>
       </ScrollView>

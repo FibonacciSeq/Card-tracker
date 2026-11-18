@@ -1,8 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 
-import type { SavedCardRequest } from "../state/specialOrders";
 import { formatMoney, formatRemaining } from "../lib/format";
+import { useLocale } from "../state/locale";
+import type { SavedCardRequest } from "../state/specialOrders";
 import { colors, radii, spacing, type } from "../theme";
 import { StatusPill } from "./StatusPill";
 
@@ -13,12 +14,13 @@ export function RequestCard({
   request: SavedCardRequest;
   onPress: () => void;
 }) {
+  const { t } = useLocale();
   const price = request.quote_price ?? request.target_price;
   const quoteActive = request.status === "QUOTED" && request.quote_expires_at;
 
   return (
     <Pressable
-      accessibilityHint="Opens the special-order details"
+      accessibilityHint={t("Opens the special-order details")}
       accessibilityRole="button"
       onPress={onPress}
       style={({ pressed }) => [styles.card, pressed && styles.pressed]}
@@ -43,8 +45,10 @@ export function RequestCard({
           />
           <Text style={styles.metaText}>
             {quoteActive
-              ? `Quote ${formatRemaining(request.quote_expires_at ?? "")}`
-              : `Qty ${request.quantity}`}
+              ? t("Quote {time}", {
+                  time: formatRemaining(request.quote_expires_at ?? "", undefined, t),
+                })
+              : t("Qty {count}", { count: request.quantity })}
           </Text>
         </View>
         {price ? <Text style={styles.price}>{formatMoney(price)}</Text> : null}
