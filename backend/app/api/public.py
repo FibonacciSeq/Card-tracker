@@ -53,8 +53,8 @@ class _ProductStats(NamedTuple):
 def _product_stats(db: Session, product: str) -> dict[uuid.UUID, _ProductStats]:
     """Availability per shop for cards matching a product search.
 
-    Sold-out variants stay in the result: the shop carries the product but has
-    nothing available right now.
+    Empty rows are hidden: once the last copy is gone the variant leaves the
+    shop's inventory, so only shops that actually carry the product are listed.
     """
     needle = f"%{product.lower()}%"
     available_quantity = models.Stock.quantity - models.Stock.reserved
@@ -70,6 +70,7 @@ def _product_stats(db: Session, product: str) -> dict[uuid.UUID, _ProductStats]:
         .where(
             models.Stock.archived_at.is_(None),
             models.Stock.is_online.is_(True),
+            models.Stock.quantity > 0,
             or_(
                 func.lower(models.Card.name).like(needle),
                 func.lower(models.Card.set_name).like(needle),
@@ -83,7 +84,7 @@ def _product_stats(db: Session, product: str) -> dict[uuid.UUID, _ProductStats]:
             variant_count=int(variant_count),
             available=max(0, int(available or 0)),
             # Prefer the cheapest variant that can actually be bought; fall back
-            # to the last known price so sold-out shops still show a hint.
+            # to the shelf price when every copy is currently on hold.
             from_price_minor=int(available_price if available_price is not None else overall_price),
         )
         for tenant_id, variant_count, available, available_price, overall_price in rows
@@ -179,6 +180,7 @@ def list_stock(
             models.Stock.tenant_id == tenant.id,
             models.Stock.archived_at.is_(None),
             models.Stock.is_online.is_(True),
+            models.Stock.quantity > 0,
         )
     )
 
@@ -275,6 +277,7 @@ def get_stock_item(slug: str, stock_id: uuid.UUID, db: Session = Depends(get_db)
             models.Stock.tenant_id == tenant.id,
             models.Stock.archived_at.is_(None),
             models.Stock.is_online.is_(True),
+            models.Stock.quantity > 0,
         )
     )
     if stock is None:
@@ -292,6 +295,7 @@ def stock_facets(slug: str, db: Session = Depends(get_db)):
             models.Stock.tenant_id == tenant.id,
             models.Stock.archived_at.is_(None),
             models.Stock.is_online.is_(True),
+            models.Stock.quantity > 0,
         )
         .subquery()
     )

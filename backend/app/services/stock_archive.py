@@ -29,6 +29,22 @@ class ArchiveDeleteResult:
     kept: int
 
 
+def archive_if_empty(stock: models.Stock) -> bool:
+    """Move a stock row to the archive once its on-hand count reaches zero.
+
+    The schema guarantees ``reserved <= quantity``, so a row with zero on hand
+    cannot have an active customer hold. Archiving (rather than deleting) keeps
+    the movement and reservation history, leaves the row restorable, and hides
+    it from the active inventory and the customer app.
+    """
+    if stock.quantity != 0 or stock.archived_at is not None:
+        return False
+    now = models.utcnow()
+    stock.archived_at = now
+    stock.updated_at = now
+    return True
+
+
 def _active_hold_exists() -> ColumnElement[bool]:
     """True when an open reservation still expects this stock row."""
     return (

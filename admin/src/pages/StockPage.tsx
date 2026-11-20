@@ -4,6 +4,7 @@ import { ApiError, requestBlob } from "../api/client";
 import {
   useAdjustStock,
   useArchiveAllStock,
+  useConfirmAllStaleStock,
   useConfirmStock,
   useDeleteAllArchivedStock,
   useDeleteArchivedStock,
@@ -43,6 +44,8 @@ export function StockPage() {
   const { data, isPending, error, refetch, isFetching } = useStock(query, onlyOnline, staleOnly, archivedView);
   const archive = useArchiveAllStock();
   const deleteArchive = useDeleteAllArchivedStock();
+  const confirmAllStale = useConfirmAllStaleStock();
+  const [confirmStaleNotice, setConfirmStaleNotice] = useState<string | null>(null);
 
   const items = data?.items ?? [];
 
@@ -61,6 +64,7 @@ export function StockPage() {
     setDeleteArchiveOpen(false);
     setArchiveNotice(null);
     setDeleteNotice(null);
+    setConfirmStaleNotice(null);
     if (archived && staleOnly) setStaleOnly(false);
   }
 
@@ -94,6 +98,19 @@ export function StockPage() {
             ? `${t("Archived {count} stock items.", { count: result.archived })} ` +
                 t("{count} reserved copies are still held for customers.", { count: result.reserved })
             : t("Archived {count} stock items.", { count: result.archived }),
+        );
+      },
+    });
+  }
+
+  function confirmAll() {
+    setConfirmStaleNotice(null);
+    confirmAllStale.mutate(undefined, {
+      onSuccess: (result) => {
+        setConfirmStaleNotice(
+          result.confirmed === 0
+            ? t("No stale cards to confirm.")
+            : t("Confirmed {count} stale cards.", { count: result.confirmed }),
         );
       },
     });
@@ -226,6 +243,15 @@ export function StockPage() {
               <button
                 type="button"
                 className="btn btn--small"
+                onClick={confirmAll}
+                disabled={confirmAllStale.isPending}
+                data-testid="confirm-stale-all"
+              >
+                {confirmAllStale.isPending ? t("Confirming…") : t("Confirm all stale")}
+              </button>
+              <button
+                type="button"
+                className="btn btn--small"
                 onClick={() => setImportOpen((open) => !open)}
                 aria-expanded={importOpen}
                 data-testid="import-toggle"
@@ -252,6 +278,20 @@ export function StockPage() {
       {exportError ? (
         <p className="alert alert--error" role="alert">
           {exportError}
+        </p>
+      ) : null}
+
+      {confirmStaleNotice ? (
+        <p className="alert alert--success" role="status" data-testid="confirm-stale-notice">
+          {confirmStaleNotice}
+        </p>
+      ) : null}
+
+      {confirmAllStale.error ? (
+        <p className="alert alert--error" role="alert">
+          {confirmAllStale.error instanceof ApiError
+            ? t(confirmAllStale.error.message)
+            : String(confirmAllStale.error)}
         </p>
       ) : null}
 
@@ -432,7 +472,9 @@ function StockRow({
   const remove = useDeleteArchivedStock();
   const confirm = useConfirmStock();
   const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [restoreQuantity, setRestoreQuantity] = useState("1");
   const archived = item.archived_at != null;
+  const isEmpty = item.on_hand === 0;
 
   return (
     <>
@@ -522,11 +564,26 @@ function StockRow({
                 </>
               ) : (
                 <>
+                  {isEmpty ? (
+                    <input
+                      type="number"
+                      min={1}
+                      value={restoreQuantity}
+                      aria-label={t("Copies to restore")}
+                      onChange={(event) => setRestoreQuantity(event.target.value)}
+                      data-testid="stock-restore-quantity"
+                    />
+                  ) : null}
                   <button
                     type="button"
                     className="btn btn--small"
-                    onClick={() => restore.mutate(item.stock_id)}
-                    disabled={restore.isPending}
+                    onClick={() =>
+                      restore.mutate({
+                        id: item.stock_id,
+                        quantity: isEmpty ? Number(restoreQuantity) : undefined,
+                      })
+                    }
+                    disabled={restore.isPending || (isEmpty && Number(restoreQuantity) < 1)}
                     data-testid="stock-restore"
                   >
                     {restore.isPending ? t("Restoring…") : t("Restore")}

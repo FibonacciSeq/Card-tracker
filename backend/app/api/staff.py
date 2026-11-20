@@ -476,7 +476,8 @@ def list_stock(
             stmt = stmt.where(models.Stock.is_online.is_(True))
         if stale:
             stmt = stmt.where(
-                models.Stock.updated_at < models.utcnow() - timedelta(days=settings.dashboard_stale_stock_days)
+                models.Stock.quantity > 0,
+                models.Stock.updated_at < models.utcnow() - timedelta(days=settings.dashboard_stale_stock_days),
             )
 
     sold = _sold_in_window(db, tenant_id)
@@ -872,6 +873,7 @@ def create_stock(
         existing.currency = currency
         existing.is_online = payload.is_online
         existing.updated_at = models.utcnow()
+        stock_archive.archive_if_empty(existing)
         if delta:
             db.add(
                 models.StockMovement(
@@ -921,6 +923,7 @@ def create_stock(
     db.add(stock)
     try:
         db.flush()
+        stock_archive.archive_if_empty(stock)
         if payload.quantity:
             db.add(
                 models.StockMovement(
@@ -966,11 +969,40 @@ def create_stock(
 @router.post("/stock/{stock_id}/restore", response_model=schemas.StaffStockOut)
 def restore_stock(
     stock_id: uuid.UUID,
+    payload: schemas.StockRestoreIn | None = None,
     user: models.User = Depends(get_current_staff),
     db: Session = Depends(get_db),
 ):
     stock = _get_stock(db, _staff_tenant(user), stock_id, allow_archived=True)
     if stock.archived_at is not None:
+        requested = payload.quantity if payload is not None else None
+        if (requested is None and stock.quantity == 0) or requested == 0:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Add a quantity before restoring an empty stock row",
+            )
+        if requested is not None:
+            if requested < stock.reserved:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail=f"Quantity cannot be below the {stock.reserved} reserved copies",
+                )
+            delta = requested - stock.quantity
+            stock.quantity = requested
+            if delta:
+                db.add(
+                    models.StockMovement(
+                        tenant_id=_staff_tenant(user),
+                        stock_id=stock.id,
+                        kind="IMPORT",
+                        on_hand_delta=delta,
+                        reserved_delta=0,
+                        on_hand_after=stock.quantity,
+                        reserved_after=stock.reserved,
+                        actor_id=user.id,
+                        reason="restored with quantity",
+                    )
+                )
         stock.archived_at = None
         stock.updated_at = models.utcnow()
         restock.notify_waiting(db, _tenant(db, user), stock)
@@ -1014,6 +1046,8 @@ def update_stock(
     if payload.is_online is not None:
         stock.is_online = payload.is_online
     stock.updated_at = models.utcnow()
+    if payload.quantity is not None:
+        stock_archive.archive_if_empty(stock)
 
     if delta:
         db.add(
@@ -1046,6 +1080,47 @@ def update_stock(
     db.commit()
     db.refresh(stock)
     return serializers.staff_stock_out(stock)
+
+
+@router.post("/stock/confirm-stale", response_model=schemas.StockConfirmStaleResultOut)
+def confirm_all_stale_stock(
+    user: models.User = Depends(get_current_staff),
+    db: Session = Depends(get_db),
+):
+    """Refresh every stale, online stock row in one action.
+
+    Only rows that are still in stock are touched; archived and empty rows are
+    deliberately left alone. The dashboard's stale count uses the same rule.
+    """
+    tenant_id = _staff_tenant(user)
+    cutoff = models.utcnow() - timedelta(days=settings.dashboard_stale_stock_days)
+    rows = list(
+        db.scalars(
+            select(models.Stock).where(
+                models.Stock.tenant_id == tenant_id,
+                models.Stock.archived_at.is_(None),
+                models.Stock.is_online.is_(True),
+                models.Stock.quantity > 0,
+                models.Stock.updated_at < cutoff,
+            )
+        ).all()
+    )
+    now = models.utcnow()
+    for stock in rows:
+        stock.updated_at = now
+    if rows:
+        audit.record(
+            db,
+            tenant_id=tenant_id,
+            actor_id=user.id,
+            action="stock.confirm_all",
+            entity_type="stock",
+            entity_id="batch",
+            summary=f"Confirmed {len(rows)} stale stock rows",
+            data={"confirmed": len(rows)},
+        )
+    db.commit()
+    return schemas.StockConfirmStaleResultOut(confirmed=len(rows))
 
 
 @router.post("/stock/{stock_id}/confirm", response_model=schemas.StaffStockOut)
@@ -1100,6 +1175,8 @@ def adjust_stock(
 
     stock.quantity = new_quantity
     stock.updated_at = models.utcnow()
+    if payload.delta < 0:
+        stock_archive.archive_if_empty(stock)
     db.add(
         models.StockMovement(
             tenant_id=_staff_tenant(user),
@@ -1146,6 +1223,7 @@ def sell_stock(
 
     stock.quantity -= payload.quantity
     stock.updated_at = models.utcnow()
+    stock_archive.archive_if_empty(stock)
     db.add(
         models.StockMovement(
             tenant_id=_staff_tenant(user),
@@ -1486,6 +1564,7 @@ def dashboard(
             models.Stock.tenant_id == _staff_tenant(user),
             models.Stock.archived_at.is_(None),
             models.Stock.is_online.is_(True),
+            models.Stock.quantity > 0,
             models.Stock.updated_at < now - timedelta(days=settings.dashboard_stale_stock_days),
         )
     )

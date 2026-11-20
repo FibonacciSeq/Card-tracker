@@ -24,6 +24,7 @@ import type {
   StatusUpdate,
   StockAdjust,
   StockArchiveResult,
+  StockConfirmStaleResult,
   StockDeleteResult,
   StockImportReportWithRates,
   StockSell,
@@ -82,8 +83,11 @@ export function useArchiveAllStock() {
 export function useRestoreStock() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) =>
-      request<StaffStock>(`/v1/staff/stock/${id}/restore`, { method: "POST" }),
+    mutationFn: ({ id, quantity }: { id: string; quantity?: number }) =>
+      request<StaffStock>(`/v1/staff/stock/${id}/restore`, {
+        method: "POST",
+        body: quantity === undefined ? undefined : { quantity },
+      }),
     onSuccess: () => {
       refreshStock(client);
       client.invalidateQueries({ queryKey: ["audit"] });
@@ -127,6 +131,18 @@ export function useConfirmStock() {
   return useMutation({
     mutationFn: (id: string) =>
       request<StaffStock>(`/v1/staff/stock/${id}/confirm`, { method: "POST" }),
+    onSuccess: () => {
+      refreshStock(client);
+      client.invalidateQueries({ queryKey: queryKeys.dashboard });
+      client.invalidateQueries({ queryKey: ["audit"] });
+    },
+  });
+}
+
+export function useConfirmAllStaleStock() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => request<StockConfirmStaleResult>("/v1/staff/stock/confirm-stale", { method: "POST" }),
     onSuccess: () => {
       refreshStock(client);
       client.invalidateQueries({ queryKey: queryKeys.dashboard });

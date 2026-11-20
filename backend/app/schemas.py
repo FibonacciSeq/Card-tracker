@@ -442,6 +442,14 @@ class StockDeleteResultOut(BaseModel):
     kept: int = 0
 
 
+class StockConfirmStaleResultOut(BaseModel):
+    confirmed: int
+
+
+class StockRestoreIn(BaseModel):
+    quantity: int | None = Field(default=None, ge=0)
+
+
 class StockCreateIn(BaseModel):
     card_id: uuid.UUID
     finish: Finish = FINISHES[0]

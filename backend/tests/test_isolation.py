@@ -40,7 +40,7 @@ def test_shop_directory_lists_opted_in_shops(client, tenant, other_tenant):
     assert slugs == {tenant.slug, other_tenant.slug}
 
 
-def test_shop_directory_searches_by_product_and_keeps_sold_out_shops(client, tenant, other_tenant, stock, db):
+def test_shop_directory_searches_by_product_and_hides_empty_shops(client, tenant, other_tenant, stock, db):
     stock.reserved = 1
     db.add(
         models.Stock(
@@ -60,16 +60,12 @@ def test_shop_directory_searches_by_product_and_keeps_sold_out_shops(client, ten
     response = client.get("/v1/shops", params={"product": "lightning"})
     assert response.status_code == 200, response.text
     shops = response.json()
-    assert [shop["slug"] for shop in shops] == [tenant.slug, other_tenant.slug]
+    assert [shop["slug"] for shop in shops] == [tenant.slug]
 
-    in_stock, sold_out = shops
+    in_stock = shops[0]
     assert in_stock["product_variant_count"] == 1
     assert in_stock["product_available"] == 2
     assert in_stock["product_from_price"] == {"amount_minor": 125000, "currency": "RSD"}
-
-    assert sold_out["product_variant_count"] == 1
-    assert sold_out["product_available"] == 0
-    assert sold_out["product_from_price"] == {"amount_minor": 450000, "currency": "RSD"}
 
 
 def test_shop_directory_product_price_prefers_available_variant(client, tenant, stock, db):
@@ -135,8 +131,8 @@ def test_shop_directory_product_search_and_empty_results(client, tenant, other_t
 
     matching = client.get("/v1/shops", params={"product": "product search"})
     assert matching.status_code == 200
-    assert [shop["slug"] for shop in matching.json()] == [tenant.slug, other_tenant.slug]
-    assert [shop["product_available"] for shop in matching.json()] == [2, 0]
+    assert [shop["slug"] for shop in matching.json()] == [tenant.slug]
+    assert [shop["product_available"] for shop in matching.json()] == [2]
 
 
 def test_stock_is_scoped_to_shop(client, tenant, other_tenant, stock, db):

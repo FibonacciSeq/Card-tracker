@@ -680,6 +680,13 @@ def complete_reservation(
 
             stock.updated_at = now
 
+        # Selling the last copy removes the row from the active inventory and
+        # the customer app. Archiving keeps the sale/reservation history intact.
+        from app.services import stock_archive
+
+        for stock in stocks.values():
+            stock_archive.archive_if_empty(stock)
+
         resolved = all(line.completed_quantity + line.cancelled_quantity == line.quantity for line in locked.lines)
         sold_any = False
         if resolved:

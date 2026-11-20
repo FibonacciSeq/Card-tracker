@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app import models
 from app.constants import CONDITION_ALIASES, CONDITIONS, FINISHES, MAX_STOCK_IMPORT_ROWS
-from app.services import restock
+from app.services import restock, stock_archive
 
 COLUMNS = [
     "card_name",
@@ -374,6 +374,7 @@ def apply_rows(
             )
             db.add(stock)
             db.flush()
+            stock_archive.archive_if_empty(stock)
             stock_by_key[key] = stock
             if row.quantity:
                 db.add(_movement(tenant.id, stock, actor_id, row.quantity, "CSV import: new card"))
@@ -410,6 +411,7 @@ def apply_rows(
         stock.price_minor = row.price_minor
         stock.is_online = row.is_online
         stock.updated_at = models.utcnow()
+        stock_archive.archive_if_empty(stock)
         if delta:
             db.add(
                 _movement(tenant.id, stock, actor_id, delta, "CSV import: restored card" if restore else "CSV import")
